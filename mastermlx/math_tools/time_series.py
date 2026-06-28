@@ -104,6 +104,14 @@ def dtw_path(x, y, window=None):
     y = np.asarray(y, dtype=float).ravel()
     if x.size == 0 or y.size == 0:
         raise ValueError("x and y must be non-empty")
+    # Try C++ accelerated path
+    try:
+        from ..accel._dtw import dtw_path as _cpp_dtw
+        w = int(window) if window is not None else max(x.size, y.size)
+        path_arr, dist = _cpp_dtw(x, y, w)
+        return [(int(p[0]), int(p[1])) for p in path_arr], float(dist)
+    except ImportError:
+        pass
     n, m = x.size, y.size
     if window is None:
         window = max(n, m)

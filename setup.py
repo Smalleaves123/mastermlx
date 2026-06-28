@@ -19,6 +19,13 @@ cpp_exts = [
         extra_compile_args=["-O3"],
         language="c++",
     ),
+    Extension(
+        "mastermlx.accel._dtw",
+        ["mastermlx/accel/_dtw.cpp"],
+        include_dirs=[np.get_include()],
+        extra_compile_args=["-O3"],
+        language="c++",
+    ),
 ]
 
 # Cython extensions (optional)

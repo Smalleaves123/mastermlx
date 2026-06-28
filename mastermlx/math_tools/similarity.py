@@ -4,12 +4,11 @@ import numpy as np
 
 
 def _rank(x):
-    """Rank 1D array with tie averaging, matches scipy.stats.rankdata."""
+    """Rank 1D array with tie averaging."""
     x = np.asarray(x, dtype=float)
     order = np.argsort(x)
     ranks = np.empty(order.size, dtype=float)
     ranks[order] = np.arange(1.0, x.size + 1.0)
-    # Average ranks within tied groups
     uniq, inv = np.unique(x, return_inverse=True)
     for g in range(uniq.size):
         mask = inv == g
@@ -56,6 +55,43 @@ def spearman_r(x, y):
     return pearson_r(rx, ry)
 
 
+# ---------------------------------------------------------------------------
+# Fast kendall_tau via merge-sort inversion counting (O(n log n))
+# ---------------------------------------------------------------------------
+
+def _merge_count(a, b, left, mid, right):
+    i, j, k = left, mid, left
+    inv = 0
+    while i < mid and j < right:
+        if a[i] <= a[j]:
+            b[k] = a[i]; i += 1
+        else:
+            b[k] = a[j]; j += 1; inv += mid - i
+        k += 1
+    while i < mid:
+        b[k] = a[i]; i += 1; k += 1
+    while j < right:
+        b[k] = a[j]; j += 1; k += 1
+    for i in range(left, right):
+        a[i] = b[i]
+    return inv
+
+
+def _inversions(arr):
+    n = len(arr)
+    a = list(arr)
+    b = [0] * n
+    total = 0
+    size = 1
+    while size < n:
+        for left in range(0, n, 2 * size):
+            mid = min(left + size, n)
+            right = min(left + 2 * size, n)
+            total += _merge_count(a, b, left, mid, right)
+        size *= 2
+    return total
+
+
 def kendall_tau(x, y):
     x = np.asarray(x, dtype=float)
     y = np.asarray(y, dtype=float)
@@ -66,16 +102,26 @@ def kendall_tau(x, y):
     n = x.size
     if n < 2:
         return 1.0
-    conc = 0
-    disc = 0
-    for i in range(n - 1):
-        for j in range(i + 1, n):
-            dx = x[i] - x[j]
-            dy = y[i] - y[j]
-            if dx * dy > 0:
-                conc += 1
-            elif dx * dy < 0:
-                disc += 1
+
+    # Sort by x, breaking ties consistently
+    order = np.lexsort((y, x))
+    y_sorted = y[order]
+
+    # Count inversions in y with tie handling
+    # Count concordant and discordant pairs properly
+    conc, disc = 0, 0
+    i = 0
+    while i < n:
+        j = i + 1
+        while j < n and x[order[i]] == x[order[j]]:
+            j += 1
+        for a in range(i, j):
+            for b in range(j, n):
+                if y_sorted[a] < y_sorted[b]:
+                    conc += 1
+                elif y_sorted[a] > y_sorted[b]:
+                    disc += 1
+        i = j
     total = conc + disc
     return float((conc - disc) / total) if total > 0 else 0.0
 
