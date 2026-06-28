@@ -47,4 +47,4 @@ jobs:
           pip install -e ".[dev,compare]"
 
       - name: Benchmark
-        run: python scripts/benchmark.py
+        run: python benchmarks/bench_models.py
