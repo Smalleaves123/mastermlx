@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+
+# Cython / C++ build artifacts
+*.so
+*.pyd
+*.dll
+*.dylib
+*.c
+*.cpp.html
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# pytest
+.pytest_cache/
+
+# Jupyter / examples
+.ipynb_checkpoints/
+examples/outputs/
+
+# stale data dirs
+data/
+notebooks/
+benchmarks/

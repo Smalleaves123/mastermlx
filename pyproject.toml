@@ -1,0 +1,70 @@
+[build-system]
+requires = ["setuptools>=68", "wheel", "numpy>=1.26", "cython>=3.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mastermlx"
+version = "0.1.0"
+description = "A from-scratch machine learning library built with NumPy — 80+ algorithms, 120+ math tools, C++ accelerated."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Solitude", email = "ziqi36684@gmail.com" }]
+license = { file = "LICENSE" }
+keywords = ["machine-learning", "numpy", "education", "algorithms", "research", "data-science"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Education",
+  "Intended Audience :: Science/Research",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: MacOS",
+  "Operating System :: Microsoft :: Windows",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: C++",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+  "numpy>=1.26",
+  "matplotlib>=3.8",
+  "seaborn>=0.13",
+  "plotly>=5.20",
+]
+
+[project.urls]
+Homepage = "https://github.com/aiziqi/mastermlx"
+Repository = "https://github.com/aiziqi/mastermlx"
+Issues = "https://github.com/aiziqi/mastermlx/issues"
+
+[project.optional-dependencies]
+compare = [
+  "scipy>=1.11",
+  "scikit-learn>=1.4",
+]
+dev = [
+  "pytest>=8.0",
+  "cython>=3.0",
+]
+
+[tool.setuptools]
+package-dir = {"" = "."}
+
+[tool.setuptools.packages.find]
+where = ["."]
+exclude = ["tests*", "scripts*", "benchmarks*", "examples*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.cibuildwheel]
+build = "cp310-* cp311-* cp312-* cp313-*"
+skip = "*-musllinux* *i686* pp*"
+test-command = "pytest {project}/tests"
+test-requires = ["pytest>=8.0"]
