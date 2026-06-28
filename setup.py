@@ -12,6 +12,13 @@ cpp_exts = [
         extra_compile_args=["-O3"],
         language="c++",
     ),
+    Extension(
+        "mastermlx.accel._kdtree",
+        ["mastermlx/accel/_kdtree.cpp"],
+        include_dirs=[np.get_include()],
+        extra_compile_args=["-O3"],
+        language="c++",
+    ),
 ]
 
 # Cython extensions (optional)
