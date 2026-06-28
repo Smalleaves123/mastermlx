@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "A from-scratch machine learning library built with NumPy — 80+ algorithms, 120+ math tools, C++ accelerated."
 readme = "README.md"
 requires-python = ">=3.10"
-authors = [{ name = "Solitude", email = "ziqi36684@gmail.com" }]
+authors = [{ name = "Smalleaves123", email = "ziqi36684@gmail.com" }]
 license = { file = "LICENSE" }
 keywords = ["machine-learning", "numpy", "education", "algorithms", "research", "data-science"]
 classifiers = [
