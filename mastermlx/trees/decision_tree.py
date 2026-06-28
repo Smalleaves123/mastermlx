@@ -53,7 +53,7 @@ class DecisionTreeClassifier(BaseEstimator):
     def _best_split(self, X, y):
         from ..accel.backends import best_split_classifier
         result = best_split_classifier(X.astype(float), y.astype(np.int64), self.min_samples_leaf)
-        if result[0] is not None:
+        if result is not None and result[0] is not None:
             return result
 
         # Fallback: pure NumPy implementation
@@ -170,7 +170,7 @@ class DecisionTreeRegressor(BaseEstimator):
     def _best_split(self, X, y):
         from ..accel.backends import best_split_regressor
         result = best_split_regressor(X.astype(float), y.astype(float), self.min_samples_leaf)
-        if result[0] is not None:
+        if result is not None and result[0] is not None:
             return result
 
         # Fallback: pure NumPy
