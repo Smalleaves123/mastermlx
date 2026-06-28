@@ -1,28 +1,30 @@
 from setuptools import setup, Extension
 import numpy as np
+import pybind11
 
 extensions = []
+inc_dirs = [np.get_include(), pybind11.get_include()]
 
 # C++ extensions (always compiled, no Cython needed)
 cpp_exts = [
     Extension(
         "mastermlx.accel._distance_cpp",
-        ["mastermlx/accel/_distance.cpp"],
-        include_dirs=[np.get_include()],
+        ["mastermlx/accel/_distance_cpp.cpp"],
+        include_dirs=inc_dirs,
         extra_compile_args=["-O3"],
         language="c++",
     ),
     Extension(
         "mastermlx.accel._kdtree",
         ["mastermlx/accel/_kdtree.cpp"],
-        include_dirs=[np.get_include()],
+        include_dirs=inc_dirs,
         extra_compile_args=["-O3"],
         language="c++",
     ),
     Extension(
         "mastermlx.accel._dtw",
         ["mastermlx/accel/_dtw.cpp"],
-        include_dirs=[np.get_include()],
+        include_dirs=inc_dirs,
         extra_compile_args=["-O3"],
         language="c++",
     ),

@@ -2,11 +2,8 @@
 from __future__ import annotations
 import numpy as np
 
-try:
-    from ._kdtree import kdtree_new, kdtree_query
-    _HAS_KDTREE = True
-except ImportError:
-    _HAS_KDTREE = False
+from ._kdtree import KDTree as _KDTree
+_HAS_KDTREE = True
 
 
 def knn_search(X_train, X_query, k):
@@ -23,9 +20,9 @@ def knn_search(X_train, X_query, k):
     if k < 1 or k > X_train.shape[0]:
         raise ValueError(f"k must be in [1, {X_train.shape[0]}]")
 
-    if _HAS_KDTREE and X_train.shape[0] > 100:
-        tree = kdtree_new(X_train)
-        idx, dst_sq = kdtree_query(tree, X_query, np.array([k], dtype=np.int32))
+    if X_train.shape[0] > 100:
+        tree = _KDTree(X_train)
+        idx, dst_sq = tree.query(X_query, k)
         return idx, np.sqrt(np.maximum(dst_sq, 0.0))
 
     # Brute force fallback
