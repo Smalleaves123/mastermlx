@@ -9,7 +9,7 @@ cpp_exts = [
         "mastermlx.accel._distance_cpp",
         ["mastermlx/accel/_distance.cpp"],
         include_dirs=[np.get_include()],
-        extra_compile_args=["-O3", "-march=native"],
+        extra_compile_args=["-O3"],
         language="c++",
     ),
 ]
