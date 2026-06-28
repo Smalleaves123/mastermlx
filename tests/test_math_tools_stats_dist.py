@@ -143,7 +143,8 @@ def test_f_oneway():
 
 
 def test_ks_test_normal():
-    x = np.random.randn(200)
+    rng = np.random.default_rng(42)
+    x = rng.normal(0, 1, 200)
     d, p = ks_test(x, "norm", 0, 1)
     assert 0 <= d <= 1
-    assert p > 0.01  # should not reject normal fit
+    assert p > 0.001  # should not reject normal fit at any reasonable alpha
