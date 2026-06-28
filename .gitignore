@@ -38,7 +38,6 @@ Thumbs.db
 .ipynb_checkpoints/
 examples/outputs/
 
-# stale data dirs
-data/
-notebooks/
-benchmarks/
+# stale dirs (root only)
+/data/
+/notebooks/
