@@ -54,7 +54,8 @@ class KDTree {
     Node* root; double* data; int n, d;
 public:
     KDTree(py::array_t<double> X) {
-        auto buf = X.request(); n = buf.shape[0]; d = buf.shape[1]; data = (double*)buf.ptr;
+        py::buffer_info buf = X.request(); n = (int)buf.shape[0]; d = (int)buf.shape[1];
+        data = (double*)buf.ptr;
         std::vector<int> idxs(n);
         for (int i = 0; i < n; i++) idxs[i] = i;
         root = build(data, idxs.data(), n, d, 0);
@@ -62,17 +63,19 @@ public:
     ~KDTree() { destroy(root); }
 
     std::pair<py::array_t<int>, py::array_t<double>> query(py::array_t<double> Q, int k) {
-        auto buf = Q.request(); int nq = buf.shape[0]; double* queries = (double*)buf.ptr;
+        py::buffer_info buf = Q.request(); int nq = (int)buf.shape[0];
+        double* queries = (double*)buf.ptr;
         k = std::min(k, n);
         py::array_t<int> idx_arr({nq, k});
         py::array_t<double> dst_arr({nq, k});
-        auto oi = idx_arr.template mutable_unchecked<2>();
-        auto od = dst_arr.template mutable_unchecked<2>();
+        py::buffer_info ib = idx_arr.request(), db = dst_arr.request();
+        int* oi = (int*)ib.ptr;
+        double* od = (double*)db.ptr;
         for (int i = 0; i < nq; i++) {
             std::priority_queue<HeapItem> heap;
             knn(root, queries + i * d, data, d, k, heap);
             int pos = (int)heap.size() - 1;
-            while (!heap.empty()) { oi(i, pos) = heap.top().idx; od(i, pos) = heap.top().dist; heap.pop(); pos--; }
+            while (!heap.empty()) { oi[i*k + pos] = heap.top().idx; od[i*k + pos] = heap.top().dist; heap.pop(); pos--; }
         }
         return {idx_arr, dst_arr};
     }
