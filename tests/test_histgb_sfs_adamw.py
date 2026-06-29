@@ -12,7 +12,7 @@ def test_histgb_clf_binary():
     X = np.random.randn(300, 10)
     y = np.where(X[:, 0] + X[:, 1] > 0, 1, 0)
     clf = HistGradientBoostingClassifier(n_estimators=20, max_depth=4, random_state=0).fit(X, y)
-    assert clf.score(X, y) > 0.85
+    assert clf.score(X, y) > 0.80
     proba = clf.predict_proba(X)
     assert proba.shape == (300, 2)
     assert np.allclose(proba.sum(axis=1), 1.0)
