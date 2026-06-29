@@ -57,7 +57,7 @@ The library includes optional compiled helpers for:
 - Decision tree split search
 - Convolution and max pooling
 
-If the compiled backend is missing, `mastermlx` falls back to the NumPy implementation automatically.
+If the compiled backend is missing, `mastermlx` falls back to NumPy automatically.
 
 ## License
 
