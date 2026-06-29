@@ -9,14 +9,13 @@ description = "A from-scratch machine learning library built with NumPy — 80+ 
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [{ name = "Smalleaves123", email = "ziqi36684@gmail.com" }]
-license = { file = "LICENSE" }
+license = "MIT"
 keywords = ["machine-learning", "numpy", "education", "algorithms", "research", "data-science"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Education",
   "Intended Audience :: Science/Research",
   "Intended Audience :: Developers",
-  "License :: OSI Approved :: MIT License",
   "Operating System :: MacOS",
   "Operating System :: Microsoft :: Windows",
   "Operating System :: POSIX :: Linux",
@@ -38,9 +37,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/aiziqi/mastermlx"
-Repository = "https://github.com/aiziqi/mastermlx"
-Issues = "https://github.com/aiziqi/mastermlx/issues"
+Homepage = "https://github.com/Smalleaves123/mastermlx"
+Repository = "https://github.com/Smalleaves123/mastermlx"
+Issues = "https://github.com/Smalleaves123/mastermlx/issues"
 
 [project.optional-dependencies]
 compare = [
