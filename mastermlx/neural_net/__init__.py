@@ -14,7 +14,7 @@ from .config import (
 from .losses import CrossEntropyLoss, MSELoss
 from .mlp import MLPClassifier, MLPRegressor
 from .sequential import Sequential
-from .optimizers import AdaGrad, Adam, RMSProp, SGD
+from .optimizers import AdaGrad, Adam, AdamW, RMSProp, SGD
 from .schedulers import CosineLR, ReduceLROnPlateau, StepLR
 from .layers import (
     AttentionPooling1D, BatchNorm, Conv2D, Dense, Dropout, Embedding,
@@ -25,6 +25,7 @@ from .layers import (
 __all__ = [
     "AdaGrad",
     "Adam",
+    "AdamW",
     "AttentionPooling1D",
     "BatchNorm",
     "Conv2D",

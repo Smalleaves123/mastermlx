@@ -1,6 +1,7 @@
 """Ensemble learning methods."""
 
 from .bagging import BaggingClassifier, BaggingRegressor
+from .hist_gb import HistGradientBoostingClassifier, HistGradientBoostingRegressor
 from .extra_trees import ExtraTreesClassifier, ExtraTreesRegressor
 from .stacking import StackingClassifier, StackingRegressor
 from .calibrate import CalibratedClassifierCV
@@ -12,6 +13,8 @@ __all__ = [
     "BaggingRegressor",
     "ExtraTreesClassifier",
     "ExtraTreesRegressor",
+    "HistGradientBoostingClassifier",
+    "HistGradientBoostingRegressor",
     "StackingClassifier",
     "StackingRegressor",
     "MultiOutputClassifier",

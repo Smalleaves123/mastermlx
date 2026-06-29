@@ -77,3 +77,30 @@ class Adam:
         m_hat = m / (1.0 - self.beta1 ** self._t)
         v_hat = v / (1.0 - self.beta2 ** self._t)
         return param - self.lr * m_hat / (np.sqrt(v_hat) + self.eps)
+
+
+class AdamW:
+    """Adam with decoupled weight decay."""
+
+    def __init__(self, lr=0.001, beta1=0.9, beta2=0.999, eps=1e-8, weight_decay=0.01):
+        self.lr = float(lr)
+        self.beta1 = float(beta1)
+        self.beta2 = float(beta2)
+        self.eps = float(eps)
+        self.weight_decay = float(weight_decay)
+        self._m = {}
+        self._v = {}
+        self._t = 0
+
+    def update(self, param, grad, key):
+        self._t += 1
+        m = self._m.get(key, np.zeros_like(param))
+        v = self._v.get(key, np.zeros_like(param))
+        m = self.beta1 * m + (1.0 - self.beta1) * grad
+        v = self.beta2 * v + (1.0 - self.beta2) * (grad ** 2)
+        self._m[key] = m
+        self._v[key] = v
+        m_hat = m / (1.0 - self.beta1 ** self._t)
+        v_hat = v / (1.0 - self.beta2 ** self._t)
+        param = param - self.lr * self.weight_decay * param
+        return param - self.lr * m_hat / (np.sqrt(v_hat) + self.eps)
