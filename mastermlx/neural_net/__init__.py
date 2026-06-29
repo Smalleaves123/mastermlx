@@ -17,8 +17,8 @@ from .sequential import Sequential
 from .optimizers import AdaGrad, Adam, AdamW, RMSProp, SGD
 from .schedulers import CosineLR, ReduceLROnPlateau, StepLR
 from .layers import (
-    AttentionPooling1D, BatchNorm, Conv2D, Dense, Dropout, Embedding,
-    Flatten, GELU, GlobalAveragePooling1D, GRU, LayerNorm, LeakyReLU,
+    AttentionPooling1D, AvgPool1D, AvgPool2D, BatchNorm, Conv1D, Conv2D, Dense, Dropout, Embedding,
+    Flatten, GELU, GlobalAveragePooling1D, GlobalAveragePooling2D, GRU, LayerNorm, LeakyReLU,
     LSTM, MaxPool2D, MultiHeadAttention, ReLU, Sigmoid, SimpleRNN, Tanh,
 )
 

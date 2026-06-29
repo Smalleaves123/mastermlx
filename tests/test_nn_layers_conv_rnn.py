@@ -1,8 +1,8 @@
 import numpy as np
 
 from mastermlx.neural_net.layers import (
-    Conv2D, Flatten, GELU, GRU, LayerNorm, LeakyReLU,
-    LSTM, MaxPool2D, SimpleRNN,
+    AvgPool1D, AvgPool2D, Conv1D, Conv2D, Flatten, GELU, GlobalAveragePooling2D,
+    GRU, LayerNorm, LeakyReLU, LSTM, MaxPool2D, SimpleRNN,
 )
 
 
@@ -124,3 +124,42 @@ def test_gru_forward():
     assert out.shape == (3, 7, 5)
     gru.backward(np.ones_like(out))
     gru.step(lr=0.01)
+
+
+# --- Conv1D ---
+def test_conv1d_forward_shape():
+    X = np.random.randn(4, 10, 3)
+    c = Conv1D(n_filters=5, kernel_size=3)
+    out = c.forward(X)
+    assert out.shape == (4, 8, 5)
+
+
+def test_conv1d_backward_shape():
+    from mastermlx.neural_net.layers.conv1d import Conv1D
+    X = np.random.randn(2, 8, 3)
+    c = Conv1D(n_filters=4, kernel_size=3)
+    out = c.forward(X)
+    dX = c.backward(np.ones_like(out))
+    assert dX.shape == X.shape
+
+
+# --- AvgPool ---
+def test_avgpool1d_shape():
+    from mastermlx.neural_net.layers.conv1d import AvgPool1D
+    p = AvgPool1D(kernel_size=2)
+    X = np.random.randn(3, 8, 4)
+    assert p.forward(X).shape == (3, 4, 4)
+
+
+def test_avgpool2d_shape():
+    from mastermlx.neural_net.layers.pooling import AvgPool2D
+    p = AvgPool2D(kernel_size=2)
+    X = np.random.randn(2, 6, 6, 3)
+    assert p.forward(X).shape == (2, 3, 3, 3)
+
+
+def test_global_avgpool2d_shape():
+    from mastermlx.neural_net.layers.pooling import GlobalAveragePooling2D
+    g = GlobalAveragePooling2D()
+    X = np.random.randn(2, 4, 4, 8)
+    assert g.forward(X).shape == (2, 8)
