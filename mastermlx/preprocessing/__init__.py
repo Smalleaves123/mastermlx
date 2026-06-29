@@ -4,6 +4,7 @@ from .column import ColumnTransformer
 from .binarize import Binarizer
 from .discretize import KBinsDiscretizer
 from .encoders import LabelEncoder, OneHotEncoder, OrdinalEncoder
+from .knni import KNNImputer
 from .imputers import SimpleImputer
 from .normalize import Normalizer
 from .pipeline import Pipeline
@@ -16,6 +17,7 @@ from .target import TargetEncoder
 __all__ = [
     "Binarizer",
     "ColumnTransformer",
+    "KNNImputer",
     "KBinsDiscretizer",
     "LabelEncoder",
     "MaxAbsScaler",
