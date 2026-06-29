@@ -69,5 +69,6 @@ pythonpath = ["."]
 [tool.cibuildwheel]
 build = "cp310-* cp311-* cp312-* cp313-*"
 skip = "*-musllinux* *i686* pp*"
-test-command = "pytest {project}/tests"
+test-command = "pytest {project}/tests -q"
 test-requires = ["pytest>=8.0"]
+before-build = "pip install numpy pybind11 cython"
