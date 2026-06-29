@@ -33,6 +33,16 @@ def test_knn_classifier_supports_distance_weights():
     assert pred == 0
 
 
+def test_knn_classifier_supports_string_labels():
+    X = np.array([[0.0], [1.0], [2.0]])
+    y = np.array(["cat", "cat", "dog"], dtype=object)
+
+    model = KNNClassifier(k=2).fit(X, y)
+    pred = model.predict([0.9])
+
+    assert pred == "cat"
+
+
 def test_knn_regressor_supports_distance_weights():
     X = np.array([[0.0], [2.0], [4.0]])
     y = np.array([0.0, 2.0, 10.0])

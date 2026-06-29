@@ -45,7 +45,7 @@ class KNNRegressor(BaseEstimator):
             raise ValueError("X has a different number of features than the fitted data")
 
         dist = self._dist(X)
-        nn = np.argsort(dist, axis=1)[:, : self.k]
+        nn = np.argpartition(dist, self.k - 1, axis=1)[:, : self.k]
         if self.weights == "uniform":
             pred = np.mean(self.y_[nn], axis=1)
         else:

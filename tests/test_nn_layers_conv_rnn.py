@@ -21,12 +21,45 @@ def test_conv2d_backward_shape():
     assert dX.shape == X.shape
 
 
+def test_conv2d_forward_known_values():
+    X = np.arange(1, 10, dtype=float).reshape(1, 3, 3, 1)
+    layer = Conv2D(n_filters=1, kernel_size=2, stride=1)
+    layer.W_ = np.ones((4, 1), dtype=float)
+    layer.b_ = np.zeros(1, dtype=float)
+    out = layer.forward(X)
+
+    expected = np.array([[[[12.0], [16.0]], [[24.0], [28.0]]]])
+    assert np.allclose(out, expected)
+
+
+def test_conv2d_forward_stride_two():
+    X = np.arange(1, 17, dtype=float).reshape(1, 4, 4, 1)
+    layer = Conv2D(n_filters=1, kernel_size=2, stride=2)
+    layer.W_ = np.ones((4, 1), dtype=float)
+    layer.b_ = np.zeros(1, dtype=float)
+    out = layer.forward(X)
+
+    expected = np.array([[[[14.0], [22.0]], [[46.0], [54.0]]]])
+    assert np.allclose(out, expected)
+
+
 # --- MaxPool2D ---
 def test_maxpool_shape():
     p = MaxPool2D(kernel_size=2)
     X = np.random.randn(4, 8, 8, 3)
     out = p.forward(X)
     assert out.shape == (4, 4, 4, 3)
+
+
+def test_maxpool_backward_routes_gradient_to_max():
+    X = np.array([[[[1.0], [2.0]], [[3.0], [4.0]]]])
+    p = MaxPool2D(kernel_size=2)
+    out = p.forward(X)
+    back = p.backward(np.ones_like(out))
+
+    assert out.shape == (1, 1, 1, 1)
+    assert np.allclose(out, np.array([[[[4.0]]]]))
+    assert np.allclose(back, np.array([[[[0.0], [0.0]], [[0.0], [1.0]]]]))
 
 
 # --- Flatten ---

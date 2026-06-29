@@ -30,8 +30,8 @@ class KNNClassifier(BaseEstimator):
         check_weights(self.weights)
 
         self.X_ = X
-        self.y_ = y
-        self.classes_ = np.unique(y)
+        self.classes_, self.y_codes_ = np.unique(y, return_inverse=True)
+        self.n_classes_ = self.classes_.shape[0]
         return self
 
     def _dist(self, X):
@@ -46,18 +46,19 @@ class KNNClassifier(BaseEstimator):
             raise ValueError("X has a different number of features than the fitted data")
 
         dist = self._dist(X)
-        nn = np.argsort(dist, axis=1)[:, : self.k]
-        pred = []
+        nn = np.argpartition(dist, self.k - 1, axis=1)[:, : self.k]
+        pred_codes = np.empty(X.shape[0], dtype=int)
+
         for i, row in enumerate(nn):
-            labels = self.y_[row]
-            vals = np.unique(labels)
+            codes = self.y_codes_[row]
             if self.weights == "uniform":
-                cnt = np.array([np.sum(labels == label) for label in vals], dtype=float)
+                cnt = np.bincount(codes, minlength=self.n_classes_)
             else:
                 w = distance_weights(dist[i, row])
-                cnt = np.array([np.sum(w[labels == label]) for label in vals], dtype=float)
-            pred.append(vals[int(np.argmax(cnt))])
-        pred = np.asarray(pred)
+                cnt = np.bincount(codes, weights=w, minlength=self.n_classes_)
+            pred_codes[i] = int(np.argmax(cnt))
+
+        pred = self.classes_[pred_codes]
         return pred[0] if pred.shape[0] == 1 else pred
 
     def score(self, X, y):

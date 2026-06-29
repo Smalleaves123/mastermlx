@@ -28,8 +28,8 @@ class RadiusNeighborsClassifier(BaseEstimator):
         check_metric(self.metric)
         check_weights(self.weights)
         self.X_ = X
-        self.y_ = y
-        self.classes_ = np.unique(y)
+        self.classes_, self.y_codes_ = np.unique(y, return_inverse=True)
+        self.n_classes_ = self.classes_.shape[0]
         return self
 
     def predict(self, X):
@@ -37,22 +37,21 @@ class RadiusNeighborsClassifier(BaseEstimator):
             raise RuntimeError("Model has not been fit yet")
         X = as_2d(X)
         dist = pairwise_neighbor_distance(X, self.X_, self.metric)
-        pred = []
+        pred_codes = np.empty(X.shape[0], dtype=int)
         for i in range(X.shape[0]):
             mask = dist[i] <= self.radius
             if not np.any(mask):
                 nearest = int(np.argmin(dist[i]))
-                pred.append(self.y_[nearest])
+                pred_codes[i] = int(self.y_codes_[nearest])
                 continue
-            labels = self.y_[mask]
-            vals = np.unique(labels)
+            codes = self.y_codes_[mask]
             if self.weights == "uniform":
-                cnt = np.array([np.sum(labels == label) for label in vals], dtype=float)
+                cnt = np.bincount(codes, minlength=self.n_classes_)
             else:
                 w = distance_weights(dist[i, mask])
-                cnt = np.array([np.sum(w[labels == label]) for label in vals], dtype=float)
-            pred.append(vals[int(np.argmax(cnt))])
-        pred = np.asarray(pred)
+                cnt = np.bincount(codes, weights=w, minlength=self.n_classes_)
+            pred_codes[i] = int(np.argmax(cnt))
+        pred = self.classes_[pred_codes]
         return pred[0] if pred.shape[0] == 1 else pred
 
     def score(self, X, y):

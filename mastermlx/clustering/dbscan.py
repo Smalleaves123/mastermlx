@@ -30,14 +30,15 @@ class DBSCAN(BaseEstimator):
 
         distances = _pairwise_distances(X)
         neighbors = [np.flatnonzero(distances[i] <= self.eps) for i in range(X.shape[0])]
-        core_samples = np.array([i for i, nn in enumerate(neighbors) if nn.size >= self.min_samples], dtype=int)
+        core_mask = np.array([nn.size >= self.min_samples for nn in neighbors], dtype=bool)
+        core_samples = np.flatnonzero(core_mask)
 
         labels = np.full(X.shape[0], -1, dtype=int)
         cluster_id = 0
         visited = np.zeros(X.shape[0], dtype=bool)
 
         for point in range(X.shape[0]):
-            if visited[point] or point not in core_samples:
+            if visited[point] or not core_mask[point]:
                 continue
 
             stack = [point]
@@ -51,7 +52,7 @@ class DBSCAN(BaseEstimator):
                         labels[neighbor] = cluster_id
                     if not visited[neighbor]:
                         visited[neighbor] = True
-                        if neighbor in core_samples:
+                        if core_mask[neighbor]:
                             stack.append(neighbor)
             cluster_id += 1
 

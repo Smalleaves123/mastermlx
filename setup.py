@@ -44,6 +44,11 @@ try:
             ["mastermlx/accel/_tree_ops.pyx"],
             include_dirs=[np.get_include()],
         ),
+        Extension(
+            "mastermlx.accel._cnn_ops",
+            ["mastermlx/accel/_cnn_ops.pyx"],
+            include_dirs=[np.get_include()],
+        ),
     ], language_level=3)
     extensions = cpp_exts + cy_exts
 except ImportError:
