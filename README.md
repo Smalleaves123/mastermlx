@@ -17,6 +17,12 @@ It gives you a broad set of classic ML algorithms, math utilities, and optional 
 pip install mastermlx
 ```
 
+If you want the latest code from GitHub:
+
+```bash
+pip install git+https://github.com/Smalleaves123/mastermlx.git
+```
+
 For development:
 
 ```bash
@@ -59,7 +65,12 @@ The library includes optional compiled helpers for:
 
 If the compiled backend is missing, `mastermlx` falls back to the NumPy implementation automatically.
 
+## Releases
+
+- Stable releases are published on PyPI: `pip install mastermlx`
+- Release tags and changelogs are published on GitHub
+- For maintainers, see [`RELEASING.md`](RELEASING.md)
+
 ## License
 
 MIT
-
