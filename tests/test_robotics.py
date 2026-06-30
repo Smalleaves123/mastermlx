@@ -11,6 +11,7 @@ from mastermlx.robotics import (
     planar_2r_jacobian,
     quaternion_to_matrix,
     quintic_time_scaling,
+    sample_joint_trajectory,
     rot_z,
 )
 
@@ -66,6 +67,19 @@ def test_time_scaling_bounds():
     assert np.isclose(ds_quintic, 0.0)
     assert np.isfinite(dds_cubic)
     assert np.isfinite(dds_quintic)
+
+
+def test_sample_joint_trajectory_shapes():
+    q0 = np.array([0.0, 1.0, -1.0])
+    qf = np.array([1.0, 2.0, 0.0])
+    times, positions, velocities, accelerations = sample_joint_trajectory(q0, qf, 2.0, num_samples=5, kind="cubic")
+
+    assert times.shape == (5,)
+    assert positions.shape == (5, 3)
+    assert velocities.shape == (5, 3)
+    assert accelerations.shape == (5, 3)
+    assert np.allclose(positions[0], q0)
+    assert np.allclose(positions[-1], qf)
 
 
 def test_inverse_kinematics_reaches_planar_target():

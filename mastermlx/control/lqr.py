@@ -2,6 +2,13 @@ from __future__ import annotations
 
 import numpy as np
 
+try:
+    from ._lqr_ops import finite_horizon_lqr as _cy_finite_horizon_lqr
+    from ._lqr_ops import solve_discrete_are as _cy_solve_discrete_are
+except ImportError:  # pragma: no cover - fallback when Cython extensions are unavailable
+    _cy_finite_horizon_lqr = None
+    _cy_solve_discrete_are = None
+
 
 def solve_discrete_are(A, B, Q, R, *, max_iter=1000, tol=1e-9):
     """Solve the discrete algebraic Riccati equation by fixed-point iteration."""
@@ -10,6 +17,8 @@ def solve_discrete_are(A, B, Q, R, *, max_iter=1000, tol=1e-9):
     B = np.asarray(B, dtype=float)
     Q = np.asarray(Q, dtype=float)
     R = np.asarray(R, dtype=float)
+    if _cy_solve_discrete_are is not None:
+        return _cy_solve_discrete_are(A, B, Q, R, int(max_iter), float(tol))
     P = Q.copy()
     for _ in range(int(max_iter)):
         BtP = B.T @ P
@@ -39,6 +48,9 @@ def finite_horizon_lqr(A, B, Q, R, horizon, Qf=None, reference=None):
         raise ValueError("horizon must be at least 1")
     Qf = Q if Qf is None else np.asarray(Qf, dtype=float)
     ref = None if reference is None else np.asarray(reference, dtype=float)
+
+    if _cy_finite_horizon_lqr is not None:
+        return _cy_finite_horizon_lqr(A, B, Q, R, horizon, Qf=Qf, reference=ref)
 
     P = [None] * (horizon + 1)
     K = [None] * horizon

@@ -2,8 +2,14 @@
 
 ## Unreleased
 
-- Added a roadmap for future Cython / C++ optimization work and benchmark batches.
+- Added Cython acceleration for discrete LQR recursion and batch joint-trajectory sampling.
+- Added roadmap guidance for the next Cython / C++ optimization batches.
 - Added Cython acceleration for time-series hot paths such as rolling mean, autocorrelation, exponential smoothing, and CUSUM detection.
+
+## 0.1.7
+
+- Added compiled hot-path helpers for control, robotics, and time-series routines.
+- Continued the Cython optimization pass into LQR and trajectory sampling.
 
 ## 0.1.6
 

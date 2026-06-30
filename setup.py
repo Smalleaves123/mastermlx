@@ -71,6 +71,16 @@ try:
             ["mastermlx/math_tools/_time_series_ops.pyx"],
             include_dirs=[np.get_include()],
         ),
+        Extension(
+            "mastermlx.control._lqr_ops",
+            ["mastermlx/control/_lqr_ops.pyx"],
+            include_dirs=[np.get_include()],
+        ),
+        Extension(
+            "mastermlx.robotics._trajectory_ops",
+            ["mastermlx/robotics/_trajectory_ops.pyx"],
+            include_dirs=[np.get_include()],
+        ),
     ], language_level=3)
     extensions = cpp_exts + cy_exts
 except ImportError:

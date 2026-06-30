@@ -38,6 +38,21 @@ def test_finite_horizon_lqr_and_mpc_one_step():
     assert np.allclose(mpc.control(np.array([1.0])), np.array([-0.5]))
 
 
+def test_finite_horizon_lqr_multi_step_shapes():
+    A = np.array([[1.0]])
+    B = np.array([[1.0]])
+    Q = np.array([[1.0]])
+    R = np.array([[1.0]])
+
+    gains, costs, ref = finite_horizon_lqr(A, B, Q, R, horizon=4, Qf=Q)
+
+    assert len(gains) == 4
+    assert len(costs) == 5
+    assert ref is None
+    assert all(g.shape == (1, 1) for g in gains)
+    assert all(p.shape == (1, 1) for p in costs)
+
+
 def test_ilqr_reduces_quadratic_cost():
     def dynamics(x, u):
         return np.asarray(x, dtype=float) + np.asarray(u, dtype=float)

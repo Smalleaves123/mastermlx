@@ -2,6 +2,11 @@ from __future__ import annotations
 
 import numpy as np
 
+try:
+    from ._trajectory_ops import sample_joint_trajectory as _cy_sample_joint_trajectory
+except ImportError:  # pragma: no cover - fallback when Cython extensions are unavailable
+    _cy_sample_joint_trajectory = None
+
 
 def _normalize_time(t, duration):
     duration = float(duration)
@@ -46,6 +51,9 @@ def joint_trajectory(q0, qf, duration, t, kind="quintic"):
 
 def sample_joint_trajectory(q0, qf, duration, num_samples=100, kind="quintic"):
     """Sample a joint trajectory at evenly spaced times."""
+
+    if _cy_sample_joint_trajectory is not None:
+        return _cy_sample_joint_trajectory(q0, qf, float(duration), int(num_samples), kind=kind)
 
     times = np.linspace(0.0, float(duration), int(num_samples))
     positions = []
