@@ -171,6 +171,14 @@ from mastermlx import entropy, pairwise_distance, silhouette
 - `ParticleFilter`
 - `systematic_resample`
 
+### `control`
+
+- `PIDController`
+- `DiscreteLQR`
+- `finite_horizon_lqr`
+- `LinearMPC`
+- `iLQR`
+
 ### `bandits`
 
 - `EpsilonGreedyBandit`

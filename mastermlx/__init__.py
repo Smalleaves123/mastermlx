@@ -8,6 +8,7 @@ from .bandits import *  # noqa: F401,F403
 from .data import *  # noqa: F401,F403
 from .decomposition import *  # noqa: F401,F403
 from .ensemble import *  # noqa: F401,F403
+from .control import *  # noqa: F401,F403
 from .linear_models import *  # noqa: F401,F403
 from .manifold import *  # noqa: F401,F403
 from .estimation import *  # noqa: F401,F403
@@ -36,6 +37,7 @@ from . import clustering as _clustering
 from . import data as _data
 from . import decomposition as _decomposition
 from . import ensemble as _ensemble
+from . import control as _control
 from . import estimation as _estimation
 from . import linear_models as _linear_models
 from . import math_tools as _math_tools
@@ -68,6 +70,7 @@ _extend_unique(__all__, _bandits.__all__)
 _extend_unique(__all__, _data.__all__)
 _extend_unique(__all__, _decomposition.__all__)
 _extend_unique(__all__, _ensemble.__all__)
+_extend_unique(__all__, _control.__all__)
 _extend_unique(__all__, _estimation.__all__)
 _extend_unique(__all__, _linear_models.__all__)
 _extend_unique(__all__, _math_tools.__all__)

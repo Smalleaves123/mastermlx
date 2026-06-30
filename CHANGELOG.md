@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.1.5
+
+- Added a new `mastermlx.control` package with PID, LQR, finite-horizon MPC, and iLQR optimization control.
+- Continued the robotics stack with optimization-based control foundations.
+
 ## 0.1.4
 
 - Added a new `mastermlx.estimation` package for Kalman, extended Kalman, and particle filtering.
