@@ -153,6 +153,17 @@ from mastermlx import entropy, pairwise_distance, silhouette
 - `SarsaAgent`
 - `DoubleQAgent`
 
+### `robotics`
+
+- `DHLink`
+- `forward_kinematics`
+- `inverse_kinematics`
+- `geometric_jacobian`
+- `cubic_time_scaling`
+- `quintic_time_scaling`
+- `joint_trajectory`
+- `plot_chain`
+
 ### `bandits`
 
 - `EpsilonGreedyBandit`
@@ -186,4 +197,3 @@ pytest tests/
 - Keep the top-level API stable
 - Preserve fallback behavior when adding new compiled paths
 - Add tests for both compiled and pure-Python execution paths when practical
-

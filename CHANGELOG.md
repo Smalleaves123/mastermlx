@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added a new `mastermlx.robotics` foundation package for transforms, kinematics, Jacobians, trajectories, and visualization.
+
 ## 0.1.1
 
 - Tightened packaging metadata for PyPI publication.

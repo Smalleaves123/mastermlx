@@ -18,6 +18,7 @@ from .rl import *  # noqa: F401,F403
 from .selection import *  # noqa: F401,F403
 from .semi_supervised import *  # noqa: F401,F403
 from .signal import *  # noqa: F401,F403
+from .robotics import *  # noqa: F401,F403
 from .svm import *  # noqa: F401,F403
 from .trees import *  # noqa: F401,F403
 from .variational import *  # noqa: F401,F403
@@ -42,6 +43,7 @@ from . import neural_net as _neural_net
 from . import nlp as _nlp
 from . import probabilistic as _probabilistic
 from . import rl as _rl
+from . import robotics as _robotics
 from . import selection as _selection
 from . import semi_supervised as _semi_supervised
 from . import preprocessing as _preprocessing
@@ -76,6 +78,7 @@ _extend_unique(__all__, _preprocessing.__all__)
 _extend_unique(__all__, _selection.__all__)
 _extend_unique(__all__, _semi_supervised.__all__)
 _extend_unique(__all__, _signal.__all__)
+_extend_unique(__all__, _robotics.__all__)
 _extend_unique(__all__, _svm.__all__)
 _extend_unique(__all__, _trees.__all__)
 _extend_unique(__all__, [name for name in _variational.__all__ if name not in {"BayesGMM", "VGMM"}])
