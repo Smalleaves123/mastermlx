@@ -66,6 +66,34 @@ def test_pairwise_kernels_cover_extended_family():
     assert additive_chi2_kernel(X + 1.0, Y + 1.0).shape == (2, 1)
 
 
+def test_kernel_validation_and_hellinger_stability():
+    X = np.array([[1e200]])
+    Y = np.array([[1e200]])
+
+    hellinger = pairwise_kernel(X, Y, kernel="hellinger")
+    assert hellinger.shape == (1, 1)
+    assert np.isfinite(hellinger).all()
+    assert np.isclose(hellinger[0, 0], 1e200)
+
+    bad = np.array([[-1.0, 0.5]])
+    with np.testing.assert_raises(ValueError):
+        pairwise_kernel(bad, np.array([[1.0, 0.5]]), kernel="chi2")
+    with np.testing.assert_raises(ValueError):
+        pairwise_kernel(bad, np.array([[1.0, 0.5]]), kernel="additive_chi2")
+    with np.testing.assert_raises(ValueError):
+        pairwise_kernel(bad, np.array([[1.0, 0.5]]), kernel="hellinger")
+
+
+def test_minkowski_pairwise_rejects_nonpositive_p():
+    X = np.array([[0.0, 0.0]])
+    Y = np.array([[1.0, 1.0]])
+
+    with np.testing.assert_raises(ValueError):
+        pairwise_distance(X, Y, metric="minkowski", p=0)
+    with np.testing.assert_raises(ValueError):
+        pairwise_distance(X, Y, metric="minkowski", p=-1)
+
+
 def test_kernel_pca_supports_laplacian_kernel():
     X = np.array([
         [0.0, 0.0],

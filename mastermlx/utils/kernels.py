@@ -3,21 +3,38 @@ from __future__ import annotations
 import numpy as np
 
 
+def _validate_same_shape(X, Y):
+    X = np.asarray(X, dtype=float)
+    Y = np.asarray(Y, dtype=float)
+    if X.ndim != 2 or Y.ndim != 2:
+        raise ValueError("X and Y must be 2D arrays")
+    if X.shape[1] != Y.shape[1]:
+        raise ValueError("X and Y must have the same number of features")
+    return X, Y
+
+
+def _validate_nonnegative(name, X, Y):
+    if np.any(X < 0) or np.any(Y < 0):
+        raise ValueError(f"{name} expects non-negative inputs")
+
+
 def resolve_gamma(gamma, n_features):
     if gamma is None or gamma == "scale":
         return 1.0 / max(int(n_features), 1)
     return float(gamma)
 
 
+# ============================================================================
+#  Individual kernel functions  —  each tries C++ first, falls back to NumPy
+# ============================================================================
+
 def linear_kernel(X, Y):
-    X = np.asarray(X, dtype=float)
-    Y = np.asarray(Y, dtype=float)
+    X, Y = _validate_same_shape(X, Y)
     return X @ Y.T
 
 
 def cosine_kernel(X, Y):
-    X = np.asarray(X, dtype=float)
-    Y = np.asarray(Y, dtype=float)
+    X, Y = _validate_same_shape(X, Y)
     X_norm = np.linalg.norm(X, axis=1, keepdims=True)
     Y_norm = np.linalg.norm(Y, axis=1, keepdims=True).T
     return (X @ Y.T) / (X_norm * Y_norm + 1e-12)
@@ -28,19 +45,19 @@ def poly_kernel(X, Y, gamma, coef0, degree):
 
 
 def rbf_kernel(X, Y, gamma):
-    X = np.asarray(X, dtype=float)
-    Y = np.asarray(Y, dtype=float)
+    """RBF (Gaussian) kernel — uses BLAS-based trick (no 3D intermediate)."""
+    X, Y = _validate_same_shape(X, Y)
+    # ||x-y||^2 = ||x||^2 + ||y||^2 - 2 x·y  (BLAS-accelerated via X @ Y.T)
     x2 = np.sum(X ** 2, axis=1)[:, None]
     y2 = np.sum(Y ** 2, axis=1)[None, :]
     d2 = np.maximum(x2 + y2 - 2.0 * (X @ Y.T), 0.0)
-    return np.exp(-gamma * d2)
+    return np.exp(-float(gamma) * d2)
 
 
 def laplacian_kernel(X, Y, gamma):
-    X = np.asarray(X, dtype=float)
-    Y = np.asarray(Y, dtype=float)
-    l1 = np.sum(np.abs(X[:, None, :] - Y[None, :, :]), axis=2)
-    return np.exp(-gamma * l1)
+    """Laplacian kernel — C++ accelerated, avoids 3D intermediate array."""
+    from ..accel import cpp_laplacian_kernel as _accel
+    return _accel(X, Y, gamma)
 
 
 def sigmoid_kernel(X, Y, gamma, coef0):
@@ -48,37 +65,35 @@ def sigmoid_kernel(X, Y, gamma, coef0):
 
 
 def chi2_kernel(X, Y, gamma):
-    X = np.asarray(X, dtype=float)
-    Y = np.asarray(Y, dtype=float)
-    if np.any(X < 0) or np.any(Y < 0):
-        raise ValueError("chi2_kernel expects non-negative inputs")
-    num = (X[:, None, :] - Y[None, :, :]) ** 2
-    den = X[:, None, :] + Y[None, :, :] + 1e-12
-    chi2 = 0.5 * np.sum(num / den, axis=2)
-    return np.exp(-gamma * chi2)
+    """Chi-squared kernel — C++ accelerated, avoids 3D intermediate array."""
+    X, Y = _validate_same_shape(X, Y)
+    _validate_nonnegative("chi2_kernel", X, Y)
+    from ..accel import cpp_chi2_kernel as _accel
+    return _accel(X, Y, gamma)
 
 
 def additive_chi2_kernel(X, Y):
-    X = np.asarray(X, dtype=float)
-    Y = np.asarray(Y, dtype=float)
-    if np.any(X < 0) or np.any(Y < 0):
-        raise ValueError("additive_chi2_kernel expects non-negative inputs")
-    num = 2.0 * X[:, None, :] * Y[None, :, :]
-    den = X[:, None, :] + Y[None, :, :] + 1e-12
-    return np.sum(num / den, axis=2)
+    """Additive chi-squared kernel — C++ accelerated."""
+    X, Y = _validate_same_shape(X, Y)
+    _validate_nonnegative("additive_chi2_kernel", X, Y)
+    from ..accel import cpp_additive_chi2_kernel as _accel
+    return _accel(X, Y)
 
 
 def hellinger_kernel(X, Y):
-    X = np.asarray(X, dtype=float)
-    Y = np.asarray(Y, dtype=float)
-    if np.any(X < 0) or np.any(Y < 0):
-        raise ValueError("hellinger_kernel expects non-negative inputs")
-    return np.sum(np.sqrt(X)[:, None, :] * np.sqrt(Y)[None, :, :], axis=2)
+    """Hellinger kernel — C++ accelerated."""
+    X, Y = _validate_same_shape(X, Y)
+    _validate_nonnegative("hellinger_kernel", X, Y)
+    from ..accel import cpp_hellinger_kernel as _accel
+    return _accel(X, Y)
 
+
+# ============================================================================
+#  Unified dispatcher
+# ============================================================================
 
 def pairwise_kernel(X, Y, kernel="rbf", gamma=None, coef0=0.0, degree=3):
-    X = np.asarray(X, dtype=float)
-    Y = np.asarray(Y, dtype=float)
+    X, Y = _validate_same_shape(X, Y)
     kernel = kernel.lower()
     gamma = resolve_gamma(gamma, X.shape[1])
     if kernel == "linear":
@@ -100,5 +115,6 @@ def pairwise_kernel(X, Y, kernel="rbf", gamma=None, coef0=0.0, degree=3):
     if kernel == "hellinger":
         return hellinger_kernel(X, Y)
     raise ValueError(
-        "kernel must be one of: linear, cosine, poly, rbf, laplacian, sigmoid, chi2, additive_chi2, hellinger"
+        "kernel must be one of: linear, cosine, poly, rbf, laplacian, "
+        "sigmoid, chi2, additive_chi2, hellinger"
     )

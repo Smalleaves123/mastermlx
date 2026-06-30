@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.1.3
+
+- Restored non-negative input validation for chi-squared and Hellinger kernels.
+- Made Hellinger kernel numerically stable for large values.
+- Restored positive-exponent validation for Minkowski pairwise distances.
+
 - Added a new `mastermlx.robotics` foundation package for transforms, kinematics, Jacobians, trajectories, and visualization.
 
 ## 0.1.1

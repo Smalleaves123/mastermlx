@@ -66,6 +66,12 @@ def mahalanobis_distance(a, b, VI=None):
 
 
 def pairwise_distance(X, Y, metric="euclidean", p=2.0, VI=None):
+    """Pairwise distance matrix between X (n×d) and Y (m×d).
+
+    Uses C++ acceleration when available for euclidean, manhattan, chebyshev,
+    minkowski, canberra, and bray_curtis — avoiding the large 3D intermediate
+    array that the pure-NumPy fallback creates.
+    """
     X = np.asarray(X, dtype=float)
     Y = np.asarray(Y, dtype=float)
     if X.ndim != 2 or Y.ndim != 2:
@@ -73,32 +79,54 @@ def pairwise_distance(X, Y, metric="euclidean", p=2.0, VI=None):
     if X.shape[1] != Y.shape[1]:
         raise ValueError("X and Y must have the same number of features")
 
-    diff = X[:, None, :] - Y[None, :, :]
     metric = metric.lower()
-    if metric in {"euclidean", "l2"}:
-        return np.sqrt(np.sum(diff * diff, axis=2))
-    if metric in {"manhattan", "l1"}:
-        return np.sum(np.abs(diff), axis=2)
     if metric == "minkowski":
         p = float(p)
         if p <= 0:
             raise ValueError("p must be positive")
-        return np.sum(np.abs(diff) ** p, axis=2) ** (1.0 / p)
+
+    # ---- C++ / accel fast paths (no 3D intermediate) ----
+    if metric in {"euclidean", "l2"}:
+        from ..accel import pairwise_distances as _cpp_euc
+        return _cpp_euc(X, Y)
+
+    if metric in {"manhattan", "l1"}:
+        from ..accel import pairwise_manhattan_distances as _cpp_man
+        return _cpp_man(X, Y)
+
     if metric == "chebyshev":
-        return np.max(np.abs(diff), axis=2)
+        from ..accel import pairwise_chebyshev as _cpp_ch
+        return _cpp_ch(X, Y)
+
+    if metric == "minkowski":
+        from ..accel import pairwise_minkowski as _cpp_mk
+        return _cpp_mk(X, Y, p)
+
+    if metric == "canberra":
+        from ..accel import pairwise_canberra as _cpp_ca
+        return _cpp_ca(X, Y)
+
+    if metric == "bray_curtis":
+        from ..accel import pairwise_bray_curtis as _cpp_bc
+        return _cpp_bc(X, Y)
+
+    # ---- Metrics that are already memory-efficient (no 3D overhead) ----
     if metric == "cosine":
         x_norm = np.linalg.norm(X, axis=1)[:, None]
         y_norm = np.linalg.norm(Y, axis=1)[None, :]
         sim = (X @ Y.T) / np.maximum(x_norm * y_norm, 1e-12)
         return 1.0 - sim
+
     if metric == "hamming":
         return np.mean(X[:, None, :] != Y[None, :, :], axis=2)
+
     if metric == "jaccard":
         Xb = X.astype(bool)
         Yb = Y.astype(bool)
         inter = np.sum(Xb[:, None, :] & Yb[None, :, :], axis=2)
         union = np.sum(Xb[:, None, :] | Yb[None, :, :], axis=2)
         return np.divide(union - inter, np.maximum(union, 1e-12))
+
     if metric == "mahalanobis":
         if VI is None:
             VI = np.eye(X.shape[1], dtype=float)
@@ -107,17 +135,12 @@ def pairwise_distance(X, Y, metric="euclidean", p=2.0, VI=None):
             raise ValueError("VI must be a square matrix")
         if VI.shape[0] != X.shape[1]:
             raise ValueError("VI must match the number of features")
+        diff = X[:, None, :] - Y[None, :, :]
         return np.sqrt(np.einsum("...i,ij,...j->...", diff, VI, diff))
-    if metric == "canberra":
-        num = np.abs(diff)
-        den = np.abs(X[:, None, :]) + np.abs(Y[None, :, :])
-        return np.sum(num / np.maximum(den, 1e-12), axis=2)
-    if metric == "bray_curtis":
-        num = np.sum(np.abs(diff), axis=2)
-        den = np.sum(np.abs(X[:, None, :] + Y[None, :, :]), axis=2)
-        return num / np.maximum(den, 1e-12)
+
     raise ValueError(
-        "metric must be one of: euclidean, manhattan, minkowski, chebyshev, cosine, hamming, jaccard, mahalanobis, canberra, bray_curtis"
+        "metric must be one of: euclidean, manhattan, minkowski, chebyshev, "
+        "cosine, hamming, jaccard, mahalanobis, canberra, bray_curtis"
     )
 
 
