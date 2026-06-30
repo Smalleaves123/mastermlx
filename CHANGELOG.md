@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.1.4
+
+- Added a new `mastermlx.estimation` package for Kalman, extended Kalman, and particle filtering.
+- Continued the robotics stack with state estimation foundations.
+
 ## 0.1.3
 
 - Restored non-negative input validation for chi-squared and Hellinger kernels.

@@ -164,6 +164,13 @@ from mastermlx import entropy, pairwise_distance, silhouette
 - `joint_trajectory`
 - `plot_chain`
 
+### `estimation`
+
+- `KalmanFilter`
+- `ExtendedKalmanFilter`
+- `ParticleFilter`
+- `systematic_resample`
+
 ### `bandits`
 
 - `EpsilonGreedyBandit`

@@ -10,6 +10,7 @@ from .decomposition import *  # noqa: F401,F403
 from .ensemble import *  # noqa: F401,F403
 from .linear_models import *  # noqa: F401,F403
 from .manifold import *  # noqa: F401,F403
+from .estimation import *  # noqa: F401,F403
 from .neighbors import *  # noqa: F401,F403
 from .neural_net import *  # noqa: F401,F403
 from .nlp import *  # noqa: F401,F403
@@ -35,6 +36,7 @@ from . import clustering as _clustering
 from . import data as _data
 from . import decomposition as _decomposition
 from . import ensemble as _ensemble
+from . import estimation as _estimation
 from . import linear_models as _linear_models
 from . import math_tools as _math_tools
 from . import manifold as _manifold
@@ -66,6 +68,7 @@ _extend_unique(__all__, _bandits.__all__)
 _extend_unique(__all__, _data.__all__)
 _extend_unique(__all__, _decomposition.__all__)
 _extend_unique(__all__, _ensemble.__all__)
+_extend_unique(__all__, _estimation.__all__)
 _extend_unique(__all__, _linear_models.__all__)
 _extend_unique(__all__, _math_tools.__all__)
 _extend_unique(__all__, _manifold.__all__)
