@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Added a roadmap for future Cython / C++ optimization work and benchmark batches.
+- Added Cython acceleration for time-series hot paths such as rolling mean, autocorrelation, exponential smoothing, and CUSUM detection.
+
 ## 0.1.6
 
 - Added Cython acceleration for robotics hot paths in `mastermlx.control` and `mastermlx.robotics`.

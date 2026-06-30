@@ -66,6 +66,11 @@ try:
             ["mastermlx/robotics/_robotics_ops.pyx"],
             include_dirs=[np.get_include()],
         ),
+        Extension(
+            "mastermlx.math_tools._time_series_ops",
+            ["mastermlx/math_tools/_time_series_ops.pyx"],
+            include_dirs=[np.get_include()],
+        ),
     ], language_level=3)
     extensions = cpp_exts + cy_exts
 except ImportError:

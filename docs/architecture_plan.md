@@ -45,5 +45,8 @@ The project is designed to support a strong narrative:
 
 1. Move more heavy kernels into `mastermlx.accel`
 2. Add benchmark reports that compare NumPy vs Cython backends
-3. Add packaging automation for wheel/sdist validation
-4. Add API docs and stable versioning policy
+3. Expand compiled coverage in `mastermlx.control`, `mastermlx.robotics`, and `mastermlx.math_tools`
+4. Add packaging automation for wheel/sdist validation
+5. Add API docs and stable versioning policy
+
+For the implementation-level plan, see [`docs/cython_roadmap.md`](cython_roadmap.md).
