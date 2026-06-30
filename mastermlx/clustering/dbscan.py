@@ -4,7 +4,7 @@ import numpy as np
 
 from ..accel import pairwise_distances
 from ..base import BaseEstimator
-from ..utils import as_2d, check_2d_array
+from ..utils import check_2d_array
 
 
 def _pairwise_distances(X):
@@ -68,7 +68,4 @@ class DBSCAN(BaseEstimator):
     def predict(self, X):
         if self.labels_ is None:
             raise RuntimeError("Model has not been fit yet")
-        X = as_2d(X)
-        if X.shape[1] != self.components_.shape[1]:
-            raise ValueError("X has a different number of features than the fitted data")
         raise NotImplementedError("DBSCAN does not support predicting labels for new samples")

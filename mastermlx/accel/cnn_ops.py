@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import importlib
+from functools import lru_cache
 
 import numpy as np
 
 
+@lru_cache(maxsize=1)
 def _load_backend():
     try:
         return importlib.import_module("mastermlx.accel._cnn_ops")

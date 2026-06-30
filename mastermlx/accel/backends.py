@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+from functools import lru_cache
 
 import numpy as np
 
@@ -21,6 +22,7 @@ def _numpy_pairwise_manhattan(X, Y):
     return np.sum(diff, axis=2)
 
 
+@lru_cache(maxsize=1)
 def _load_cython_backend():
     try:
         return importlib.import_module("mastermlx.accel._distance_ops")
@@ -40,6 +42,7 @@ def get_active_backend():
     return "cython" if cython_mod is not None else "numpy"
 
 
+@lru_cache(maxsize=1)
 def _load_cpp_backend():
     try:
         return importlib.import_module("mastermlx.accel._distance_cpp")
@@ -90,6 +93,7 @@ active_backend = get_active_backend
 pairwise_sq_euclid = pairwise_squared_euclidean
 
 
+@lru_cache(maxsize=1)
 def _load_cython_tree():
     try:
         return importlib.import_module("mastermlx.accel._tree_ops")

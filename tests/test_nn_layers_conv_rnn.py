@@ -21,6 +21,16 @@ def test_conv2d_backward_shape():
     assert dX.shape == X.shape
 
 
+def test_conv2d_backward_requires_forward():
+    layer = Conv2D(n_filters=2, kernel_size=3)
+    try:
+        layer.backward(np.ones((1, 1, 1, 2)))
+    except RuntimeError as exc:
+        assert "forward must be called before backward" in str(exc)
+    else:
+        raise AssertionError("Expected RuntimeError")
+
+
 def test_conv2d_forward_known_values():
     X = np.arange(1, 10, dtype=float).reshape(1, 3, 3, 1)
     layer = Conv2D(n_filters=1, kernel_size=2, stride=1)
@@ -62,12 +72,32 @@ def test_maxpool_backward_routes_gradient_to_max():
     assert np.allclose(back, np.array([[[[0.0], [0.0]], [[0.0], [1.0]]]]))
 
 
+def test_maxpool_backward_requires_forward():
+    p = MaxPool2D(kernel_size=2)
+    try:
+        p.backward(np.ones((1, 1, 1, 1)))
+    except RuntimeError as exc:
+        assert "forward must be called before backward" in str(exc)
+    else:
+        raise AssertionError("Expected RuntimeError")
+
+
 # --- Flatten ---
 def test_flatten_shape():
     f = Flatten()
     out = f.forward(np.random.randn(2, 4, 4, 8))
     assert out.shape == (2, 128)
     assert f.backward(np.ones_like(out)).shape == (2, 4, 4, 8)
+
+
+def test_flatten_backward_requires_forward():
+    f = Flatten()
+    try:
+        f.backward(np.ones((2, 8)))
+    except RuntimeError as exc:
+        assert "forward must be called before backward" in str(exc)
+    else:
+        raise AssertionError("Expected RuntimeError")
 
 
 # --- GELU / LeakyReLU ---

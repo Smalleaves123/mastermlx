@@ -47,10 +47,20 @@ class Conv2D(BaseLayer):
 
     def backward(self, grad):
         grad = np.asarray(grad, dtype=float)
+        if self.X_shape_ is None or self.W_ is None:
+            raise RuntimeError("forward must be called before backward")
+        if grad.ndim != 4:
+            raise ValueError(f"Expected 4D gradient (N,OH,OW,F), got {grad.shape}")
+        N, H, W, C = self.X_shape_
+        kh, kw = self.kernel_size
+        oh = (H + 2 * self.pad - kh) // self.stride + 1
+        ow = (W + 2 * self.pad - kw) // self.stride + 1
+        expected = (N, oh, ow, self.n_filters)
+        if grad.shape != expected:
+            raise ValueError(f"Expected gradient shape {expected}, got {grad.shape}")
         N, OH, OW, F = grad.shape
         grad_flat = grad.reshape(N * OH * OW, F)
         if self.cols_ is None:
-            kh, kw = self.kernel_size
             cols, _, _ = im2col(self.X_, kh, kw, self.stride, self.pad)
         else:
             cols = self.cols_
@@ -58,7 +68,6 @@ class Conv2D(BaseLayer):
         self.cols_ = None
         self.db_ = np.sum(grad_flat, axis=0)
         d_cols = grad_flat @ self.W_.T
-        kh, kw = self.kernel_size
         return col2im(d_cols, self.X_shape_, kh, kw, self.stride, self.pad)
 
     def step(self, lr=None, optimizer=None, key_prefix="conv"):
@@ -95,7 +104,7 @@ class MaxPool2D(BaseLayer):
 
     def backward(self, grad):
         grad = np.asarray(grad, dtype=float)
-        if self.argmax_ is None:
+        if self.argmax_ is None or self.X_shape_ is None:
             raise RuntimeError("forward must be called before backward")
         return maxpool_backward(grad, self.argmax_, self.X_shape_, self.k, self.stride)
 
@@ -112,4 +121,6 @@ class Flatten(BaseLayer):
         return X.reshape(X.shape[0], -1)
 
     def backward(self, grad):
+        if self.shape_ is None:
+            raise RuntimeError("forward must be called before backward")
         return np.asarray(grad, dtype=float).reshape(self.shape_)
