@@ -2,30 +2,21 @@ from __future__ import annotations
 
 import numpy as np
 
-from .kinematics import _chain_transforms
+from .kinematics import _geometric_jacobian_packed, _pack_links
 
 
 def geometric_jacobian(links, joint_values=None, base=None, tool=None):
     """Return the geometric Jacobian of a serial manipulator."""
 
-    T_end, frames, links = _chain_transforms(links, joint_values=joint_values, base=base, tool=tool)
+    links, a, alpha, d, theta, joint_type, offset = _pack_links(links)
     n = len(links)
-    J = np.zeros((6, n), dtype=float)
-    p_end = T_end[:3, 3]
-
-    for i, link in enumerate(links):
-        frame = frames[i]
-        axis = frame[:3, 2]
-        origin = frame[:3, 3]
-        if link.joint_type.lower() == "revolute":
-            J[:3, i] = np.cross(axis, p_end - origin)
-            J[3:, i] = axis
-        elif link.joint_type.lower() == "prismatic":
-            J[:3, i] = axis
-            J[3:, i] = 0.0
-        else:
-            raise ValueError("joint_type must be 'revolute' or 'prismatic'")
-    return J
+    if joint_values is None:
+        q = np.zeros(n, dtype=float)
+    else:
+        q = np.asarray(joint_values, dtype=float).reshape(-1)
+        if q.size != n:
+            raise ValueError(f"Expected {n} joint values, got {q.size}")
+    return _geometric_jacobian_packed(a, alpha, d, theta, joint_type, offset, q, base=base, tool=tool)
 
 
 def planar_2r_jacobian(l1, l2, q1, q2):

@@ -4,9 +4,23 @@ import numpy as np
 
 from .lqr import finite_horizon_lqr
 
+try:
+    from ._control_ops import (
+        finite_difference_jacobian as _cy_finite_difference_jacobian,
+        quadratic_trajectory_cost as _cy_quadratic_trajectory_cost,
+        rollout_dynamics as _cy_rollout_dynamics,
+    )
+except ImportError:  # pragma: no cover - fallback when Cython extensions are unavailable
+    _cy_finite_difference_jacobian = None
+    _cy_quadratic_trajectory_cost = None
+    _cy_rollout_dynamics = None
+
 
 def rollout_dynamics(f, x0, U, dt=None, args=None):
     """Roll out a discrete or continuous-time system."""
+
+    if _cy_rollout_dynamics is not None:
+        return _cy_rollout_dynamics(f, x0, U, dt=dt, args=args)
 
     x = np.asarray(x0, dtype=float).reshape(-1)
     states = [x.copy()]
@@ -59,6 +73,9 @@ class LinearMPC:
 
 
 def _finite_difference_jacobian(f, x, u, eps=1e-5):
+    if _cy_finite_difference_jacobian is not None:
+        return _cy_finite_difference_jacobian(f, np.asarray(x, dtype=float).reshape(-1), np.asarray(u, dtype=float).reshape(-1), eps=eps)
+
     x = np.asarray(x, dtype=float).reshape(-1)
     u = np.asarray(u, dtype=float).reshape(-1)
     fx = np.asarray(f(x, u), dtype=float).reshape(-1)
@@ -108,22 +125,21 @@ def iLQR(
     Qf = np.asarray(Qf, dtype=float)
 
     def rollout(U_seq):
-        X = [x0.copy()]
-        cost = 0.0
-        x_ref_seq = None if x_ref is None else np.asarray(x_ref, dtype=float)
-        u_ref_seq = None if u_ref is None else np.asarray(u_ref, dtype=float)
-        for t in range(T):
-            x = X[-1]
-            u = U_seq[t]
-            xr = np.zeros_like(x) if x_ref_seq is None else x_ref_seq[t]
-            ur = np.zeros_like(u) if u_ref_seq is None else u_ref_seq[t]
-            dx = x - xr
-            du = u - ur
-            cost += float(dx @ Q @ dx + du @ R @ du)
-            X.append(np.asarray(dynamics(x, u), dtype=float).reshape(-1))
-        xr = np.zeros_like(X[-1]) if x_ref_seq is None else x_ref_seq[T]
-        dx = X[-1] - xr
-        cost += float(dx @ Qf @ dx)
+        X = rollout_dynamics(dynamics, x0, U_seq)
+        cost = _cy_quadratic_trajectory_cost(X, U_seq, Q, R, Qf, x_ref=x_ref, u_ref=u_ref) if _cy_quadratic_trajectory_cost is not None else None
+        if cost is None:
+            cost = 0.0
+            x_ref_seq = None if x_ref is None else np.asarray(x_ref, dtype=float)
+            u_ref_seq = None if u_ref is None else np.asarray(u_ref, dtype=float)
+            for t in range(T):
+                xr = np.zeros_like(X[t]) if x_ref_seq is None else x_ref_seq[t]
+                ur = np.zeros_like(U_seq[t]) if u_ref_seq is None else u_ref_seq[t]
+                dx = X[t] - xr
+                du = U_seq[t] - ur
+                cost += float(dx @ Q @ dx + du @ R @ du)
+            xr = np.zeros_like(X[T]) if x_ref_seq is None else x_ref_seq[T]
+            dx = X[T] - xr
+            cost += float(dx @ Qf @ dx)
         return np.asarray(X), cost
 
     def stage_cost_terms(x, u, t):
@@ -189,18 +205,19 @@ def iLQR(
                 X_new.append(np.asarray(dynamics(X_new[-1], u_new), dtype=float).reshape(-1))
             X_new = np.asarray(X_new)
             U_new = np.asarray(U_new)
-            new_cost = 0.0
-            x_ref_seq = None if x_ref is None else np.asarray(x_ref, dtype=float)
-            u_ref_seq = None if u_ref is None else np.asarray(u_ref, dtype=float)
-            for t in range(T):
-                xr = np.zeros_like(X_new[t]) if x_ref_seq is None else x_ref_seq[t]
-                ur = np.zeros_like(U_new[t]) if u_ref_seq is None else u_ref_seq[t]
-                dx = X_new[t] - xr
-                du = U_new[t] - ur
-                new_cost += float(dx @ Q @ dx + du @ R @ du)
-            xr = np.zeros_like(X_new[T]) if x_ref_seq is None else x_ref_seq[T]
-            dx = X_new[T] - xr
-            new_cost += float(dx @ Qf @ dx)
+            new_cost = _cy_quadratic_trajectory_cost(X_new, U_new, Q, R, Qf, x_ref=x_ref, u_ref=u_ref) if _cy_quadratic_trajectory_cost is not None else 0.0
+            if _cy_quadratic_trajectory_cost is None:
+                x_ref_seq = None if x_ref is None else np.asarray(x_ref, dtype=float)
+                u_ref_seq = None if u_ref is None else np.asarray(u_ref, dtype=float)
+                for t in range(T):
+                    xr = np.zeros_like(X_new[t]) if x_ref_seq is None else x_ref_seq[t]
+                    ur = np.zeros_like(U_new[t]) if u_ref_seq is None else u_ref_seq[t]
+                    dx = X_new[t] - xr
+                    du = U_new[t] - ur
+                    new_cost += float(dx @ Q @ dx + du @ R @ du)
+                xr = np.zeros_like(X_new[T]) if x_ref_seq is None else x_ref_seq[T]
+                dx = X_new[T] - xr
+                new_cost += float(dx @ Qf @ dx)
 
             if new_cost < best_cost:
                 best_X, best_cost, best_U = X_new, new_cost, U_new

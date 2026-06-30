@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.1.6
+
+- Added Cython acceleration for robotics hot paths in `mastermlx.control` and `mastermlx.robotics`.
+- Moved iLQR rollout, finite-difference Jacobians, and trajectory cost accumulation off the Python slow path when Cython is available.
+- Added Cython-accelerated forward kinematics, geometric Jacobian, and inverse kinematics packing for serial manipulators.
+
 ## 0.1.5
 
 - Added a new `mastermlx.control` package with PID, LQR, finite-horizon MPC, and iLQR optimization control.

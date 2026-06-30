@@ -56,6 +56,16 @@ try:
             ["mastermlx/accel/_cnn_ops.pyx"],
             include_dirs=[np.get_include()],
         ),
+        Extension(
+            "mastermlx.control._control_ops",
+            ["mastermlx/control/_control_ops.pyx"],
+            include_dirs=[np.get_include()],
+        ),
+        Extension(
+            "mastermlx.robotics._robotics_ops",
+            ["mastermlx/robotics/_robotics_ops.pyx"],
+            include_dirs=[np.get_include()],
+        ),
     ], language_level=3)
     extensions = cpp_exts + cy_exts
 except ImportError:
