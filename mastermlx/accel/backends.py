@@ -137,6 +137,53 @@ def pairwise_manhattan_distances(X, Y):
     return _numpy_pairwise_manhattan(X, Y)
 
 
+def pairwise_cosine_distances(X, Y):
+    X = np.asarray(X, dtype=float)
+    Y = np.asarray(Y, dtype=float)
+    mod = _load_cython_backend()
+    if mod is not None:
+        return mod.pairwise_cosine_distances(X, Y)
+    x_norm = np.linalg.norm(X, axis=1)[:, None]
+    y_norm = np.linalg.norm(Y, axis=1)[None, :]
+    sim = (X @ Y.T) / np.maximum(x_norm * y_norm, 1e-12)
+    return 1.0 - sim
+
+
+def pairwise_hamming_distances(X, Y):
+    X = np.asarray(X, dtype=float)
+    Y = np.asarray(Y, dtype=float)
+    mod = _load_cython_backend()
+    if mod is not None:
+        return mod.pairwise_hamming_distances(X, Y)
+    return np.mean(X[:, None, :] != Y[None, :, :], axis=2)
+
+
+def pairwise_jaccard_distances(X, Y):
+    X = np.asarray(X, dtype=float)
+    Y = np.asarray(Y, dtype=float)
+    mod = _load_cython_backend()
+    if mod is not None:
+        return mod.pairwise_jaccard_distances(X, Y)
+    Xb = X.astype(bool)
+    Yb = Y.astype(bool)
+    inter = np.sum(Xb[:, None, :] & Yb[None, :, :], axis=2)
+    union = np.sum(Xb[:, None, :] | Yb[None, :, :], axis=2)
+    return np.divide(union - inter, np.maximum(union, 1e-12))
+
+
+def pairwise_mahalanobis_distances(X, Y, VI=None):
+    X = np.asarray(X, dtype=float)
+    Y = np.asarray(Y, dtype=float)
+    if VI is None:
+        VI = np.eye(X.shape[1], dtype=float)
+    VI = np.asarray(VI, dtype=float)
+    mod = _load_cython_backend()
+    if mod is not None:
+        return mod.pairwise_mahalanobis_distances(X, Y, VI)
+    diff = X[:, None, :] - Y[None, :, :]
+    return np.sqrt(np.einsum("...i,ij,...j->...", diff, VI, diff))
+
+
 def pairwise_chebyshev(X, Y):
     X = np.asarray(X, dtype=float)
     Y = np.asarray(Y, dtype=float)

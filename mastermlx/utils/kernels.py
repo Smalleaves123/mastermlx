@@ -45,13 +45,10 @@ def poly_kernel(X, Y, gamma, coef0, degree):
 
 
 def rbf_kernel(X, Y, gamma):
-    """RBF (Gaussian) kernel — uses BLAS-based trick (no 3D intermediate)."""
+    """RBF (Gaussian) kernel — C++ accelerated, avoids 3D intermediate array."""
     X, Y = _validate_same_shape(X, Y)
-    # ||x-y||^2 = ||x||^2 + ||y||^2 - 2 x·y  (BLAS-accelerated via X @ Y.T)
-    x2 = np.sum(X ** 2, axis=1)[:, None]
-    y2 = np.sum(Y ** 2, axis=1)[None, :]
-    d2 = np.maximum(x2 + y2 - 2.0 * (X @ Y.T), 0.0)
-    return np.exp(-float(gamma) * d2)
+    from ..accel import cpp_rbf_kernel as _accel
+    return _accel(X, Y, float(gamma))
 
 
 def laplacian_kernel(X, Y, gamma):

@@ -112,22 +112,19 @@ def pairwise_distance(X, Y, metric="euclidean", p=2.0, VI=None):
 
     # ---- Metrics that are already memory-efficient (no 3D overhead) ----
     if metric == "cosine":
-        x_norm = np.linalg.norm(X, axis=1)[:, None]
-        y_norm = np.linalg.norm(Y, axis=1)[None, :]
-        sim = (X @ Y.T) / np.maximum(x_norm * y_norm, 1e-12)
-        return 1.0 - sim
+        from ..accel import pairwise_cosine_distances as _cy_cosine
+        return _cy_cosine(X, Y)
 
     if metric == "hamming":
-        return np.mean(X[:, None, :] != Y[None, :, :], axis=2)
+        from ..accel import pairwise_hamming_distances as _cy_hamming
+        return _cy_hamming(X, Y)
 
     if metric == "jaccard":
-        Xb = X.astype(bool)
-        Yb = Y.astype(bool)
-        inter = np.sum(Xb[:, None, :] & Yb[None, :, :], axis=2)
-        union = np.sum(Xb[:, None, :] | Yb[None, :, :], axis=2)
-        return np.divide(union - inter, np.maximum(union, 1e-12))
+        from ..accel import pairwise_jaccard_distances as _cy_jaccard
+        return _cy_jaccard(X, Y)
 
     if metric == "mahalanobis":
+        from ..accel import pairwise_mahalanobis_distances as _cy_maha
         if VI is None:
             VI = np.eye(X.shape[1], dtype=float)
         VI = np.asarray(VI, dtype=float)
@@ -135,8 +132,7 @@ def pairwise_distance(X, Y, metric="euclidean", p=2.0, VI=None):
             raise ValueError("VI must be a square matrix")
         if VI.shape[0] != X.shape[1]:
             raise ValueError("VI must match the number of features")
-        diff = X[:, None, :] - Y[None, :, :]
-        return np.sqrt(np.einsum("...i,ij,...j->...", diff, VI, diff))
+        return _cy_maha(X, Y, VI)
 
     raise ValueError(
         "metric must be one of: euclidean, manhattan, minkowski, chebyshev, "

@@ -32,10 +32,22 @@ def test_pairwise_distance_supports_new_metrics():
     Y = np.array([[1.0, 1.0]])
 
     D = pairwise_distance(X, Y, metric="cosine")
+    H = pairwise_distance(X, Y, metric="hamming")
+    J = pairwise_distance(X > 0, Y > 0, metric="jaccard")
+    M = pairwise_distance(X, Y, metric="mahalanobis")
 
     assert D.shape == (2, 1)
     assert np.isfinite(D).all()
     assert np.isclose(D[0, 0], 1.0 - 1.0 / np.sqrt(2.0))
+    assert H.shape == (2, 1)
+    assert J.shape == (2, 1)
+    assert M.shape == (2, 1)
+    assert np.isfinite(H).all()
+    assert np.isfinite(J).all()
+    assert np.isfinite(M).all()
+    assert np.isclose(H[0, 0], 0.5)
+    assert np.isclose(J[0, 0], 0.5)
+    assert np.isclose(M[0, 0], 1.0)
 
 
 def test_neighbor_models_accept_extended_metrics():

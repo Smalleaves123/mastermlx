@@ -2,9 +2,15 @@
 
 ## Unreleased
 
+- Added Cython acceleration for cosine, hamming, jaccard, and Mahalanobis pairwise distances.
+- Routed RBF kernel evaluation through the C++ backend in `mastermlx.utils.kernels`.
 - Added Cython acceleration for discrete LQR recursion and batch joint-trajectory sampling.
 - Added roadmap guidance for the next Cython / C++ optimization batches.
 - Added Cython acceleration for time-series hot paths such as rolling mean, autocorrelation, exponential smoothing, and CUSUM detection.
+
+## 0.1.8
+
+- Continued the compiled acceleration pass into distance metrics that previously used 3D NumPy broadcasts.
 
 ## 0.1.7
 
