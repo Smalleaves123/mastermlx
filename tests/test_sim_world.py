@@ -47,3 +47,20 @@ def test_load_world_config_from_dict_and_json():
     assert world2.robot.name == "planar2r"
     assert np.allclose(state2, state)
     assert sim_cfg2["damping"] == 0.1
+
+
+def test_world_trajectory_follow():
+    robot = RobotModel.from_dh(_planar_2r_dh())
+    world = SimpleWorld(robot)
+    trajectory = np.array([
+        [0.0, 0.0],
+        [0.2, 0.1],
+        [0.4, 0.2],
+    ])
+    states, poses, controls = world.trajectory_follow(trajectory, gains=(2.0, 0.1), dt=0.05)
+
+    assert states.shape == (4, 4)
+    assert len(poses) == 4
+    assert controls.shape == (3, 2)
+    assert np.all(np.isfinite(states))
+    assert all(p.shape == (4, 4) for p in poses)
