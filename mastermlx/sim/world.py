@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import json
+from pathlib import Path
 
 import numpy as np
 
@@ -78,3 +80,32 @@ class SimpleWorld:
                 circle = plt.Circle(obstacle.center, obstacle.radius, fill=False, linestyle="--")
                 ax.add_patch(circle)
         return ax
+
+
+def load_world_config(config):
+    """Load a simple world configuration from a dict, JSON string, or JSON file."""
+
+    if isinstance(config, (str, Path)):
+        try:
+            data = json.loads(str(config))
+        except json.JSONDecodeError:
+            path = Path(config)
+            data = json.loads(path.read_text())
+    else:
+        data = dict(config)
+
+    robot_cfg = data.get("robot", {})
+    robot = RobotModel.from_dh(
+        robot_cfg.get("links", []),
+        name=robot_cfg.get("name", "robot"),
+        base=np.asarray(robot_cfg["base"], dtype=float) if "base" in robot_cfg else None,
+        tool=np.asarray(robot_cfg["tool"], dtype=float) if "tool" in robot_cfg else None,
+    )
+    world = SimpleWorld(robot)
+    for obstacle in data.get("obstacles", []):
+        world.add_obstacle(obstacle["center"], obstacle["radius"])
+    state = data.get("state")
+    if state is not None:
+        state = np.asarray(state, dtype=float).reshape(-1)
+    sim_cfg = data.get("sim", {})
+    return world, state, sim_cfg
