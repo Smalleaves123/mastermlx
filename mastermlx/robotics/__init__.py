@@ -25,6 +25,7 @@ from .trajectory import (
     sample_joint_trajectory,
     sample_joint_trajectory_segments,
 )
+from .model import RobotModel
 from .urdf_parser import URDFJoint, URDFLink, parse_urdf, urdf_to_dh_chain
 from .visualizer import plot_chain
 
@@ -49,6 +50,7 @@ __all__ = [
     "quaternion_to_matrix",
     "quintic_time_scaling",
     "parse_urdf",
+    "RobotModel",
     "rpy_to_matrix",
     "rot_x",
     "rot_y",
