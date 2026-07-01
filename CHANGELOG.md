@@ -2,11 +2,16 @@
 
 ## Unreleased
 
+- Added Cython acceleration for linear Kalman predict/update and shared EKF matrix updates.
 - Added Cython acceleration for cosine, hamming, jaccard, and Mahalanobis pairwise distances.
 - Routed RBF kernel evaluation through the C++ backend in `mastermlx.utils.kernels`.
 - Added Cython acceleration for discrete LQR recursion and batch joint-trajectory sampling.
 - Added roadmap guidance for the next Cython / C++ optimization batches.
 - Added Cython acceleration for time-series hot paths such as rolling mean, autocorrelation, exponential smoothing, and CUSUM detection.
+
+## 0.1.9
+
+- Continued the compiled acceleration pass into state-estimation matrix updates.
 
 ## 0.1.8
 

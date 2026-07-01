@@ -34,6 +34,27 @@ def test_kalman_filter_predict_with_control():
     assert np.allclose(x, np.array([6.0]))
 
 
+def test_kalman_filter_multi_dimensional_update():
+    kf = KalmanFilter(
+        x0=np.array([0.0, 1.0]),
+        P0=np.eye(2),
+        F=np.array([[1.0, 0.1], [0.0, 1.0]]),
+        H=np.eye(2),
+        Q=np.zeros((2, 2)),
+        R=0.5 * np.eye(2),
+    )
+
+    x_pred, P_pred = kf.predict()
+    x, P = kf.update(np.array([1.0, 1.0]))
+
+    assert x_pred.shape == (2,)
+    assert P_pred.shape == (2, 2)
+    assert x.shape == (2,)
+    assert P.shape == (2, 2)
+    assert np.all(np.isfinite(x))
+    assert np.all(np.isfinite(P))
+
+
 def test_extended_kalman_filter_matches_linear_case():
     A = np.array([[1.0]])
     H = np.array([[1.0]])

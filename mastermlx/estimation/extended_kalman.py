@@ -2,6 +2,13 @@ from __future__ import annotations
 
 import numpy as np
 
+try:
+    from ._kalman_ops import kalman_predict as _cy_kalman_predict
+    from ._kalman_ops import kalman_update_innovation as _cy_kalman_update_innovation
+except ImportError:  # pragma: no cover - fallback when Cython extensions are unavailable
+    _cy_kalman_predict = None
+    _cy_kalman_update_innovation = None
+
 
 def _as_2d_matrix(M, name):
     M = np.asarray(M, dtype=float)
@@ -42,6 +49,13 @@ class ExtendedKalmanFilter:
 
         x_pred = np.asarray(x_pred, dtype=float).reshape(-1, 1)
         F = np.asarray(F, dtype=float)
+        if _cy_kalman_predict is not None:
+            self.x_, self.P_ = _cy_kalman_predict(x_pred, self.P_, F, self.Q_)
+            self.x_ = np.asarray(self.x_, dtype=float).reshape(-1, 1)
+            self.P_ = np.asarray(self.P_, dtype=float)
+            self.x_prior_ = self.x_.copy()
+            self.P_prior_ = self.P_.copy()
+            return self.state, self.P_.copy()
         P_pred = F @ self.P_ @ F.T + self.Q_
         self.x_ = x_pred
         self.P_ = P_pred
@@ -61,6 +75,15 @@ class ExtendedKalmanFilter:
         z = np.asarray(z, dtype=float).reshape(-1, 1)
         z_pred = np.asarray(z_pred, dtype=float).reshape(-1, 1)
         H = np.asarray(H, dtype=float)
+
+        if _cy_kalman_update_innovation is not None:
+            innovation = z - z_pred
+            self.x_, self.P_ = _cy_kalman_update_innovation(self.x_, self.P_, innovation, H, self.R_)
+            self.x_ = np.asarray(self.x_, dtype=float).reshape(-1, 1)
+            self.P_ = np.asarray(self.P_, dtype=float)
+            self.x_post_ = self.x_.copy()
+            self.P_post_ = self.P_.copy()
+            return self.state, self.P_.copy()
 
         y = z - z_pred
         S = H @ self.P_ @ H.T + self.R_

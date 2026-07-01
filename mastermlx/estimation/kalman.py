@@ -2,6 +2,13 @@ from __future__ import annotations
 
 import numpy as np
 
+try:
+    from ._kalman_ops import kalman_predict as _cy_kalman_predict
+    from ._kalman_ops import kalman_update as _cy_kalman_update
+except ImportError:  # pragma: no cover - fallback when Cython extensions are unavailable
+    _cy_kalman_predict = None
+    _cy_kalman_update = None
+
 
 def _as_2d_matrix(M, name):
     M = np.asarray(M, dtype=float)
@@ -40,6 +47,14 @@ class KalmanFilter:
         Q = self.Q_ if Q is None else _as_2d_matrix(Q, "Q")
         B = self.B_ if B is None else (_as_2d_matrix(B, "B") if B is not None else None)
 
+        if _cy_kalman_predict is not None:
+            self.x_, self.P_ = _cy_kalman_predict(self.x_, self.P_, F, Q, B=B, u=u)
+            self.x_ = np.asarray(self.x_, dtype=float).reshape(-1, 1)
+            self.P_ = np.asarray(self.P_, dtype=float)
+            self.x_prior_ = self.x_.copy()
+            self.P_prior_ = self.P_.copy()
+            return self.state, self.P_.copy()
+
         x = F @ self.x_
         if u is not None:
             if B is None:
@@ -57,6 +72,14 @@ class KalmanFilter:
     def update(self, z, H=None, R=None):
         H = self.H_ if H is None else _as_2d_matrix(H, "H")
         R = self.R_ if R is None else _as_2d_matrix(R, "R")
+        if _cy_kalman_update is not None:
+            self.x_, self.P_ = _cy_kalman_update(self.x_, self.P_, z, H, R)
+            self.x_ = np.asarray(self.x_, dtype=float).reshape(-1, 1)
+            self.P_ = np.asarray(self.P_, dtype=float)
+            self.x_post_ = self.x_.copy()
+            self.P_post_ = self.P_.copy()
+            return self.state, self.P_.copy()
+
         z = np.asarray(z, dtype=float).reshape(-1, 1)
 
         y = z - H @ self.x_

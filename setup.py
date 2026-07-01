@@ -81,6 +81,11 @@ try:
             ["mastermlx/robotics/_trajectory_ops.pyx"],
             include_dirs=[np.get_include()],
         ),
+        Extension(
+            "mastermlx.estimation._kalman_ops",
+            ["mastermlx/estimation/_kalman_ops.pyx"],
+            include_dirs=[np.get_include()],
+        ),
     ], language_level=3)
     extensions = cpp_exts + cy_exts
 except ImportError:
