@@ -18,7 +18,13 @@ from .transforms import (
 )
 from .kinematics import DHLink, chain_positions, dh_transform, forward_kinematics, inverse_kinematics
 from .jacobian import finite_difference_jacobian, geometric_jacobian, planar_2r_jacobian
-from .trajectory import cubic_time_scaling, joint_trajectory, quintic_time_scaling, sample_joint_trajectory
+from .trajectory import (
+    cubic_time_scaling,
+    joint_trajectory,
+    quintic_time_scaling,
+    sample_joint_trajectory,
+    sample_joint_trajectory_segments,
+)
 from .visualizer import plot_chain
 
 __all__ = [
@@ -46,6 +52,7 @@ __all__ = [
     "rot_y",
     "rot_z",
     "sample_joint_trajectory",
+    "sample_joint_trajectory_segments",
     "skew",
     "transform_points",
     "unskew",

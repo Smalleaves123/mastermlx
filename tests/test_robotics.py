@@ -12,6 +12,7 @@ from mastermlx.robotics import (
     quaternion_to_matrix,
     quintic_time_scaling,
     sample_joint_trajectory,
+    sample_joint_trajectory_segments,
     rot_z,
 )
 
@@ -80,6 +81,30 @@ def test_sample_joint_trajectory_shapes():
     assert accelerations.shape == (5, 3)
     assert np.allclose(positions[0], q0)
     assert np.allclose(positions[-1], qf)
+
+
+def test_sample_joint_trajectory_segments_are_continuous():
+    waypoints = np.array([
+        [0.0, 0.0],
+        [1.0, 1.0],
+        [2.0, 0.0],
+    ])
+    times, positions, velocities, accelerations = sample_joint_trajectory_segments(
+        waypoints,
+        durations=[1.0, 2.0],
+        num_samples_per_segment=4,
+        kind="quintic",
+    )
+
+    assert times.shape == (7,)
+    assert positions.shape == (7, 2)
+    assert velocities.shape == (7, 2)
+    assert accelerations.shape == (7, 2)
+    assert np.allclose(positions[0], waypoints[0])
+    assert np.allclose(positions[-1], waypoints[-1])
+    assert np.allclose(positions[3], waypoints[1])
+    assert np.allclose(times[3], 1.0)
+    assert np.allclose(times[4], 1.66666667, atol=1e-8)
 
 
 def test_inverse_kinematics_reaches_planar_target():

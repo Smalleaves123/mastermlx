@@ -59,3 +59,63 @@ def sample_joint_trajectory(object q0, object qf, double duration, int num_sampl
             accelerations[i, j] = dds * delta[j]
 
     return times, positions, velocities, accelerations
+
+
+def sample_joint_trajectory_segments(object q_waypoints, object durations, int num_samples_per_segment=100, kind="quintic"):
+    """Sample a piecewise joint trajectory across multiple segments."""
+
+    cdef np.ndarray[DTYPE_t, ndim=2] q = np.asarray(q_waypoints, dtype=np.float64)
+    cdef np.ndarray[DTYPE_t, ndim=1] ds = np.asarray(durations, dtype=np.float64).reshape(-1)
+    cdef Py_ssize_t n_segments, n_joints, seg, i, j, total_samples = 0, seg_samples
+    cdef bint cubic
+    cdef double duration, offset = 0.0, s = 0.0, vel = 0.0, acc = 0.0
+    cdef np.ndarray[DTYPE_t, ndim=1] t_out
+    cdef np.ndarray[DTYPE_t, ndim=2] pos_out, vel_out, acc_out
+    cdef np.ndarray[DTYPE_t, ndim=1] delta
+    cdef np.ndarray[DTYPE_t, ndim=1] seg_times
+
+    if q.ndim != 2:
+        raise ValueError("q_waypoints must have shape (n_waypoints, n_joints)")
+    if q.shape[0] < 2:
+        raise ValueError("q_waypoints must contain at least two waypoints")
+    if ds.shape[0] != q.shape[0] - 1:
+        raise ValueError("durations must have one entry per segment")
+    if num_samples_per_segment < 1:
+        raise ValueError("num_samples_per_segment must be at least 1")
+
+    if kind == "cubic":
+        cubic = True
+    elif kind == "quintic":
+        cubic = False
+    else:
+        raise ValueError("kind must be 'cubic' or 'quintic'")
+
+    n_segments = ds.shape[0]
+    n_joints = q.shape[1]
+    total_samples = num_samples_per_segment + (n_segments - 1) * (num_samples_per_segment - 1)
+    t_out = np.empty(total_samples, dtype=np.float64)
+    pos_out = np.empty((total_samples, n_joints), dtype=np.float64)
+    vel_out = np.empty_like(pos_out)
+    acc_out = np.empty_like(pos_out)
+
+    seg_times = np.linspace(0.0, 1.0, num_samples_per_segment)
+    seg = 0
+    i = 0
+    while seg < n_segments:
+        duration = ds[seg]
+        if duration <= 0.0:
+            raise ValueError("durations must be positive")
+        delta = q[seg + 1] - q[seg]
+        for j in range(num_samples_per_segment):
+            if seg > 0 and j == 0:
+                continue
+            _time_scaling(duration, seg_times[j] * duration, cubic, &s, &vel, &acc)
+            t_out[i] = offset + seg_times[j] * duration
+            pos_out[i, :] = q[seg] + s * delta
+            vel_out[i, :] = vel * delta
+            acc_out[i, :] = acc * delta
+            i += 1
+        offset += duration
+        seg += 1
+
+    return t_out, pos_out, vel_out, acc_out

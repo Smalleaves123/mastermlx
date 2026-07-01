@@ -4,8 +4,10 @@ import numpy as np
 
 try:
     from ._trajectory_ops import sample_joint_trajectory as _cy_sample_joint_trajectory
+    from ._trajectory_ops import sample_joint_trajectory_segments as _cy_sample_joint_trajectory_segments
 except ImportError:  # pragma: no cover - fallback when Cython extensions are unavailable
     _cy_sample_joint_trajectory = None
+    _cy_sample_joint_trajectory_segments = None
 
 
 def _normalize_time(t, duration):
@@ -65,3 +67,54 @@ def sample_joint_trajectory(q0, qf, duration, num_samples=100, kind="quintic"):
         velocities.append(qd)
         accelerations.append(qdd)
     return times, np.asarray(positions), np.asarray(velocities), np.asarray(accelerations)
+
+
+def sample_joint_trajectory_segments(q_waypoints, durations, num_samples_per_segment=100, kind="quintic"):
+    """Sample a piecewise joint trajectory across multiple segments."""
+
+    if _cy_sample_joint_trajectory_segments is not None:
+        return _cy_sample_joint_trajectory_segments(
+            q_waypoints,
+            durations,
+            int(num_samples_per_segment),
+            kind=kind,
+        )
+
+    q_waypoints = np.asarray(q_waypoints, dtype=float)
+    durations = np.asarray(durations, dtype=float).reshape(-1)
+    if q_waypoints.ndim != 2:
+        raise ValueError("q_waypoints must have shape (n_waypoints, n_joints)")
+    if q_waypoints.shape[0] < 2:
+        raise ValueError("q_waypoints must contain at least two waypoints")
+    if durations.size != q_waypoints.shape[0] - 1:
+        raise ValueError("durations must have one entry per segment")
+
+    times = []
+    positions = []
+    velocities = []
+    accelerations = []
+    offset = 0.0
+    for idx in range(durations.size):
+        seg_times, seg_pos, seg_vel, seg_acc = sample_joint_trajectory(
+            q_waypoints[idx],
+            q_waypoints[idx + 1],
+            durations[idx],
+            num_samples=num_samples_per_segment,
+            kind=kind,
+        )
+        if idx > 0:
+            seg_times = seg_times[1:]
+            seg_pos = seg_pos[1:]
+            seg_vel = seg_vel[1:]
+            seg_acc = seg_acc[1:]
+        times.append(seg_times + offset)
+        positions.append(seg_pos)
+        velocities.append(seg_vel)
+        accelerations.append(seg_acc)
+        offset += float(durations[idx])
+    return (
+        np.concatenate(times, axis=0),
+        np.concatenate(positions, axis=0),
+        np.concatenate(velocities, axis=0),
+        np.concatenate(accelerations, axis=0),
+    )
