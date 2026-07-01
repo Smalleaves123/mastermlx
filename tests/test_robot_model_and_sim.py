@@ -48,3 +48,16 @@ def test_simple_robot_sim_steps_state():
     assert next_state.shape == (4,)
     assert np.allclose(next_state, raw_next)
     assert np.allclose(sim.pose()[:3, 3], robot.fk(sim.q)[:3, 3])
+
+
+def test_simple_robot_sim_rollout_and_render():
+    robot = RobotModel.from_urdf(_planar_2r_urdf())
+    sim = SimpleRobotSim(robot, dt=0.1, damping=0.2)
+    actions = np.array([[0.5, -0.5], [0.0, 0.0], [0.2, 0.2]])
+    states, poses = sim.rollout(actions)
+
+    assert states.shape == (4, 4)
+    assert len(poses) == 4
+    assert all(p.shape == (4, 4) for p in poses)
+    ax = sim.render()
+    assert ax is not None
