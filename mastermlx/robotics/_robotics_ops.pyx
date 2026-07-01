@@ -1,7 +1,7 @@
 # cython: boundscheck=False, wraparound=False, cdivision=True, nonecheck=False
 """Cython helpers for robotics kinematics hot paths."""
 
-from libc.math cimport cos, sin
+from libc.math cimport cos, sin, sqrt
 
 import numpy as np
 cimport numpy as np
@@ -27,6 +27,67 @@ cdef inline np.ndarray[DTYPE_t, ndim=2] _as_transform(object T):
     if arr.ndim != 2 or arr.shape[0] != 4 or arr.shape[1] != 4:
         raise ValueError("Expected a 4x4 transform")
     return arr
+
+
+def quaternion_to_matrix(object q):
+    cdef np.ndarray[DTYPE_t, ndim=1] arr = np.asarray(q, dtype=np.float64).reshape(-1)
+    cdef double w, x, y, z, norm
+    if arr.shape[0] != 4:
+        raise ValueError("Expected a 4-vector (w, x, y, z)")
+    norm = sqrt(arr[0] * arr[0] + arr[1] * arr[1] + arr[2] * arr[2] + arr[3] * arr[3])
+    if norm == 0.0:
+        raise ValueError("Quaternion must be non-zero")
+    w = arr[0] / norm
+    x = arr[1] / norm
+    y = arr[2] / norm
+    z = arr[3] / norm
+    cdef np.ndarray[DTYPE_t, ndim=2] R = np.empty((3, 3), dtype=np.float64)
+    R[0, 0] = 1.0 - 2.0 * (y * y + z * z)
+    R[0, 1] = 2.0 * (x * y - z * w)
+    R[0, 2] = 2.0 * (x * z + y * w)
+    R[1, 0] = 2.0 * (x * y + z * w)
+    R[1, 1] = 1.0 - 2.0 * (x * x + z * z)
+    R[1, 2] = 2.0 * (y * z - x * w)
+    R[2, 0] = 2.0 * (x * z - y * w)
+    R[2, 1] = 2.0 * (y * z + x * w)
+    R[2, 2] = 1.0 - 2.0 * (x * x + y * y)
+    return R
+
+
+def invert_transform(object T):
+    cdef np.ndarray[DTYPE_t, ndim=2] arr = _as_transform(T)
+    cdef np.ndarray[DTYPE_t, ndim=2] inv = np.eye(4, dtype=np.float64)
+    cdef int i, j
+    for i in range(3):
+        for j in range(3):
+            inv[i, j] = arr[j, i]
+    for i in range(3):
+        inv[i, 3] = -(inv[i, 0] * arr[0, 3] + inv[i, 1] * arr[1, 3] + inv[i, 2] * arr[2, 3])
+    return inv
+
+
+def transform_points(object T, object points):
+    cdef np.ndarray[DTYPE_t, ndim=2] arr = _as_transform(T)
+    cdef np.ndarray[DTYPE_t, ndim=2] pts = np.asarray(points, dtype=np.float64)
+    cdef np.ndarray[DTYPE_t, ndim=2] flat
+    cdef np.ndarray[DTYPE_t, ndim=2] out_flat
+    cdef Py_ssize_t n, i, ndim
+    cdef double x, y, z
+    cdef object orig_shape = np.shape(points)
+    ndim = pts.ndim
+    if pts.shape[ndim - 1] != 3:
+        raise ValueError("Points must have shape (..., 3)")
+    flat = pts.reshape(-1, 3)
+    n = flat.shape[0]
+    out_flat = np.empty((n, 3), dtype=np.float64)
+    for i in range(n):
+        x = flat[i, 0]
+        y = flat[i, 1]
+        z = flat[i, 2]
+        out_flat[i, 0] = arr[0, 0] * x + arr[0, 1] * y + arr[0, 2] * z + arr[0, 3]
+        out_flat[i, 1] = arr[1, 0] * x + arr[1, 1] * y + arr[1, 2] * z + arr[1, 3]
+        out_flat[i, 2] = arr[2, 0] * x + arr[2, 1] * y + arr[2, 2] * z + arr[2, 3]
+    return out_flat.reshape(orig_shape)
 
 
 def forward_kinematics_dh(

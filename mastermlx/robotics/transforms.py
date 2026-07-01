@@ -2,6 +2,15 @@ from __future__ import annotations
 
 import numpy as np
 
+try:
+    from ._robotics_ops import invert_transform as _cy_invert_transform
+    from ._robotics_ops import quaternion_to_matrix as _cy_quaternion_to_matrix
+    from ._robotics_ops import transform_points as _cy_transform_points
+except ImportError:  # pragma: no cover - fallback when Cython extensions are unavailable
+    _cy_invert_transform = None
+    _cy_quaternion_to_matrix = None
+    _cy_transform_points = None
+
 
 def _as_vector3(v):
     arr = np.asarray(v, dtype=float).reshape(-1)
@@ -71,6 +80,8 @@ def matrix_to_euler(R):
 
 
 def quaternion_to_matrix(q):
+    if _cy_quaternion_to_matrix is not None:
+        return _cy_quaternion_to_matrix(q)
     q = np.asarray(q, dtype=float).reshape(-1)
     if q.size != 4:
         raise ValueError(f"Expected a 4-vector (w, x, y, z), got shape {np.shape(q)}")
@@ -133,6 +144,8 @@ def homogeneous_transform(rotation, translation):
 
 
 def invert_transform(T):
+    if _cy_invert_transform is not None:
+        return _cy_invert_transform(T)
     T = np.asarray(T, dtype=float)
     if T.shape != (4, 4):
         raise ValueError(f"Expected a 4x4 transform, got {T.shape}")
@@ -155,6 +168,8 @@ def compose_transform(*transforms):
 
 
 def transform_points(T, points):
+    if _cy_transform_points is not None:
+        return _cy_transform_points(T, points)
     T = np.asarray(T, dtype=float)
     if T.shape != (4, 4):
         raise ValueError(f"Expected a 4x4 transform, got {T.shape}")

@@ -3,6 +3,7 @@ import numpy as np
 from mastermlx.robotics import (
     DHLink,
     cubic_time_scaling,
+    invert_transform,
     forward_kinematics,
     geometric_jacobian,
     inverse_kinematics,
@@ -13,6 +14,7 @@ from mastermlx.robotics import (
     quintic_time_scaling,
     sample_joint_trajectory,
     sample_joint_trajectory_segments,
+    transform_points,
     rot_z,
 )
 
@@ -22,6 +24,21 @@ def test_rotation_quaternion_round_trip():
     q = matrix_to_quaternion(R)
     R2 = quaternion_to_matrix(q)
     assert np.allclose(R, R2)
+
+
+def test_transform_points_and_inverse_transform():
+    T = np.array([
+        [0.0, -1.0, 0.0, 1.0],
+        [1.0, 0.0, 0.0, 2.0],
+        [0.0, 0.0, 1.0, 3.0],
+        [0.0, 0.0, 0.0, 1.0],
+    ])
+    pts = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
+    out = transform_points(T, pts)
+    inv = invert_transform(T)
+    back = transform_points(inv, out)
+    assert np.allclose(out, np.array([[1.0, 3.0, 3.0], [0.0, 2.0, 3.0]]))
+    assert np.allclose(back, pts)
 
 
 def test_forward_kinematics_planar_2r():
