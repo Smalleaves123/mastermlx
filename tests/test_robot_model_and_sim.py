@@ -39,6 +39,18 @@ def test_robot_model_fk_jacobian_and_ik():
     assert np.allclose(robot.fk(q)[:3, 3], np.array([2.0, 0.0, 0.0]), atol=1e-4)
 
 
+def test_robot_model_from_dh():
+    robot = RobotModel.from_dh(
+        [
+            {"a": 1.0, "alpha": 0.0, "d": 0.0, "theta": 0.0},
+            {"a": 1.0, "alpha": 0.0, "d": 0.0, "theta": 0.0},
+        ],
+        name="planar2r-dh",
+    )
+    assert robot.name == "planar2r-dh"
+    assert np.allclose(robot.fk([0.0, 0.0])[:3, 3], np.array([2.0, 0.0, 0.0]))
+
+
 def test_simple_robot_sim_steps_state():
     robot = RobotModel.from_urdf(_planar_2r_urdf())
     sim = SimpleRobotSim(robot, dt=0.1, damping=0.2)

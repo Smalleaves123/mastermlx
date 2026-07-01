@@ -27,6 +27,12 @@ class RobotModel:
             name = "robot" if not parsed_links else parsed_links[0].name
         return cls(links=links, name=name)
 
+    @classmethod
+    def from_dh(cls, links, *, name="robot", base=None, tool=None):
+        """Build a robot model from DH links or link-like dictionaries."""
+
+        return cls(links=[link if isinstance(link, DHLink) else DHLink(**link) for link in links], name=name, base=base, tool=tool)
+
     def fk(self, joint_values=None, return_all=False):
         return forward_kinematics(self.links, joint_values=joint_values, base=self.base, tool=self.tool, return_all=return_all)
 
