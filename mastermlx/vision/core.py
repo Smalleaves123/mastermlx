@@ -152,3 +152,61 @@ def generate_proposals(image, window_sizes=((16, 16), (32, 32)), step=8, score_f
     scores = np.concatenate(all_scores, axis=0) if all_scores else np.empty((0,), dtype=float)
     keep = non_max_suppression(boxes, scores, iou_threshold=iou_threshold) if boxes.size else np.array([], dtype=int)
     return boxes[keep], scores[keep]
+
+
+def histogram_of_oriented_gradients(image, cell_size=8, bins=9, block_size=2, eps=1e-12):
+    """Compute a compact HOG descriptor for a grayscale or RGB image."""
+
+    image = _as_image(image)
+    if image.ndim == 3:
+        image = rgb_to_gray(image)
+    cell_size = int(cell_size)
+    bins = int(bins)
+    block_size = int(block_size)
+    if cell_size < 1 or bins < 1 or block_size < 1:
+        raise ValueError("cell_size, bins, and block_size must be positive")
+    mag, ang = sobel_edges(image)
+    ang = (ang % np.pi)
+    n_cells_y = image.shape[0] // cell_size
+    n_cells_x = image.shape[1] // cell_size
+    if n_cells_y < 1 or n_cells_x < 1:
+        raise ValueError("image is too small for the requested cell_size")
+    hist = np.zeros((n_cells_y, n_cells_x, bins), dtype=float)
+    bin_width = np.pi / bins
+    for cy in range(n_cells_y):
+        for cx in range(n_cells_x):
+            y0 = cy * cell_size
+            x0 = cx * cell_size
+            cell_mag = mag[y0 : y0 + cell_size, x0 : x0 + cell_size]
+            cell_ang = ang[y0 : y0 + cell_size, x0 : x0 + cell_size]
+            flat_bins = np.floor(cell_ang / bin_width).astype(int) % bins
+            for b in range(bins):
+                hist[cy, cx, b] = np.sum(cell_mag[flat_bins == b])
+    if n_cells_y < block_size or n_cells_x < block_size:
+        return hist.reshape(-1)
+    descriptors = []
+    for by in range(n_cells_y - block_size + 1):
+        for bx in range(n_cells_x - block_size + 1):
+            block = hist[by : by + block_size, bx : bx + block_size].reshape(-1)
+            block = block / max(np.linalg.norm(block), eps)
+            descriptors.append(block)
+    return np.concatenate(descriptors, axis=0)
+
+
+def patch_descriptor(image, patch_size=(8, 8)):
+    """Return a normalized flattened patch descriptor."""
+
+    image = _as_image(image)
+    if image.ndim == 3:
+        image = rgb_to_gray(image)
+    ph, pw = map(int, patch_size)
+    if ph < 1 or pw < 1:
+        raise ValueError("patch_size must be positive")
+    if image.shape[0] < ph or image.shape[1] < pw:
+        raise ValueError("patch_size must fit within the image")
+    patch = image[:ph, :pw]
+    vec = patch.reshape(-1).astype(float)
+    norm = np.linalg.norm(vec)
+    if norm <= 1e-12:
+        return np.zeros_like(vec)
+    return vec / norm

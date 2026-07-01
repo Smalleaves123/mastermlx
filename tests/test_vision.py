@@ -3,9 +3,11 @@ import numpy as np
 from mastermlx.vision import (
     generate_proposals,
     box_blur,
+    histogram_of_oriented_gradients,
     integral_image,
     normalize_image,
     non_max_suppression,
+    patch_descriptor,
     resize_nearest,
     sliding_window,
     rgb_to_gray,
@@ -56,3 +58,13 @@ def test_sliding_window_and_proposals():
     assert proposals.shape[1] == 4
     assert scores.ndim == 1
     assert proposals.shape[0] <= boxes.shape[0]
+
+
+def test_hog_and_patch_descriptor():
+    image = np.arange(64, dtype=float).reshape(8, 8)
+    hog = histogram_of_oriented_gradients(image, cell_size=4, bins=6, block_size=2)
+    patch = patch_descriptor(image, patch_size=(4, 4))
+    assert hog.ndim == 1
+    assert hog.size > 0
+    assert patch.shape == (16,)
+    assert np.isclose(np.linalg.norm(patch), 1.0)
