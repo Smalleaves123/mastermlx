@@ -103,6 +103,21 @@ def test_particle_filter_resample_collapses_to_single_particle():
     assert np.allclose(pf.weights_, np.full(4, 0.25))
 
 
+def test_particle_filter_update_falls_back_to_uniform_weights():
+    particles = np.array([[0.0], [1.0], [2.0], [3.0]])
+    pf = ParticleFilter(
+        particles=particles,
+        transition=lambda particle, control: np.asarray(particle, dtype=float),
+        likelihood=lambda particle, measurement: 0.0,
+        rng=np.random.default_rng(0),
+    )
+
+    weights = pf.update(np.array([0.0]))
+
+    assert np.allclose(weights, np.full(4, 0.25))
+    assert np.allclose(pf.weights_, np.full(4, 0.25))
+
+
 def test_systematic_resample_valid_indices():
     idx = systematic_resample(np.array([0.2, 0.3, 0.5]), rng=np.random.default_rng(1))
     assert idx.shape == (3,)

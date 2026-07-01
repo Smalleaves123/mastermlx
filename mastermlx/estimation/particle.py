@@ -2,8 +2,17 @@ from __future__ import annotations
 
 import numpy as np
 
+try:
+    from ._particle_ops import normalize_weights as _cy_normalize_weights
+    from ._particle_ops import systematic_resample as _cy_systematic_resample
+except ImportError:  # pragma: no cover - fallback when Cython extensions are unavailable
+    _cy_normalize_weights = None
+    _cy_systematic_resample = None
+
 
 def systematic_resample(weights, rng=None):
+    if _cy_systematic_resample is not None:
+        return _cy_systematic_resample(weights, rng=rng)
     weights = np.asarray(weights, dtype=float).reshape(-1)
     if weights.size == 0:
         raise ValueError("weights cannot be empty")
@@ -32,7 +41,13 @@ class ParticleFilter:
             self.weights_ = np.asarray(weights, dtype=float).reshape(-1)
             if self.weights_.size != self.n_particles_:
                 raise ValueError("weights must match the number of particles")
-            self.weights_ = self.weights_ / np.sum(self.weights_)
+            total = float(np.sum(self.weights_))
+            if total <= 0:
+                self.weights_ = np.full(self.n_particles_, 1.0 / self.n_particles_, dtype=float)
+            elif _cy_normalize_weights is not None:
+                self.weights_ = _cy_normalize_weights(self.weights_)
+            else:
+                self.weights_ = self.weights_ / total
         self.transition_ = transition
         self.likelihood_ = likelihood
         self.rng_ = np.random.default_rng() if rng is None else rng
@@ -62,9 +77,11 @@ class ParticleFilter:
             raise ValueError("likelihood function is required for update")
         weights = np.array([self.likelihood_(particle, measurement) for particle in self.particles_], dtype=float)
         weights = np.maximum(weights, 0.0)
-        total = np.sum(weights)
+        total = float(np.sum(weights))
         if total <= 0:
             self.weights_ = np.full(self.n_particles_, 1.0 / self.n_particles_, dtype=float)
+        elif _cy_normalize_weights is not None:
+            self.weights_ = _cy_normalize_weights(weights)
         else:
             self.weights_ = weights / total
         return self.weights_

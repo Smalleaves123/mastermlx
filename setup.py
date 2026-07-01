@@ -96,6 +96,11 @@ try:
             ["mastermlx/utils/_kernel_scalar_ops.pyx"],
             include_dirs=[np.get_include()],
         ),
+        Extension(
+            "mastermlx.estimation._particle_ops",
+            ["mastermlx/estimation/_particle_ops.pyx"],
+            include_dirs=[np.get_include()],
+        ),
     ], language_level=3)
     extensions = cpp_exts + cy_exts
 except ImportError:
