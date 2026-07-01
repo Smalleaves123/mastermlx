@@ -54,6 +54,63 @@ def quaternion_to_matrix(object q):
     return R
 
 
+def matrix_to_quaternion(object R):
+    cdef np.ndarray[DTYPE_t, ndim=2] arr = np.asarray(R, dtype=np.float64)
+    cdef double trace, s, w, x, y, z, norm
+    cdef np.ndarray[DTYPE_t, ndim=1] q
+    if arr.ndim != 2 or arr.shape[0] != 3 or arr.shape[1] != 3:
+        raise ValueError("Expected a 3x3 matrix")
+    trace = arr[0, 0] + arr[1, 1] + arr[2, 2]
+    if trace > 0.0:
+        s = sqrt(trace + 1.0) * 2.0
+        w = 0.25 * s
+        x = (arr[2, 1] - arr[1, 2]) / s
+        y = (arr[0, 2] - arr[2, 0]) / s
+        z = (arr[1, 0] - arr[0, 1]) / s
+    elif arr[0, 0] > arr[1, 1] and arr[0, 0] > arr[2, 2]:
+        s = sqrt(1.0 + arr[0, 0] - arr[1, 1] - arr[2, 2]) * 2.0
+        w = (arr[2, 1] - arr[1, 2]) / s
+        x = 0.25 * s
+        y = (arr[0, 1] + arr[1, 0]) / s
+        z = (arr[0, 2] + arr[2, 0]) / s
+    elif arr[1, 1] > arr[2, 2]:
+        s = sqrt(1.0 + arr[1, 1] - arr[0, 0] - arr[2, 2]) * 2.0
+        w = (arr[0, 2] - arr[2, 0]) / s
+        x = (arr[0, 1] + arr[1, 0]) / s
+        y = 0.25 * s
+        z = (arr[1, 2] + arr[2, 1]) / s
+    else:
+        s = sqrt(1.0 + arr[2, 2] - arr[0, 0] - arr[1, 1]) * 2.0
+        w = (arr[1, 0] - arr[0, 1]) / s
+        x = (arr[0, 2] + arr[2, 0]) / s
+        y = (arr[1, 2] + arr[2, 1]) / s
+        z = 0.25 * s
+    q = np.array([w, x, y, z], dtype=np.float64)
+    norm = sqrt(q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3])
+    return q / norm
+
+
+def matrix_to_euler(object R):
+    cdef np.ndarray[DTYPE_t, ndim=2] arr = np.asarray(R, dtype=np.float64)
+    cdef double sy, pitch, cy, roll, yaw
+    if arr.ndim != 2 or arr.shape[0] != 3 or arr.shape[1] != 3:
+        raise ValueError("Expected a 3x3 matrix")
+    sy = -arr[2, 0]
+    if sy < -1.0:
+        sy = -1.0
+    elif sy > 1.0:
+        sy = 1.0
+    pitch = np.arcsin(sy)
+    cy = np.cos(pitch)
+    if abs(cy) > 1e-12:
+        roll = np.arctan2(arr[2, 1], arr[2, 2])
+        yaw = np.arctan2(arr[1, 0], arr[0, 0])
+    else:
+        roll = np.arctan2(-arr[1, 2], arr[1, 1])
+        yaw = 0.0
+    return np.array([roll, pitch, yaw], dtype=np.float64)
+
+
 def invert_transform(object T):
     cdef np.ndarray[DTYPE_t, ndim=2] arr = _as_transform(T)
     cdef np.ndarray[DTYPE_t, ndim=2] inv = np.eye(4, dtype=np.float64)

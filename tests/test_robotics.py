@@ -8,6 +8,7 @@ from mastermlx.robotics import (
     geometric_jacobian,
     inverse_kinematics,
     joint_trajectory,
+    matrix_to_euler,
     matrix_to_quaternion,
     planar_2r_jacobian,
     quaternion_to_matrix,
@@ -24,6 +25,13 @@ def test_rotation_quaternion_round_trip():
     q = matrix_to_quaternion(R)
     R2 = quaternion_to_matrix(q)
     assert np.allclose(R, R2)
+
+
+def test_rotation_euler_round_trip():
+    R = rot_z(0.3) @ rot_z(0.0)
+    e = matrix_to_euler(R)
+    assert np.allclose(e[1], 0.0, atol=1e-12)
+    assert np.allclose(rot_z(e[2]), R, atol=1e-12)
 
 
 def test_transform_points_and_inverse_transform():

@@ -4,10 +4,14 @@ import numpy as np
 
 try:
     from ._robotics_ops import invert_transform as _cy_invert_transform
+    from ._robotics_ops import matrix_to_euler as _cy_matrix_to_euler
+    from ._robotics_ops import matrix_to_quaternion as _cy_matrix_to_quaternion
     from ._robotics_ops import quaternion_to_matrix as _cy_quaternion_to_matrix
     from ._robotics_ops import transform_points as _cy_transform_points
 except ImportError:  # pragma: no cover - fallback when Cython extensions are unavailable
     _cy_invert_transform = None
+    _cy_matrix_to_euler = None
+    _cy_matrix_to_quaternion = None
     _cy_quaternion_to_matrix = None
     _cy_transform_points = None
 
@@ -63,6 +67,8 @@ def euler_to_matrix(roll, pitch, yaw):
 
 
 def matrix_to_euler(R):
+    if _cy_matrix_to_euler is not None:
+        return _cy_matrix_to_euler(R)
     R = np.asarray(R, dtype=float)
     if R.shape != (3, 3):
         raise ValueError(f"Expected a 3x3 matrix, got {R.shape}")
@@ -100,6 +106,8 @@ def quaternion_to_matrix(q):
 
 
 def matrix_to_quaternion(R):
+    if _cy_matrix_to_quaternion is not None:
+        return _cy_matrix_to_quaternion(R)
     R = np.asarray(R, dtype=float)
     if R.shape != (3, 3):
         raise ValueError(f"Expected a 3x3 matrix, got {R.shape}")
