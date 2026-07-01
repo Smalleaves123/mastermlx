@@ -8,6 +8,7 @@ from mastermlx.robotics import (
     geometric_jacobian,
     inverse_kinematics,
     joint_trajectory,
+    parse_urdf,
     matrix_to_euler,
     matrix_to_quaternion,
     planar_2r_jacobian,
@@ -15,6 +16,7 @@ from mastermlx.robotics import (
     quintic_time_scaling,
     sample_joint_trajectory,
     sample_joint_trajectory_segments,
+    urdf_to_dh_chain,
     transform_points,
     rot_z,
 )
@@ -140,3 +142,32 @@ def test_inverse_kinematics_reaches_planar_target():
     q = inverse_kinematics(np.array([2.0, 0.0, 0.0]), links, joint_values=[0.1, -0.1], max_iter=200)
     T = forward_kinematics(links, q)
     assert np.allclose(T[:3, 3], np.array([2.0, 0.0, 0.0]), atol=1e-4)
+
+
+def test_urdf_parser_and_chain_conversion():
+    xml = """
+    <robot name="planar2r">
+      <link name="base" />
+      <link name="link1" />
+      <link name="link2" />
+      <joint name="joint1" type="revolute">
+        <parent link="base" />
+        <child link="link1" />
+        <origin xyz="1 0 0" rpy="0 0 0" />
+        <axis xyz="0 0 1" />
+      </joint>
+      <joint name="joint2" type="revolute">
+        <parent link="link1" />
+        <child link="link2" />
+        <origin xyz="1 0 0" rpy="0 0 0" />
+        <axis xyz="0 0 1" />
+      </joint>
+    </robot>
+    """
+    links, joints = parse_urdf(xml)
+    chain = urdf_to_dh_chain(xml)
+    assert len(links) == 3
+    assert len(joints) == 2
+    assert len(chain) == 2
+    assert chain[0].a == 1.0
+    assert chain[1].a == 1.0

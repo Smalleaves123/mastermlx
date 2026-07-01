@@ -25,6 +25,7 @@ from .trajectory import (
     sample_joint_trajectory,
     sample_joint_trajectory_segments,
 )
+from .urdf_parser import URDFJoint, URDFLink, parse_urdf, urdf_to_dh_chain
 from .visualizer import plot_chain
 
 __all__ = [
@@ -47,13 +48,17 @@ __all__ = [
     "plot_chain",
     "quaternion_to_matrix",
     "quintic_time_scaling",
+    "parse_urdf",
     "rpy_to_matrix",
     "rot_x",
     "rot_y",
     "rot_z",
     "sample_joint_trajectory",
     "sample_joint_trajectory_segments",
+    "URDFJoint",
+    "URDFLink",
     "skew",
     "transform_points",
+    "urdf_to_dh_chain",
     "unskew",
 ]
