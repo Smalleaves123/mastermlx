@@ -74,6 +74,11 @@ def test_pairwise_kernels_cover_extended_family():
         assert K.shape == (2, 1)
         assert np.isfinite(K).all()
 
+    rbf = pairwise_kernel(X, X, kernel="rbf", gamma=1.0)
+    assert rbf.shape == (2, 2)
+    assert np.isfinite(rbf).all()
+    assert np.allclose(np.diag(rbf), np.ones(2))
+
     assert cosine_kernel(X, Y).shape == (2, 1)
     assert additive_chi2_kernel(X + 1.0, Y + 1.0).shape == (2, 1)
 

@@ -37,6 +37,11 @@ def resolve_gamma(gamma, n_features):
     return float(gamma)
 
 
+def _squared_norms(X):
+    X = np.asarray(X, dtype=float)
+    return np.sum(X * X, axis=1)
+
+
 # ============================================================================
 #  Individual kernel functions  —  each tries C++ first, falls back to NumPy
 # ============================================================================
@@ -67,14 +72,19 @@ def poly_kernel(X, Y, gamma, coef0, degree):
 def rbf_kernel(X, Y, gamma):
     """RBF (Gaussian) kernel — C++ accelerated, avoids 3D intermediate array."""
     X, Y = _validate_same_shape(X, Y)
+    if X is Y or np.array_equal(X, Y):
+        from ..accel import cpp_rbf_kernel_fast as _accel_fast
+        norms = _squared_norms(X)
+        return _accel_fast(X, Y, norms, norms, float(gamma))
     from ..accel import cpp_rbf_kernel as _accel
     return _accel(X, Y, float(gamma))
 
 
 def laplacian_kernel(X, Y, gamma):
     """Laplacian kernel — C++ accelerated, avoids 3D intermediate array."""
+    X, Y = _validate_same_shape(X, Y)
     from ..accel import cpp_laplacian_kernel as _accel
-    return _accel(X, Y, gamma)
+    return _accel(X, Y, float(gamma))
 
 
 def sigmoid_kernel(X, Y, gamma, coef0):
