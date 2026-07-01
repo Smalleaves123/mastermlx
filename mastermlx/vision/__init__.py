@@ -5,7 +5,9 @@ from .core import (
     integral_image,
     normalize_image,
     non_max_suppression,
+    generate_proposals,
     resize_nearest,
+    sliding_window,
     rgb_to_gray,
     sobel_edges,
 )
@@ -13,9 +15,11 @@ from .core import (
 __all__ = [
     "box_blur",
     "integral_image",
+    "generate_proposals",
     "normalize_image",
     "non_max_suppression",
     "resize_nearest",
+    "sliding_window",
     "rgb_to_gray",
     "sobel_edges",
 ]

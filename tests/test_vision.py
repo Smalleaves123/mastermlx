@@ -1,11 +1,13 @@
 import numpy as np
 
 from mastermlx.vision import (
+    generate_proposals,
     box_blur,
     integral_image,
     normalize_image,
     non_max_suppression,
     resize_nearest,
+    sliding_window,
     rgb_to_gray,
     sobel_edges,
 )
@@ -43,3 +45,14 @@ def test_sobel_and_nms():
     assert mag.shape == (3, 3)
     assert direction.shape == (3, 3)
     assert set(keep.tolist()) == {1, 2}
+
+
+def test_sliding_window_and_proposals():
+    image = np.arange(25, dtype=float).reshape(5, 5)
+    boxes, patches = sliding_window(image, (3, 3), step=2)
+    proposals, scores = generate_proposals(image, window_sizes=((3, 3),), step=2)
+    assert boxes.shape == (4, 4)
+    assert patches.shape == (4, 3, 3)
+    assert proposals.shape[1] == 4
+    assert scores.ndim == 1
+    assert proposals.shape[0] <= boxes.shape[0]

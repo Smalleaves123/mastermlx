@@ -113,3 +113,42 @@ def non_max_suppression(boxes, scores, iou_threshold=0.5):
         iou = np.divide(inter, np.maximum(union, 1e-12))
         order = rest[iou <= iou_threshold]
     return np.array(keep, dtype=int)
+
+
+def sliding_window(image, window_size, step=1):
+    image = _as_image(image)
+    if image.ndim == 3:
+        image = rgb_to_gray(image)
+    win_h, win_w = map(int, window_size)
+    step = int(step)
+    if win_h < 1 or win_w < 1 or step < 1:
+        raise ValueError("window_size and step must be positive")
+    if image.shape[0] < win_h or image.shape[1] < win_w:
+        raise ValueError("window_size must fit within the image")
+    windows = []
+    boxes = []
+    for top in range(0, image.shape[0] - win_h + 1, step):
+        for left in range(0, image.shape[1] - win_w + 1, step):
+            boxes.append((left, top, left + win_w, top + win_h))
+            windows.append(image[top : top + win_h, left : left + win_w])
+    return np.asarray(boxes, dtype=float), np.asarray(windows, dtype=float)
+
+
+def generate_proposals(image, window_sizes=((16, 16), (32, 32)), step=8, score_fn=None, iou_threshold=0.5):
+    """Generate simple detection proposals with optional scoring and NMS."""
+
+    image = _as_image(image)
+    if score_fn is None:
+        def score_fn(patch):
+            return float(np.mean(patch))
+    all_boxes = []
+    all_scores = []
+    for window_size in window_sizes:
+        boxes, patches = sliding_window(image, window_size, step=step)
+        scores = np.array([score_fn(patch) for patch in patches], dtype=float)
+        all_boxes.append(boxes)
+        all_scores.append(scores)
+    boxes = np.concatenate(all_boxes, axis=0) if all_boxes else np.empty((0, 4), dtype=float)
+    scores = np.concatenate(all_scores, axis=0) if all_scores else np.empty((0,), dtype=float)
+    keep = non_max_suppression(boxes, scores, iou_threshold=iou_threshold) if boxes.size else np.array([], dtype=int)
+    return boxes[keep], scores[keep]
