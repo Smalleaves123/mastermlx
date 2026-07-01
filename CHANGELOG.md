@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added Cython acceleration for linear, cosine, polynomial, and sigmoid kernels.
 - Added Cython acceleration for scalar distance helpers in `mastermlx.utils.distance`.
 - Added Cython acceleration for linear Kalman predict/update and shared EKF matrix updates.
 - Added Cython acceleration for cosine, hamming, jaccard, and Mahalanobis pairwise distances.
@@ -9,6 +10,10 @@
 - Added Cython acceleration for discrete LQR recursion and batch joint-trajectory sampling.
 - Added roadmap guidance for the next Cython / C++ optimization batches.
 - Added Cython acceleration for time-series hot paths such as rolling mean, autocorrelation, exponential smoothing, and CUSUM detection.
+
+## 0.1.11
+
+- Continued the compiled acceleration pass into the remaining high-frequency pairwise kernels.
 
 ## 0.1.10
 

@@ -12,7 +12,7 @@ It gives you a broad set of classic ML algorithms, math utilities, and optional 
 - Pure Python fallback when compiled extensions are not available
 - Robotics foundations for transforms, kinematics, trajectories, and Jacobians
 - Control foundations for PID, LQR, MPC, and iLQR optimization control
-- Optional Cython acceleration for control, robotics, estimation, distance, and time-series hot paths
+- Optional Cython acceleration for control, robotics, estimation, distance, kernels, and time-series hot paths
 
 ## Install
 

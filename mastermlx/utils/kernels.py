@@ -2,6 +2,19 @@ from __future__ import annotations
 
 import numpy as np
 
+try:
+    from ._kernel_scalar_ops import (
+        cosine_kernel as _cy_cosine_kernel,
+        linear_kernel as _cy_linear_kernel,
+        poly_kernel as _cy_poly_kernel,
+        sigmoid_kernel as _cy_sigmoid_kernel,
+    )
+except ImportError:  # pragma: no cover - fallback when Cython extensions are unavailable
+    _cy_cosine_kernel = None
+    _cy_linear_kernel = None
+    _cy_poly_kernel = None
+    _cy_sigmoid_kernel = None
+
 
 def _validate_same_shape(X, Y):
     X = np.asarray(X, dtype=float)
@@ -30,17 +43,24 @@ def resolve_gamma(gamma, n_features):
 
 def linear_kernel(X, Y):
     X, Y = _validate_same_shape(X, Y)
+    if _cy_linear_kernel is not None:
+        return _cy_linear_kernel(X, Y)
     return X @ Y.T
 
 
 def cosine_kernel(X, Y):
     X, Y = _validate_same_shape(X, Y)
+    if _cy_cosine_kernel is not None:
+        return _cy_cosine_kernel(X, Y)
     X_norm = np.linalg.norm(X, axis=1, keepdims=True)
     Y_norm = np.linalg.norm(Y, axis=1, keepdims=True).T
     return (X @ Y.T) / (X_norm * Y_norm + 1e-12)
 
 
 def poly_kernel(X, Y, gamma, coef0, degree):
+    if _cy_poly_kernel is not None:
+        X, Y = _validate_same_shape(X, Y)
+        return _cy_poly_kernel(X, Y, float(gamma), float(coef0), int(degree))
     return (gamma * linear_kernel(X, Y) + coef0) ** degree
 
 
@@ -58,6 +78,9 @@ def laplacian_kernel(X, Y, gamma):
 
 
 def sigmoid_kernel(X, Y, gamma, coef0):
+    if _cy_sigmoid_kernel is not None:
+        X, Y = _validate_same_shape(X, Y)
+        return _cy_sigmoid_kernel(X, Y, float(gamma), float(coef0))
     return np.tanh(gamma * linear_kernel(X, Y) + coef0)
 
 
