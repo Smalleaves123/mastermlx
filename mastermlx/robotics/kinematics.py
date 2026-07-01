@@ -14,6 +14,9 @@ except ImportError:  # pragma: no cover - fallback when Cython extensions are un
     _cy_geometric_jacobian_dh = None
 
 
+_PACKED_LINKS_CACHE = {}
+
+
 @dataclass(frozen=True)
 class DHLink:
     """Denavit-Hartenberg link parameters.
@@ -78,6 +81,30 @@ def _pack_links(links):
     return links, a, alpha, d, theta, joint_type, offset
 
 
+def _pack_links_cached(links):
+    normalized = tuple(
+        (link.a, link.alpha, link.d, link.theta, link.joint_type.lower(), link.offset)
+        if isinstance(link, DHLink)
+        else (
+            _coerce_link(link).a,
+            _coerce_link(link).alpha,
+            _coerce_link(link).d,
+            _coerce_link(link).theta,
+            _coerce_link(link).joint_type.lower(),
+            _coerce_link(link).offset,
+        )
+        for link in links
+    )
+    cached = _PACKED_LINKS_CACHE.get(normalized)
+    if cached is not None:
+        return cached
+    packed = _pack_links(links)
+    _PACKED_LINKS_CACHE[normalized] = packed
+    if len(_PACKED_LINKS_CACHE) > 16:
+        _PACKED_LINKS_CACHE.pop(next(iter(_PACKED_LINKS_CACHE)))
+    return packed
+
+
 def _link_transform(link, q):
     joint_type = link.joint_type.lower()
     if joint_type == "revolute":
@@ -88,7 +115,7 @@ def _link_transform(link, q):
 
 
 def _chain_transforms(links, joint_values=None, base=None, tool=None):
-    links, a, alpha, d, theta, joint_type, offset = _pack_links(links)
+    links, a, alpha, d, theta, joint_type, offset = _pack_links_cached(links)
     n = len(links)
     if joint_values is None:
         q = np.zeros(n, dtype=float)
@@ -201,7 +228,7 @@ def inverse_kinematics(
     error are matched.
     """
 
-    links, a, alpha, d, theta, joint_type, offset = _pack_links(links)
+    links, a, alpha, d, theta, joint_type, offset = _pack_links_cached(links)
     n = len(links)
     if joint_values is None:
         q = np.zeros(n, dtype=float)

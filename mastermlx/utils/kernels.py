@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import weakref
+
 import numpy as np
 
 try:
@@ -14,6 +16,9 @@ except ImportError:  # pragma: no cover - fallback when Cython extensions are un
     _cy_linear_kernel = None
     _cy_poly_kernel = None
     _cy_sigmoid_kernel = None
+
+
+_PAIRWISE_KERNEL_CACHE = {}
 
 
 def _validate_same_shape(X, Y):
@@ -40,6 +45,33 @@ def resolve_gamma(gamma, n_features):
 def _squared_norms(X):
     X = np.asarray(X, dtype=float)
     return np.sum(X * X, axis=1)
+
+
+def _cache_key(X, Y, kernel, gamma, coef0, degree):
+    return (
+        id(X),
+        id(Y),
+        kernel,
+        float(gamma),
+        float(coef0),
+        int(degree),
+        X.shape,
+        Y.shape,
+    )
+
+
+def _cached_pairwise_kernel(X, Y, kernel, gamma, coef0, degree, compute):
+    key = _cache_key(X, Y, kernel, gamma, coef0, degree)
+    entry = _PAIRWISE_KERNEL_CACHE.get(key)
+    if entry is not None:
+        x_ref, y_ref, value = entry
+        if x_ref() is X and y_ref() is Y:
+            return value
+    value = compute()
+    _PAIRWISE_KERNEL_CACHE[key] = (weakref.ref(X), weakref.ref(Y), value)
+    if len(_PAIRWISE_KERNEL_CACHE) > 8:
+        _PAIRWISE_KERNEL_CACHE.pop(next(iter(_PAIRWISE_KERNEL_CACHE)))
+    return value
 
 
 # ============================================================================
@@ -72,6 +104,12 @@ def poly_kernel(X, Y, gamma, coef0, degree):
 def rbf_kernel(X, Y, gamma):
     """RBF (Gaussian) kernel — C++ accelerated, avoids 3D intermediate array."""
     X, Y = _validate_same_shape(X, Y)
+    if X is Y:
+        return _cached_pairwise_kernel(X, Y, "rbf", float(gamma), 0.0, 0, lambda: _rbf_kernel_impl(X, Y, gamma))
+    return _rbf_kernel_impl(X, Y, gamma)
+
+
+def _rbf_kernel_impl(X, Y, gamma):
     if X is Y or np.array_equal(X, Y):
         from ..accel import cpp_rbf_kernel_fast as _accel_fast
         norms = _squared_norms(X)
@@ -84,6 +122,8 @@ def laplacian_kernel(X, Y, gamma):
     """Laplacian kernel — C++ accelerated, avoids 3D intermediate array."""
     X, Y = _validate_same_shape(X, Y)
     from ..accel import cpp_laplacian_kernel as _accel
+    if X is Y:
+        return _cached_pairwise_kernel(X, Y, "laplacian", float(gamma), 0.0, 0, lambda: _accel(X, Y, float(gamma)))
     return _accel(X, Y, float(gamma))
 
 
