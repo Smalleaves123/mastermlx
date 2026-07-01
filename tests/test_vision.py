@@ -1,0 +1,45 @@
+import numpy as np
+
+from mastermlx.vision import (
+    box_blur,
+    integral_image,
+    normalize_image,
+    non_max_suppression,
+    resize_nearest,
+    rgb_to_gray,
+    sobel_edges,
+)
+
+
+def test_rgb_to_gray_and_normalize():
+    image = np.array([[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]])
+    gray = rgb_to_gray(image)
+    norm = normalize_image(gray)
+    assert gray.shape == (1, 2)
+    assert norm.min() == 0.0
+    assert norm.max() == 1.0
+
+
+def test_resize_blur_and_integral_image():
+    image = np.arange(16, dtype=float).reshape(4, 4)
+    resized = resize_nearest(image, (2, 2))
+    blurred = box_blur(image, ksize=3)
+    integ = integral_image(image)
+    assert resized.shape == (2, 2)
+    assert blurred.shape == (4, 4)
+    assert np.isclose(integ[-1, -1], np.sum(image))
+
+
+def test_sobel_and_nms():
+    image = np.array([
+        [0.0, 0.0, 0.0],
+        [0.0, 1.0, 1.0],
+        [0.0, 1.0, 1.0],
+    ])
+    mag, direction = sobel_edges(image)
+    boxes = np.array([[0, 0, 2, 2], [0, 0, 1.5, 1.5], [2, 2, 3, 3]])
+    scores = np.array([0.7, 0.9, 0.6])
+    keep = non_max_suppression(boxes, scores, iou_threshold=0.3)
+    assert mag.shape == (3, 3)
+    assert direction.shape == (3, 3)
+    assert set(keep.tolist()) == {1, 2}

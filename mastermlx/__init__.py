@@ -25,6 +25,7 @@ from .svm import *  # noqa: F401,F403
 from .trees import *  # noqa: F401,F403
 from .variational import *  # noqa: F401,F403
 from .viz import *  # noqa: F401,F403
+from .vision import *  # noqa: F401,F403
 from .preprocessing import *  # noqa: F401,F403
 from .math_tools import *  # noqa: F401,F403
 
@@ -56,6 +57,7 @@ from . import svm as _svm
 from . import trees as _trees
 from . import variational as _variational
 from . import viz as _viz
+from . import vision as _vision
 
 
 def _extend_unique(names, items):
@@ -89,4 +91,5 @@ _extend_unique(__all__, _svm.__all__)
 _extend_unique(__all__, _trees.__all__)
 _extend_unique(__all__, [name for name in _variational.__all__ if name not in {"BayesGMM", "VGMM"}])
 _extend_unique(__all__, _viz.__all__)
+_extend_unique(__all__, _vision.__all__)
 _extend_unique(__all__, _clustering.__all__)
