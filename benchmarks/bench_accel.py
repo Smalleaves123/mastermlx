@@ -63,6 +63,32 @@ print(f"  -> Speedup: {np_db/accel_db:.1f}x")
 
 
 # ---------------------------------------------------------------------------
+# Confusion matrix
+# ---------------------------------------------------------------------------
+section("Confusion Matrix — 200k samples, 8 classes")
+
+from mastermlx.utils.metrics import confusion_matrix
+
+y_true = np.random.randint(0, 8, size=200_000)
+y_pred = np.random.randint(0, 8, size=200_000)
+
+
+def py_confusion_matrix(y_true, y_pred):
+    labels = np.unique(np.concatenate([y_true, y_pred]))
+    labels = np.asarray(labels)
+    index = {label: idx for idx, label in enumerate(labels)}
+    cm = np.zeros((labels.shape[0], labels.shape[0]), dtype=float)
+    for yt, yp in zip(y_true, y_pred):
+        cm[index[yt], index[yp]] += 1.0
+    return cm
+
+
+np_cm = bench(lambda: py_confusion_matrix(y_true, y_pred), name="Pure Python loop")
+accel_cm = bench(lambda: confusion_matrix(y_true, y_pred), name="Cython-assisted API")
+print(f"  -> Speedup: {np_cm/accel_cm:.1f}x")
+
+
+# ---------------------------------------------------------------------------
 # KMeans
 # ---------------------------------------------------------------------------
 section("KMeans — 2000x30, k=5")

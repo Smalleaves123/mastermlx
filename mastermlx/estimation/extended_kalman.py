@@ -63,14 +63,17 @@ class ExtendedKalmanFilter:
         self.P_prior_ = P_pred.copy()
         return self.state, self.P_.copy()
 
-    def update(self, z, u=None, dt=None):
+    def update(self, z, u=None, dt=None, h=None, H_jac=None, R=None):
         x = self.x_.ravel()
+        h_func = self.h_ if h is None else h
+        H_jac_func = self.H_jac_ if H_jac is None else H_jac
+        R = self.R_ if R is None else _as_2d_matrix(R, "R")
         if dt is None:
-            z_pred = self.h_(x, u)
-            H = self.H_jac_(x, u)
+            z_pred = h_func(x, u)
+            H = H_jac_func(x, u)
         else:
-            z_pred = self.h_(x, u, dt)
-            H = self.H_jac_(x, u, dt)
+            z_pred = h_func(x, u, dt)
+            H = H_jac_func(x, u, dt)
 
         z = np.asarray(z, dtype=float).reshape(-1, 1)
         z_pred = np.asarray(z_pred, dtype=float).reshape(-1, 1)
@@ -78,7 +81,7 @@ class ExtendedKalmanFilter:
 
         if _cy_kalman_update_innovation is not None:
             innovation = z - z_pred
-            self.x_, self.P_ = _cy_kalman_update_innovation(self.x_, self.P_, innovation, H, self.R_)
+            self.x_, self.P_ = _cy_kalman_update_innovation(self.x_, self.P_, innovation, H, R)
             self.x_ = np.asarray(self.x_, dtype=float).reshape(-1, 1)
             self.P_ = np.asarray(self.P_, dtype=float)
             self.x_post_ = self.x_.copy()
@@ -86,7 +89,7 @@ class ExtendedKalmanFilter:
             return self.state, self.P_.copy()
 
         y = z - z_pred
-        S = H @ self.P_ @ H.T + self.R_
+        S = H @ self.P_ @ H.T + R
         K = self.P_ @ H.T @ np.linalg.solve(S, np.eye(S.shape[0], dtype=float))
         self.x_ = self.x_ + K @ y
         I = np.eye(self.P_.shape[0], dtype=float)
@@ -95,6 +98,6 @@ class ExtendedKalmanFilter:
         self.P_post_ = self.P_.copy()
         return self.state, self.P_.copy()
 
-    def step(self, z, u=None, dt=None):
+    def step(self, z, u=None, dt=None, h=None, H_jac=None, R=None):
         self.predict(u=u, dt=dt)
-        return self.update(z, u=u, dt=dt)
+        return self.update(z, u=u, dt=dt, h=h, H_jac=H_jac, R=R)

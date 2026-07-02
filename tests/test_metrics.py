@@ -25,6 +25,16 @@ def test_confusion_matrix_counts_and_normalization():
     assert np.allclose(cm_true, np.array([[0.5, 0.5], [0.0, 1.0]]))
 
 
+def test_confusion_matrix_preserves_explicit_label_order():
+    y_true = np.array(["dog", "cat", "dog", "bird"])
+    y_pred = np.array(["cat", "cat", "dog", "bird"])
+    labels = np.array(["bird", "cat", "dog"])
+
+    cm = confusion_matrix(y_true, y_pred, labels=labels)
+
+    assert np.array_equal(cm, np.array([[1, 0, 0], [0, 1, 0], [0, 1, 1]]))
+
+
 def test_precision_recall_f1_binary():
     y_true = np.array([0, 0, 1, 1, 1])
     y_pred = np.array([0, 1, 1, 0, 1])

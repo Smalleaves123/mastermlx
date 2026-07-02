@@ -2,6 +2,11 @@ from __future__ import annotations
 
 import numpy as np
 
+try:
+    from ._metrics_ops import confusion_matrix_counts as _cy_confusion_matrix_counts
+except ImportError:  # pragma: no cover - fallback when Cython extensions are unavailable
+    _cy_confusion_matrix_counts = None
+
 
 def confusion_matrix(y_true, y_pred, labels=None, normalize=None):
     y_true = np.asarray(y_true)
@@ -13,10 +18,13 @@ def confusion_matrix(y_true, y_pred, labels=None, normalize=None):
     if labels is None:
         labels = np.unique(np.concatenate([y_true, y_pred]))
     labels = np.asarray(labels)
-    index = {label: idx for idx, label in enumerate(labels)}
-    cm = np.zeros((labels.shape[0], labels.shape[0]), dtype=float)
-    for yt, yp in zip(y_true, y_pred):
-        cm[index[yt], index[yp]] += 1.0
+    if _cy_confusion_matrix_counts is not None:
+        cm = np.asarray(_cy_confusion_matrix_counts(y_true, y_pred, labels), dtype=float)
+    else:
+        index = {label: idx for idx, label in enumerate(labels)}
+        cm = np.zeros((labels.shape[0], labels.shape[0]), dtype=float)
+        for yt, yp in zip(y_true, y_pred):
+            cm[index[yt], index[yp]] += 1.0
 
     if normalize is None:
         return cm.astype(int)
@@ -54,17 +62,17 @@ def _precision_recall_f1(y_true, y_pred, average="binary", pos_label=1):
         raise ValueError("average must be one of: binary, macro, micro, weighted, None")
 
     all_labels = np.unique(np.concatenate([y_true, y_pred]))
+    full_cm = confusion_matrix(y_true, y_pred, labels=all_labels).astype(float)
 
     if average == "micro":
-        tp = np.trace(confusion_matrix(y_true, y_pred).astype(float))
-        fp = np.sum(confusion_matrix(y_true, y_pred).astype(float), axis=0).sum() - tp
-        fn = np.sum(confusion_matrix(y_true, y_pred).astype(float), axis=1).sum() - tp
+        tp = np.trace(full_cm)
+        fp = np.sum(full_cm, axis=0).sum() - tp
+        fn = np.sum(full_cm, axis=1).sum() - tp
         precision = tp / (tp + fp) if tp + fp else 0.0
         recall = tp / (tp + fn) if tp + fn else 0.0
         f1 = 2.0 * precision * recall / (precision + recall) if precision + recall else 0.0
         return precision, recall, f1
 
-    full_cm = confusion_matrix(y_true, y_pred, labels=all_labels).astype(float)
     tp = np.diag(full_cm)
     fp = full_cm.sum(axis=0) - tp
     fn = full_cm.sum(axis=1) - tp

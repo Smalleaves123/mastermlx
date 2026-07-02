@@ -118,3 +118,104 @@ def sample_joint_trajectory_segments(q_waypoints, durations, num_samples_per_seg
         np.concatenate(velocities, axis=0),
         np.concatenate(accelerations, axis=0),
     )
+
+
+def plan_joint_path(q_start, q_goal, num_waypoints=11, via_points=None):
+    """Generate a piecewise-linear joint-space path."""
+
+    q_start = np.asarray(q_start, dtype=float).reshape(-1)
+    q_goal = np.asarray(q_goal, dtype=float).reshape(-1)
+    if q_start.shape != q_goal.shape:
+        raise ValueError("q_start and q_goal must have the same shape")
+    if int(num_waypoints) < 2:
+        raise ValueError("num_waypoints must be at least 2")
+
+    if via_points is None:
+        alphas = np.linspace(0.0, 1.0, int(num_waypoints))[:, None]
+        return q_start[None, :] + alphas * (q_goal - q_start)[None, :]
+
+    waypoints = [q_start]
+    for point in via_points:
+        point = np.asarray(point, dtype=float).reshape(-1)
+        if point.shape != q_start.shape:
+            raise ValueError("via_points must match the joint dimension")
+        waypoints.append(point)
+    waypoints.append(q_goal)
+    return np.asarray(waypoints, dtype=float)
+
+
+def smooth_joint_path(reference_waypoints, smoothness=1.0, fixed_start=True, fixed_goal=True):
+    """Smooth a joint-space path with a quadratic first-difference penalty.
+
+    The optimizer keeps the start and goal fixed by default and solves a
+    tridiagonal least-squares system for the intermediate waypoints.
+    """
+
+    reference_waypoints = np.asarray(reference_waypoints, dtype=float)
+    if reference_waypoints.ndim != 2:
+        raise ValueError("reference_waypoints must have shape (n_waypoints, n_joints)")
+    n_waypoints, n_joints = reference_waypoints.shape
+    if n_waypoints < 2:
+        raise ValueError("reference_waypoints must contain at least two waypoints")
+
+    smoothness = float(smoothness)
+    if smoothness < 0.0:
+        raise ValueError("smoothness must be non-negative")
+
+    if n_waypoints == 2 or smoothness == 0.0:
+        smoothed = reference_waypoints.copy()
+        if fixed_start:
+            smoothed[0] = reference_waypoints[0]
+        if fixed_goal:
+            smoothed[-1] = reference_waypoints[-1]
+        return smoothed
+
+    smoothed = reference_waypoints.copy()
+    indices = np.arange(n_waypoints)
+    if fixed_start:
+        indices = indices[1:]
+    if fixed_goal:
+        indices = indices[:-1]
+
+    if indices.size == 0:
+        return smoothed
+
+    interior = indices
+    m = interior.size
+    A = np.eye(m, dtype=float)
+    if m > 1:
+        diag = np.ones(m, dtype=float) * 2.0
+        diag[0] = 1.0
+        diag[-1] = 1.0
+        A += smoothness * np.diag(diag)
+        off = -smoothness * np.ones(m - 1, dtype=float)
+        A += np.diag(off, k=1) + np.diag(off, k=-1)
+    else:
+        A += np.array([[2.0 * smoothness]], dtype=float)
+
+    for j in range(n_joints):
+        b = reference_waypoints[interior, j].copy()
+        if fixed_start:
+            b[0] += smoothness * reference_waypoints[0, j]
+        if fixed_goal:
+            b[-1] += smoothness * reference_waypoints[-1, j]
+        smoothed[interior, j] = np.linalg.solve(A, b)
+
+    if fixed_start:
+        smoothed[0] = reference_waypoints[0]
+    if fixed_goal:
+        smoothed[-1] = reference_waypoints[-1]
+    return smoothed
+
+
+def plan_joint_trajectory(q_start, q_goal, duration, num_waypoints=11, num_samples_per_segment=100, kind="quintic", smoothness=0.0, via_points=None):
+    """Plan and sample a joint trajectory from a start and goal configuration."""
+
+    path = plan_joint_path(q_start, q_goal, num_waypoints=num_waypoints, via_points=via_points)
+    if smoothness > 0.0:
+        path = smooth_joint_path(path, smoothness=smoothness)
+    segments = path.shape[0] - 1
+    if segments < 1:
+        raise ValueError("at least two waypoints are required")
+    durations = np.full(segments, float(duration) / segments, dtype=float)
+    return sample_joint_trajectory_segments(path, durations, num_samples_per_segment=num_samples_per_segment, kind=kind)

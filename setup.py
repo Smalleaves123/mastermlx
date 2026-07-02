@@ -97,6 +97,11 @@ try:
             include_dirs=[np.get_include()],
         ),
         Extension(
+            "mastermlx.utils._metrics_ops",
+            ["mastermlx/utils/_metrics_ops.pyx"],
+            include_dirs=[np.get_include()],
+        ),
+        Extension(
             "mastermlx.estimation._particle_ops",
             ["mastermlx/estimation/_particle_ops.pyx"],
             include_dirs=[np.get_include()],

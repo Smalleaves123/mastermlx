@@ -8,10 +8,13 @@ from mastermlx.robotics import (
     geometric_jacobian,
     inverse_kinematics,
     joint_trajectory,
+    plan_joint_path,
+    plan_joint_trajectory,
     parse_urdf,
     matrix_to_euler,
     matrix_to_quaternion,
     planar_2r_jacobian,
+    smooth_joint_path,
     quaternion_to_matrix,
     quintic_time_scaling,
     sample_joint_trajectory,
@@ -132,6 +135,42 @@ def test_sample_joint_trajectory_segments_are_continuous():
     assert np.allclose(positions[3], waypoints[1])
     assert np.allclose(times[3], 1.0)
     assert np.allclose(times[4], 1.66666667, atol=1e-8)
+
+
+def test_plan_joint_path_and_smoothing_reduce_kinks():
+    q0 = np.array([0.0, 0.0])
+    qf = np.array([2.0, 1.0])
+    via = [np.array([0.8, 0.9]), np.array([1.2, 0.2])]
+
+    path = plan_joint_path(q0, qf, via_points=via)
+    smoothed = smooth_joint_path(path, smoothness=1.0)
+
+    assert np.allclose(path[0], q0)
+    assert np.allclose(path[-1], qf)
+    assert np.allclose(smoothed[0], q0)
+    assert np.allclose(smoothed[-1], qf)
+
+    raw_kink = np.linalg.norm(path[2] - 2.0 * path[1] + path[0])
+    smooth_kink = np.linalg.norm(smoothed[2] - 2.0 * smoothed[1] + smoothed[0])
+    assert smooth_kink <= raw_kink
+
+
+def test_plan_joint_trajectory_returns_samples():
+    times, positions, velocities, accelerations = plan_joint_trajectory(
+        np.array([0.0, 0.0]),
+        np.array([1.0, 1.0]),
+        duration=2.0,
+        num_waypoints=5,
+        num_samples_per_segment=4,
+        smoothness=1.0,
+    )
+
+    assert times.ndim == 1
+    assert positions.shape[1] == 2
+    assert velocities.shape == positions.shape
+    assert accelerations.shape == positions.shape
+    assert np.allclose(positions[0], np.array([0.0, 0.0]))
+    assert np.allclose(positions[-1], np.array([1.0, 1.0]))
 
 
 def test_inverse_kinematics_reaches_planar_target():

@@ -1,6 +1,6 @@
 import numpy as np
 
-from mastermlx.neural_net import MLPClassifier, MLPRegressor
+from mastermlx.neural_net import MLPClassifier, MLPRegressor, StepLR
 
 
 def test_mlp_classifier_with_adam_solves_xor():
@@ -28,3 +28,22 @@ def test_mlp_regressor_with_rmsprop_fits_line():
 
     assert pred.shape == y.shape
     assert np.allclose(pred, y, atol=0.5)
+
+
+def test_mlp_regressor_steps_learning_rate_scheduler():
+    X = np.arange(6, dtype=float).reshape(-1, 1)
+    y = 2.0 * X.ravel() + 1.0
+
+    model = MLPRegressor(
+        hidden_layer_sizes=(),
+        activation="relu",
+        optimizer="sgd",
+        lr=0.1,
+        lr_scheduler=lambda optimizer: StepLR(optimizer, step_size=1, gamma=0.5),
+        n_iter=3,
+        tol=0.0,
+        random_state=0,
+    )
+    model.fit(X, y)
+
+    assert np.isclose(model.optimizer_.lr, 0.0125)

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added Cython acceleration for `confusion_matrix` counting in `mastermlx.utils.metrics`.
 - Added Cython acceleration for particle-filter systematic resampling and weight normalization.
 - Added Cython acceleration for linear, cosine, polynomial, and sigmoid kernels.
 - Added Cython acceleration for scalar distance helpers in `mastermlx.utils.distance`.

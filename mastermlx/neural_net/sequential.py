@@ -36,6 +36,7 @@ class Sequential(BaseEstimator):
         layers=None,
         loss="cross_entropy",
         optimizer="sgd",
+        lr_scheduler=None,
         lr=0.01,
         n_iter=1000,
         batch_size=None,
@@ -53,6 +54,7 @@ class Sequential(BaseEstimator):
         self.layers = list(layers or [])
         self.loss = loss
         self.optimizer = optimizer
+        self.lr_scheduler = lr_scheduler
         self.lr = lr
         self.n_iter = n_iter
         self.batch_size = batch_size
@@ -155,6 +157,20 @@ class Sequential(BaseEstimator):
         else:
             self.optimizer_ = self.optimizer
 
+    def _resolve_lr_scheduler(self):
+        scheduler = self.lr_scheduler
+        if scheduler is None:
+            return None
+        if callable(scheduler) and not hasattr(scheduler, "step"):
+            scheduler = scheduler(self.optimizer_)
+            self.lr_scheduler = scheduler
+            return scheduler
+        if hasattr(scheduler, "optimizer") and getattr(scheduler, "optimizer", None) is None:
+            scheduler.optimizer = self.optimizer_  # type: ignore[attr-defined]
+            if hasattr(scheduler, "_base_lr"):
+                scheduler._base_lr = getattr(self.optimizer_, "lr", scheduler._base_lr)
+        return scheduler
+
     def _forward(self, X):
         out = X
         for layer in self.layers:
@@ -201,9 +217,23 @@ class Sequential(BaseEstimator):
     def _restore_layers(self, snapshot):
         self.layers = copy.deepcopy(snapshot)
 
+    def _on_epoch_end(self, epoch, logs):
+        scheduler = self.lr_scheduler
+        if scheduler is None:
+            return
+        monitor_loss = logs.get("monitor_loss")
+        try:
+            if monitor_loss is None:
+                scheduler.step()
+            else:
+                scheduler.step(monitor_loss)
+        except TypeError:
+            scheduler.step()
+
     def fit(self, X, y=None):
         X = self._check_input(X)
         self._build_optimizer()
+        self._resolve_lr_scheduler()
         self.train(True)
         cfg = self.training_config_
 
@@ -254,6 +284,7 @@ class Sequential(BaseEstimator):
                 evaluate_val_loss=lambda Xt, yt: self._evaluate_loss(Xt, yt, loss_fn, classes=classes),
                 snapshot_state=self._snapshot_layers,
                 restore_state=self._restore_layers,
+                on_epoch_end=self._on_epoch_end,
             )
             self.loss_ = result["loss"]
             self.val_loss_ = result["val_loss"]
@@ -302,6 +333,7 @@ class Sequential(BaseEstimator):
                 evaluate_val_loss=lambda Xt, yt: self._evaluate_loss(Xt, yt, loss_fn),
                 snapshot_state=self._snapshot_layers,
                 restore_state=self._restore_layers,
+                on_epoch_end=self._on_epoch_end,
             )
             self.loss_ = result["loss"]
             self.val_loss_ = result["val_loss"]
@@ -311,6 +343,19 @@ class Sequential(BaseEstimator):
             return self
 
         raise ValueError("task must be 'classification' or 'regression'")
+
+    def _on_epoch_end(self, epoch, logs):
+        scheduler = self.lr_scheduler
+        if scheduler is None:
+            return
+        monitor_loss = logs.get("monitor_loss")
+        try:
+            if monitor_loss is None:
+                scheduler.step()
+            else:
+                scheduler.step(monitor_loss)
+        except TypeError:
+            scheduler.step()
 
     def predict_proba(self, X):
         if self.task != "classification":

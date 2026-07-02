@@ -21,11 +21,15 @@ from .jacobian import finite_difference_jacobian, geometric_jacobian, planar_2r_
 from .trajectory import (
     cubic_time_scaling,
     joint_trajectory,
+    plan_joint_path,
+    plan_joint_trajectory,
+    smooth_joint_path,
     quintic_time_scaling,
     sample_joint_trajectory,
     sample_joint_trajectory_segments,
 )
 from .model import RobotModel
+from .state_estimation import PlanarPoseEKF, wrap_angle
 from .urdf_parser import URDFJoint, URDFLink, parse_urdf, urdf_to_dh_chain
 from .visualizer import plot_chain
 
@@ -43,14 +47,18 @@ __all__ = [
     "invert_transform",
     "inverse_kinematics",
     "joint_trajectory",
+    "plan_joint_path",
+    "plan_joint_trajectory",
     "matrix_to_euler",
     "matrix_to_quaternion",
     "planar_2r_jacobian",
     "plot_chain",
     "quaternion_to_matrix",
     "quintic_time_scaling",
+    "smooth_joint_path",
     "parse_urdf",
     "RobotModel",
+    "PlanarPoseEKF",
     "rpy_to_matrix",
     "rot_x",
     "rot_y",
@@ -61,6 +69,7 @@ __all__ = [
     "URDFLink",
     "skew",
     "transform_points",
+    "wrap_angle",
     "urdf_to_dh_chain",
     "unskew",
 ]

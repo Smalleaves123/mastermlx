@@ -163,6 +163,11 @@ from mastermlx import entropy, pairwise_distance, silhouette
 - `quintic_time_scaling`
 - `joint_trajectory`
 - `plot_chain`
+- `plan_joint_path`
+- `smooth_joint_path`
+- `plan_joint_trajectory`
+- `PlanarPoseEKF`
+- state-estimation helpers for odometry, position, and heading fusion
 
 ### `estimation`
 

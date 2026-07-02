@@ -44,6 +44,7 @@ class _BaseMLP:
         hidden_layer_sizes=(32,),
         activation="relu",
         lr=0.1,
+        lr_scheduler=None,
         n_iter=1000,
         batch_size=None,
         l2=0.0,
@@ -60,6 +61,7 @@ class _BaseMLP:
         self.hidden_layer_sizes = tuple(hidden_layer_sizes)
         self.activation = activation
         self.lr = lr
+        self.lr_scheduler = lr_scheduler
         self.n_iter = n_iter
         self.batch_size = batch_size
         self.l2 = l2
@@ -138,6 +140,20 @@ class _BaseMLP:
         else:
             self.optimizer_ = self.optimizer
 
+    def _resolve_lr_scheduler(self):
+        scheduler = self.lr_scheduler
+        if scheduler is None:
+            return None
+        if callable(scheduler) and not hasattr(scheduler, "step"):
+            scheduler = scheduler(self.optimizer_)
+            self.lr_scheduler = scheduler
+            return scheduler
+        if hasattr(scheduler, "optimizer") and getattr(scheduler, "optimizer", None) is None:
+            scheduler.optimizer = self.optimizer_  # type: ignore[attr-defined]
+            if hasattr(scheduler, "_base_lr"):
+                scheduler._base_lr = getattr(self.optimizer_, "lr", scheduler._base_lr)
+        return scheduler
+
     def num_parameters(self):
         total = 0
         for layer in self.layers_:
@@ -208,6 +224,19 @@ class _BaseMLP:
     def _restore_layers(self, snapshot):
         self.layers_ = copy.deepcopy(snapshot)
 
+    def _on_epoch_end(self, epoch, logs):
+        scheduler = self.lr_scheduler
+        if scheduler is None:
+            return
+        monitor_loss = logs.get("monitor_loss")
+        try:
+            if monitor_loss is None:
+                scheduler.step()
+            else:
+                scheduler.step(monitor_loss)
+        except TypeError:
+            scheduler.step()
+
 
 class MLPClassifier(_BaseMLP, BaseEstimator):
     """Small NumPy MLP for classification."""
@@ -226,6 +255,7 @@ class MLPClassifier(_BaseMLP, BaseEstimator):
 
         self._build_layers(X.shape[1], classes.size)
         self._build_optimizer()
+        self._resolve_lr_scheduler()
         if cfg.validation_split and cfg.validation_split > 0.0:
             X_train, X_val, y_train, y_val = train_test_split(
                 X,
@@ -265,6 +295,7 @@ class MLPClassifier(_BaseMLP, BaseEstimator):
             evaluate_val_loss=lambda Xt, yt: self._evaluate_loss(Xt, yt, loss_fn, classes=classes),
             snapshot_state=self._snapshot_layers,
             restore_state=self._restore_layers,
+                on_epoch_end=self._on_epoch_end,
         )
         self.loss_ = result["loss"]
         self.val_loss_ = result["val_loss"]
@@ -309,6 +340,7 @@ class MLPRegressor(_BaseMLP, BaseEstimator):
 
         self._build_layers(X.shape[1], 1)
         self._build_optimizer()
+        self._resolve_lr_scheduler()
         if cfg.validation_split and cfg.validation_split > 0.0:
             X_train, X_val, y_train, y_val = train_test_split(
                 X,
@@ -345,6 +377,7 @@ class MLPRegressor(_BaseMLP, BaseEstimator):
             evaluate_val_loss=lambda Xt, yt: self._evaluate_loss(Xt, yt, loss_fn),
             snapshot_state=self._snapshot_layers,
             restore_state=self._restore_layers,
+                on_epoch_end=self._on_epoch_end,
         )
         self.loss_ = result["loss"]
         self.val_loss_ = result["val_loss"]

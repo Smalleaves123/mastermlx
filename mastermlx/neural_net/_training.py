@@ -23,6 +23,7 @@ def run_supervised_training_loop(
     evaluate_val_loss=None,
     snapshot_state=None,
     restore_state=None,
+    on_epoch_end=None,
 ):
     rng = np.random.default_rng(random_state)
     loss_history = []
@@ -78,6 +79,18 @@ def run_supervised_training_loop(
                 "val_loss": None if val_loss is None else float(val_loss),
             }
         )
+
+        if on_epoch_end is not None:
+            on_epoch_end(
+                epoch=epoch + 1,
+                logs={
+                    "train_loss": float(train_loss),
+                    "val_loss": None if val_loss is None else float(val_loss),
+                    "monitor_loss": float(monitor_loss),
+                    "best_loss": float(best_loss),
+                    "best_epoch": best_epoch,
+                },
+            )
 
         if patience is not None and wait >= int(patience):
             break
