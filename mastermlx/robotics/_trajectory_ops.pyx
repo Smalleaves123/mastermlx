@@ -119,3 +119,86 @@ def sample_joint_trajectory_segments(object q_waypoints, object durations, int n
         seg += 1
 
     return t_out, pos_out, vel_out, acc_out
+
+
+def smooth_joint_path(object reference_waypoints, double smoothness=1.0, bint fixed_start=True, bint fixed_goal=True):
+    """Smooth a joint-space path with a tridiagonal solver."""
+
+    cdef np.ndarray[DTYPE_t, ndim=2] ref = np.asarray(reference_waypoints, dtype=np.float64)
+    cdef Py_ssize_t n_waypoints, n_joints, start_idx, end_idx, m
+    cdef np.ndarray[DTYPE_t, ndim=2] smoothed
+    cdef np.ndarray[DTYPE_t, ndim=2] rhs
+    cdef np.ndarray[DTYPE_t, ndim=1] main, upper, lower, cprime
+    cdef Py_ssize_t i, j
+    cdef double factor, diag_val, denom
+
+    if ref.ndim != 2:
+        raise ValueError("reference_waypoints must have shape (n_waypoints, n_joints)")
+    n_waypoints = ref.shape[0]
+    n_joints = ref.shape[1]
+    if n_waypoints < 2:
+        raise ValueError("reference_waypoints must contain at least two waypoints")
+    if smoothness < 0.0:
+        raise ValueError("smoothness must be non-negative")
+
+    smoothed = ref.copy()
+    if n_waypoints == 2 or smoothness == 0.0:
+        if fixed_start:
+            smoothed[0, :] = ref[0, :]
+        if fixed_goal:
+            smoothed[n_waypoints - 1, :] = ref[n_waypoints - 1, :]
+        return smoothed
+
+    start_idx = 1 if fixed_start else 0
+    end_idx = n_waypoints - 1 if fixed_goal else n_waypoints
+    m = end_idx - start_idx
+    if m <= 0:
+        return smoothed
+
+    rhs = ref[start_idx:end_idx, :].copy()
+    if fixed_start:
+        rhs[0, :] += smoothness * ref[0, :]
+    if fixed_goal:
+        rhs[m - 1, :] += smoothness * ref[n_waypoints - 1, :]
+
+    main = np.empty(m, dtype=np.float64)
+    upper = np.empty(m - 1 if m > 1 else 1, dtype=np.float64)
+    lower = np.empty(m - 1 if m > 1 else 1, dtype=np.float64)
+    for i in range(m):
+        if m == 1:
+            diag_val = 2.0
+        elif i == 0 or i == m - 1:
+            diag_val = 1.0
+        else:
+            diag_val = 2.0
+        main[i] = 1.0 + smoothness * diag_val
+    if m > 1:
+        upper[:m - 1] = -smoothness
+        lower[:m - 1] = -smoothness
+        cprime = np.empty(m - 1, dtype=np.float64)
+        cprime[0] = upper[0] / main[0]
+        for j in range(n_joints):
+            rhs[0, j] = rhs[0, j] / main[0]
+        for i in range(1, m - 1):
+            factor = lower[i - 1]
+            denom = main[i] - factor * cprime[i - 1]
+            cprime[i] = upper[i] / denom
+            for j in range(n_joints):
+                rhs[i, j] = (rhs[i, j] - factor * rhs[i - 1, j]) / denom
+        factor = lower[m - 2]
+        denom = main[m - 1] - factor * cprime[m - 2]
+        for j in range(n_joints):
+            rhs[m - 1, j] = (rhs[m - 1, j] - factor * rhs[m - 2, j]) / denom
+        for i in range(m - 2, -1, -1):
+            for j in range(n_joints):
+                rhs[i, j] = rhs[i, j] - cprime[i] * rhs[i + 1, j]
+    else:
+        for j in range(n_joints):
+            rhs[0, j] = rhs[0, j] / main[0]
+
+    smoothed[start_idx:end_idx, :] = rhs
+    if fixed_start:
+        smoothed[0, :] = ref[0, :]
+    if fixed_goal:
+        smoothed[n_waypoints - 1, :] = ref[n_waypoints - 1, :]
+    return smoothed

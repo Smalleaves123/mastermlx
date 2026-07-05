@@ -5,9 +5,11 @@ import numpy as np
 try:
     from ._trajectory_ops import sample_joint_trajectory as _cy_sample_joint_trajectory
     from ._trajectory_ops import sample_joint_trajectory_segments as _cy_sample_joint_trajectory_segments
+    from ._trajectory_ops import smooth_joint_path as _cy_smooth_joint_path
 except ImportError:  # pragma: no cover - fallback when Cython extensions are unavailable
     _cy_sample_joint_trajectory = None
     _cy_sample_joint_trajectory_segments = None
+    _cy_smooth_joint_path = None
 
 
 def _normalize_time(t, duration):
@@ -150,6 +152,14 @@ def smooth_joint_path(reference_waypoints, smoothness=1.0, fixed_start=True, fix
     The optimizer keeps the start and goal fixed by default and solves a
     tridiagonal least-squares system for the intermediate waypoints.
     """
+
+    if _cy_smooth_joint_path is not None:
+        return _cy_smooth_joint_path(
+            reference_waypoints,
+            float(smoothness),
+            bool(fixed_start),
+            bool(fixed_goal),
+        )
 
     reference_waypoints = np.asarray(reference_waypoints, dtype=float)
     if reference_waypoints.ndim != 2:
