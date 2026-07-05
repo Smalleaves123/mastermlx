@@ -1,14 +1,28 @@
 # Benchmark Plan
 
-This document defines the first benchmark datasets, the models they should be used with, and the structure for evaluation scripts.
+This document defines the first benchmark surfaces for `mastermlx`, the datasets or signals they should use, and the structure for evaluation scripts.
+
+The goal is not to build a giant benchmark suite on day one. The goal is to make the current product surfaces easy to demonstrate, easy to compare, and easy to extend.
 
 ## Principles
 
-- Keep core implementations in `numpy` and `matplotlib`
-- Use `scikit-learn` only for dataset loading and baseline comparison
-- Prefer a small, fast dataset first, then scale to larger ones
-- Record both score and runtime when possible
-- Use the same split, seed, and metrics for fair comparison
+- Keep the core implementation in `numpy` and the project itself
+- Use `scikit-learn` only for baselines or well-known dataset helpers when that makes comparison clearer
+- Prefer a small, fast dataset first, then scale to larger ones only when the benchmark story needs it
+- Record runtime and the task-specific quality metric together when possible
+- Use the same split, seed, and metric definition for fair comparison
+- Keep scripts deterministic and runnable from the repository root
+
+## Current benchmark surfaces
+
+The first benchmark set should cover the parts of the library that are easiest to explain to users:
+
+1. Core estimators
+2. Compiled acceleration
+3. Tabular workflows
+4. Signal-processing workflows
+
+This gives a more complete story than model-only benchmarks alone.
 
 ## Datasets
 
@@ -79,6 +93,19 @@ Use these for:
 - n-gram models
 - later NLP demos
 
+### 7. Synthetic business workflows
+
+- synthetic tabular classification and regression data
+- synthetic audio-like waveforms
+- synthetic event streams
+
+Use these for:
+- `TabularExperiment`
+- `compare_tabular_models`
+- `SignalPipeline`
+- `StreamingFeatureExtractor`
+- `CUSUMDetector`
+
 ## Model to dataset map
 
 | Model | Primary datasets | Notes |
@@ -133,7 +160,9 @@ scripts/
 ├── benchmark_regression.py
 ├── benchmark_clustering.py
 ├── benchmark_dimensionality_reduction.py
-└── benchmark_sequence_models.py
+├── benchmark_sequence_models.py
+├── benchmark_tabular.py
+└── benchmark_signal.py
 ```
 
 Each script should follow the same flow:
@@ -153,6 +182,8 @@ Each benchmark run should produce:
 - a small table of metrics
 - one or more figures
 - a plain-text summary
+
+For the current repository, plain-text summaries are enough for the first pass. CSV or JSON export can be added later once the benchmark set stabilizes.
 
 Example files:
 
@@ -175,4 +206,16 @@ Start with these because they are fast and high value:
 5. `diabetes` with linear regression
 6. `make_blobs` with GMM
 7. synthetic sequences with HMM
+8. synthetic tabular classification with `TabularExperiment`
+9. synthetic waveform and event-stream checks with `SignalPipeline` and `CUSUMDetector`
 
+## Current scripts
+
+The repository already contains the first executable scripts for these surfaces:
+
+- [`benchmarks/bench_models.py`](../benchmarks/bench_models.py)
+- [`benchmarks/bench_accel.py`](../benchmarks/bench_accel.py)
+- [`benchmarks/bench_tabular.py`](../benchmarks/bench_tabular.py)
+- [`benchmarks/bench_signal.py`](../benchmarks/bench_signal.py)
+
+These scripts are intentionally lightweight so they can be used during development without becoming a maintenance burden.

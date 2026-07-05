@@ -27,6 +27,7 @@ development model.
   - packed forward kinematics
   - packed geometric Jacobians
   - inverse-kinematics helper packing
+  - trajectory sampling and joint-path smoothing
 
 ## Next priority batches
 
@@ -106,4 +107,3 @@ Suggested kernels:
   - unit tests
   - a small benchmark
   - a changelog entry
-

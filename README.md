@@ -57,6 +57,20 @@ print(mlx.entropy(np.array([0.2, 0.3, 0.5])))
 - RL and bandits: Q-learning, DQN, REINFORCE, UCB, Thompson sampling, and more
 - Math tools: metrics, kernels, distributions, statistical tests, calibration, outlier detection, and time-series helpers
 
+## Benchmarks
+
+The repository includes lightweight benchmark scripts for the main product surfaces:
+
+- `benchmarks/bench_models.py` compares core estimators against scikit-learn baselines
+- `benchmarks/bench_accel.py` measures the compiled acceleration layer against NumPy fallbacks
+- `benchmarks/bench_tabular.py` exercises the higher-level tabular workflow
+- `benchmarks/bench_signal.py` exercises the signal-processing pipeline and streaming helpers
+
+For the benchmark design, dataset choices, and expected output format, see:
+
+- [`docs/benchmark_plan.md`](docs/benchmark_plan.md)
+- [`benchmarks/README.md`](benchmarks/README.md)
+
 ## Acceleration
 
 The library includes optional compiled helpers for:

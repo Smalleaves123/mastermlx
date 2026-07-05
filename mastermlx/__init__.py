@@ -20,6 +20,7 @@ from .rl import *  # noqa: F401,F403
 from .selection import *  # noqa: F401,F403
 from .semi_supervised import *  # noqa: F401,F403
 from .signal import *  # noqa: F401,F403
+from .tabular import *  # noqa: F401,F403
 from .robotics import *  # noqa: F401,F403
 from .svm import *  # noqa: F401,F403
 from .trees import *  # noqa: F401,F403
@@ -53,6 +54,7 @@ from . import selection as _selection
 from . import semi_supervised as _semi_supervised
 from . import preprocessing as _preprocessing
 from . import signal as _signal
+from . import tabular as _tabular
 from . import svm as _svm
 from . import trees as _trees
 from . import variational as _variational
@@ -86,6 +88,7 @@ _extend_unique(__all__, _preprocessing.__all__)
 _extend_unique(__all__, _selection.__all__)
 _extend_unique(__all__, _semi_supervised.__all__)
 _extend_unique(__all__, _signal.__all__)
+_extend_unique(__all__, _tabular.__all__)
 _extend_unique(__all__, _robotics.__all__)
 _extend_unique(__all__, _svm.__all__)
 _extend_unique(__all__, _trees.__all__)

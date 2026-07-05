@@ -42,6 +42,8 @@ def _resolve_scorers(scoring):
 
 
 def _split_cv(splitter, X, y, groups=None):
+    if isinstance(splitter, int):
+        splitter = KFold(n_splits=int(splitter), shuffle=True, random_state=0)
     try:
         return splitter.split(X, y, groups=groups)
     except TypeError:

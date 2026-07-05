@@ -163,12 +163,17 @@ class Sequential(BaseEstimator):
             return None
         if callable(scheduler) and not hasattr(scheduler, "step"):
             scheduler = scheduler(self.optimizer_)
-            self.lr_scheduler = scheduler
-            return scheduler
-        if hasattr(scheduler, "optimizer") and getattr(scheduler, "optimizer", None) is None:
+        if hasattr(scheduler, "optimizer"):
             scheduler.optimizer = self.optimizer_  # type: ignore[attr-defined]
             if hasattr(scheduler, "_base_lr"):
                 scheduler._base_lr = getattr(self.optimizer_, "lr", scheduler._base_lr)
+        if hasattr(scheduler, "_epoch"):
+            scheduler._epoch = 0  # type: ignore[attr-defined]
+        if hasattr(scheduler, "_wait"):
+            scheduler._wait = 0  # type: ignore[attr-defined]
+        if hasattr(scheduler, "best"):
+            scheduler.best = np.inf if getattr(scheduler, "mode", "min") == "min" else -np.inf  # type: ignore[attr-defined]
+        self.lr_scheduler = scheduler
         return scheduler
 
     def _forward(self, X):
