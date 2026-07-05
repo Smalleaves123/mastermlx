@@ -2,8 +2,10 @@ import numpy as np
 
 from mastermlx.signal import (
     bandpass_filter,
+    bandstop_filter,
     de_emphasis,
     hz_to_mel,
+    notch_filter,
     normalize_signal,
     mel_filter_bank,
     mel_spectrogram,
@@ -78,6 +80,24 @@ def test_signal_bandpass_filter_keeps_band_energy_reasonably():
     assert y.shape == x.shape
     assert rms_energy(y) > 0.2
     assert abs(np.corrcoef(y, low)[0, 1]) > 0.5
+
+
+def test_signal_notch_and_bandstop_filters_suppress_target_tones():
+    sr = 1000.0
+    t = np.arange(0, 1.0, 1.0 / sr)
+    hum = np.sin(2.0 * np.pi * 50.0 * t)
+    tone = 0.25 * np.sin(2.0 * np.pi * 150.0 * t)
+    x = hum + tone
+
+    y_notch = notch_filter(x, frequency=50.0, bandwidth=10.0, sample_rate=sr, num_taps=101)
+    y_bandstop = bandstop_filter(x, low_cutoff=45.0, high_cutoff=55.0, sample_rate=sr, num_taps=101)
+
+    assert y_notch.shape == x.shape
+    assert y_bandstop.shape == x.shape
+    assert abs(np.corrcoef(y_notch, hum)[0, 1]) < abs(np.corrcoef(x, hum)[0, 1])
+    assert abs(np.corrcoef(y_bandstop, hum)[0, 1]) < abs(np.corrcoef(x, hum)[0, 1])
+    assert abs(np.corrcoef(y_notch, tone)[0, 1]) > 0.2
+    assert abs(np.corrcoef(y_bandstop, tone)[0, 1]) > 0.2
 
 
 def test_mel_frequency_helpers_are_invertible():

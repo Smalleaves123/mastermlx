@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import numpy as np
 
-from ..base import BaseEstimator
-from ..utils.metrics import mean_squared_error
+from ..base import BaseEstimator, BaseTransformer
+from ..utils.estimator import clone
+from ..utils.metrics import mean_squared_error, r2_score
 
 try:
     from ._time_series_ops import (
@@ -19,6 +20,68 @@ except ImportError:  # pragma: no cover - fallback when Cython extensions are un
     _cy_cusum_change_points_1d = None
     _cy_exponential_smoothing_1d = None
     _cy_rolling_mean_1d = None
+
+
+def _as_1d_series(x, name="x"):
+    x = np.asarray(x, dtype=float)
+    if x.ndim != 1 or x.size == 0:
+        raise ValueError(f"{name} must be a non-empty 1D array")
+    return x
+
+
+def _normalize_steps(steps, name="steps"):
+    if steps is None:
+        return []
+    if isinstance(steps, (list, tuple)):
+        if not steps:
+            raise ValueError(f"{name} must be non-empty")
+        first = steps[0]
+        if isinstance(first, tuple) and len(first) == 2:
+            return list(steps)
+        return [(f"{name[:-1] if name.endswith('s') else name}_{idx}", step) for idx, step in enumerate(steps)]
+    if hasattr(steps, "fit") and hasattr(steps, "transform"):
+        return [(name[:-1] if name.endswith("s") else name, steps)]
+    raise TypeError(f"{name} must be None, a transformer, a pipeline, or a list of steps")
+
+
+def lagged_matrix(x, lags=1, horizon=1):
+    x = _as_1d_series(x)
+    lags = int(lags)
+    horizon = int(horizon)
+    if lags < 1:
+        raise ValueError("lags must be at least 1")
+    if horizon < 1:
+        raise ValueError("horizon must be at least 1")
+    n_samples = x.size - lags - horizon + 1
+    if n_samples < 1:
+        raise ValueError("x is too short for the requested lags and horizon")
+    X = np.empty((n_samples, lags), dtype=float)
+    y = np.empty(n_samples, dtype=float)
+    for i in range(n_samples):
+        start = i
+        stop = i + lags
+        X[i] = x[start:stop]
+        y[i] = x[stop + horizon - 1]
+    return X, y
+
+
+class LaggedTimeSeriesTransformer(BaseTransformer):
+    """Convert a 1D series into a supervised lag matrix."""
+
+    def __init__(self, lags=1, horizon=1):
+        self.lags = int(lags)
+        self.horizon = int(horizon)
+
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, X):
+        X, _ = lagged_matrix(X, lags=self.lags, horizon=self.horizon)
+        return X
+
+    def transform_target(self, X):
+        _, y = lagged_matrix(X, lags=self.lags, horizon=self.horizon)
+        return y
 
 
 def difference(x, periods=1, order=1):
@@ -288,3 +351,346 @@ class ARModel(BaseEstimator):
         pred = self.predict(x)
         target = x[self.order :]
         return -mean_squared_error(target, pred)
+
+
+class TimeSeriesPipeline(BaseEstimator):
+    """Fit a model on lagged time-series windows with optional preprocessing."""
+
+    def __init__(self, model, lags=12, horizon=1, preprocessing=None):
+        self.model = model
+        self.lags = int(lags)
+        self.horizon = int(horizon)
+        self.preprocessing = preprocessing
+        self.pipeline_ = None
+        self.model_ = None
+        self.feature_transformer_ = None
+        self.history_ = None
+        self.training_features_ = None
+        self.training_target_ = None
+        self.mode_ = None
+
+    def _resolve_preprocessing(self):
+        return _normalize_steps(self.preprocessing, name="preprocessing")
+
+    def _fit_transform_preprocessing(self, X, y=None):
+        steps = self._resolve_preprocessing()
+        Xt = np.asarray(X, dtype=float)
+        fitted_steps = []
+        for name, step in steps:
+            obj = clone(step)
+            if not hasattr(obj, "fit") or not hasattr(obj, "transform"):
+                raise TypeError(f"Preprocessing step '{name}' must define fit and transform")
+            Xt = obj.fit(Xt, y).transform(Xt)
+            fitted_steps.append((name, obj))
+        self.pipeline_ = fitted_steps
+        return Xt
+
+    def _transform_preprocessing(self, X):
+        Xt = np.asarray(X, dtype=float)
+        if self.pipeline_ is None:
+            return Xt
+        for _, step in self.pipeline_:
+            Xt = step.transform(Xt)
+        return Xt
+
+    def _prepare_supervised(self, X, y=None):
+        if y is not None:
+            X = np.asarray(X, dtype=float)
+            y = np.asarray(y, dtype=float)
+            if X.ndim != 2:
+                raise ValueError("When y is provided, X must be a 2D feature matrix")
+            if X.shape[0] != y.shape[0]:
+                raise ValueError("X and y must contain the same number of samples")
+            return X, y, None
+
+        series = _as_1d_series(X)
+        features, target = lagged_matrix(series, lags=self.lags, horizon=self.horizon)
+        return features, target, series
+
+    def fit(self, X, y=None):
+        features, target, history = self._prepare_supervised(X, y)
+        self.history_ = history
+        self.feature_transformer_ = LaggedTimeSeriesTransformer(lags=self.lags, horizon=self.horizon) if y is None else None
+        Xt = self._fit_transform_preprocessing(features, target)
+        self.model_ = clone(self.model)
+        self.model_.fit(Xt, target)
+        self.training_features_ = Xt
+        self.training_target_ = target
+        self.mode_ = "series" if y is None else "supervised"
+        return self
+
+    def _require_fitted(self):
+        if self.model_ is None:
+            raise RuntimeError("TimeSeriesPipeline has not been fit yet")
+
+    def _features_from_input(self, X):
+        if np.asarray(X).ndim == 2:
+            return np.asarray(X, dtype=float)
+        series = _as_1d_series(X)
+        return lagged_matrix(series, lags=self.lags, horizon=self.horizon)[0]
+
+    def predict(self, X=None):
+        self._require_fitted()
+        if X is None:
+            if self.history_ is None:
+                raise ValueError("X must be provided when the pipeline was fit in supervised mode")
+            X = self.history_
+        features = self._features_from_input(X)
+        Xt = self._transform_preprocessing(features)
+        return self.model_.predict(Xt)
+
+    def forecast(self, steps=1, history=None):
+        self._require_fitted()
+        if steps < 1:
+            raise ValueError("steps must be at least 1")
+        if history is None:
+            if self.history_ is None:
+                raise ValueError("history must be provided when the pipeline was fit in supervised mode")
+            history = self.history_
+        values = list(_as_1d_series(history))
+        if len(values) < self.lags:
+            raise ValueError("history must contain at least lags values")
+        outputs = []
+        for _ in range(int(steps)):
+            window = np.asarray(values[-self.lags :], dtype=float).reshape(1, -1)
+            Xt = self._transform_preprocessing(window)
+            pred = float(np.asarray(self.model_.predict(Xt)).ravel()[0])
+            outputs.append(pred)
+            values.append(pred)
+        return np.asarray(outputs, dtype=float)
+
+    def score(self, X, y=None):
+        self._require_fitted()
+        if y is None:
+            if np.asarray(X).ndim == 1:
+                _, target = lagged_matrix(X, lags=self.lags, horizon=self.horizon)
+                pred = self.predict(X)
+                return -mean_squared_error(target, pred)
+            raise ValueError("y must be provided when scoring on precomputed features")
+        features = self._features_from_input(X)
+        Xt = self._transform_preprocessing(features)
+        if hasattr(self.model_, "score"):
+            return self.model_.score(Xt, y)
+        pred = self.model_.predict(Xt)
+        return -mean_squared_error(y, pred)
+
+
+def _grid(params):
+    if not isinstance(params, dict) or not params:
+        raise ValueError("param_grid must be a non-empty dict")
+    keys = list(params)
+    vals = []
+    for key in keys:
+        cur = list(params[key])
+        if not cur:
+            raise ValueError(f"Parameter grid for '{key}' must be non-empty")
+        vals.append(cur)
+    out = [{}]
+    for key, cur in zip(keys, vals):
+        nxt = []
+        for base in out:
+            for val in cur:
+                item = dict(base)
+                item[key] = val
+                nxt.append(item)
+        out = nxt
+    return out
+
+
+def _sample(params, n_iter, seed=None):
+    if not isinstance(params, dict) or not params:
+        raise ValueError("param_distributions must be a non-empty dict")
+    rng = np.random.default_rng(seed)
+    keys = list(params)
+    out = []
+    for _ in range(int(n_iter)):
+        item = {}
+        for key in keys:
+            cur = list(params[key])
+            if not cur:
+                raise ValueError(f"Parameter distribution for '{key}' must be non-empty")
+            item[key] = cur[int(rng.integers(0, len(cur)))]
+        out.append(item)
+    return out
+
+
+def _score(y, p, scoring):
+    y = np.asarray(y, dtype=float).ravel()
+    p = np.asarray(p, dtype=float).ravel()
+    if y.shape[0] != p.shape[0]:
+        raise ValueError("y and predictions must have the same length")
+    if scoring is None or scoring == "neg_mean_squared_error":
+        return -mean_squared_error(y, p)
+    if scoring == "r2":
+        return r2_score(y, p)
+    if callable(scoring):
+        return float(scoring(y, p))
+    raise ValueError("scoring must be None, 'neg_mean_squared_error', 'r2', or a callable")
+
+
+class TimeSeriesExperiment(BaseEstimator):
+    """Fit, tune, and score a forecasting model on ordered series splits."""
+
+    def __init__(
+        self,
+        model,
+        lags=12,
+        horizon=1,
+        preprocessing=None,
+        search="grid",
+        param_grid=None,
+        param_distributions=None,
+        n_iter=10,
+        cv=None,
+        scoring="neg_mean_squared_error",
+        refit=True,
+        random_state=None,
+    ):
+        self.model = model
+        self.lags = int(lags)
+        self.horizon = int(horizon)
+        self.preprocessing = preprocessing
+        self.search = search
+        self.param_grid = param_grid
+        self.param_distributions = param_distributions
+        self.n_iter = int(n_iter)
+        self.cv = cv
+        self.scoring = scoring
+        self.refit = bool(refit)
+        self.random_state = random_state
+        self.pipeline_ = None
+        self.best_estimator_ = None
+        self.best_params_ = None
+        self.best_score_ = None
+        self.cv_results_ = None
+        self.history_ = None
+
+    def _split(self, x):
+        if self.cv is None:
+            from ..data.cv import TimeSeriesSplit
+
+            cv = TimeSeriesSplit(n_splits=5)
+        elif isinstance(self.cv, int):
+            from ..data.cv import TimeSeriesSplit
+
+            cv = TimeSeriesSplit(n_splits=int(self.cv))
+        else:
+            cv = self.cv
+        try:
+            return list(cv.split(x))
+        except TypeError:
+            return list(cv.split(x, x))
+
+    def _cands(self):
+        if self.search is None:
+            return [{}]
+        if self.search == "grid":
+            return _grid(self.param_grid)
+        if self.search == "random":
+            return _sample(self.param_distributions, self.n_iter, seed=self.random_state)
+        raise ValueError("search must be one of: None, 'grid', 'random'")
+
+    def _make_pipe(self, params=None):
+        pipe = TimeSeriesPipeline(
+            model=clone(self.model),
+            lags=self.lags,
+            horizon=self.horizon,
+            preprocessing=self.preprocessing,
+        )
+        if params:
+            pipe.set_params(**params)
+        return pipe
+
+    def fit(self, X, y=None):
+        x = _as_1d_series(X)
+        cand = self._cands()
+        splits = self._split(x)
+        rows = []
+        best = None
+        best_s = -np.inf
+
+        for prm in cand:
+            scores = []
+            for tr, te in splits:
+                p = self._make_pipe(prm)
+                hist = x[tr]
+                test = x[te]
+                p.fit(hist)
+                pred = p.forecast(steps=test.size, history=hist)
+                scores.append(_score(test, pred, self.scoring))
+            s = float(np.mean(scores))
+            row = {"params": prm, "mean_test_score": s, "test_scores": np.asarray(scores, dtype=float)}
+            rows.append(row)
+            if s > best_s:
+                best_s = s
+                best = prm
+
+        self.cv_results_ = rows
+        self.best_params_ = best
+        self.best_score_ = best_s
+        if self.refit:
+            self.best_estimator_ = self._make_pipe(best)
+            self.best_estimator_.fit(x)
+            self.pipeline_ = self.best_estimator_
+        self.history_ = x
+        return self
+
+    def _need(self):
+        if self.best_estimator_ is None:
+            raise RuntimeError("TimeSeriesExperiment has not been fit yet")
+
+    def forecast(self, steps=1, history=None):
+        self._need()
+        return self.best_estimator_.forecast(steps=steps, history=history)
+
+    def predict(self, X=None):
+        self._need()
+        if X is None:
+            if self.history_ is None:
+                raise RuntimeError("No training history available")
+            X = self.history_
+        return self.best_estimator_.predict(X)
+
+    def score(self, X, y=None):
+        self._need()
+        if y is None:
+            hist = self.history_
+            if hist is None:
+                raise RuntimeError("No training history available")
+            tgt = hist[self.lags :]
+            pred = self.best_estimator_.predict(hist)
+            return _score(tgt, pred, self.scoring)
+        hist = _as_1d_series(X)
+        tgt = np.asarray(y, dtype=float).ravel()
+        pred = self.forecast(steps=tgt.size, history=hist)
+        return _score(tgt, pred, self.scoring)
+
+    def summary(self):
+        self._need()
+        return {
+            "lags": self.lags,
+            "horizon": self.horizon,
+            "search": self.search,
+            "best_params": self.best_params_,
+            "best_score": self.best_score_,
+            "model": self.model.__class__.__name__,
+            "has_preprocessing": self.preprocessing is not None,
+        }
+
+
+__all__ = [
+    "ARModel",
+    "LaggedTimeSeriesTransformer",
+    "TimeSeriesExperiment",
+    "TimeSeriesPipeline",
+    "autocorrelation",
+    "autocorrelation_function",
+    "cusum_change_points",
+    "difference",
+    "dtw_distance",
+    "dtw_path",
+    "exponential_smoothing",
+    "lagged_matrix",
+    "partial_autocorrelation",
+    "rolling_mean",
+]

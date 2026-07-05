@@ -131,17 +131,40 @@ def istft(spectrogram, frame_length=256, hop_length=None, window="hann", length=
     else:
         raise ValueError("window must be one of: hann, hamming, None")
 
-    n_frames = spec.shape[0]
+    frames = np.fft.irfft(spec, n=frame_length, axis=1)
+    x = overlap_add(frames, hop_length=hop_length, window=win)
+    if length is not None:
+        x = x[: int(length)]
+    return x
+
+
+def overlap_add(frames, hop_length, window=None, length=None):
+    frames = np.asarray(frames, dtype=float)
+    if frames.ndim != 2:
+        raise ValueError("frames must be a 2D array")
+    hop_length = int(hop_length)
+    if hop_length < 1:
+        raise ValueError("hop_length must be at least 1")
+    if window is not None:
+        window = np.asarray(window, dtype=float)
+        if window.ndim != 1 or window.size != frames.shape[1]:
+            raise ValueError("window must be a 1D array matching frame length")
+        frames = frames * window[None, :]
+
+    n_frames, frame_length = frames.shape
+    if n_frames == 0:
+        return np.empty(0, dtype=float)
     n_samples = frame_length + (n_frames - 1) * hop_length
     x = np.zeros(n_samples, dtype=float)
     norm = np.zeros(n_samples, dtype=float)
-
-    frames = np.fft.irfft(spec, n=frame_length, axis=1)
+    if window is None:
+        win = np.ones(frame_length, dtype=float)
+    else:
+        win = np.asarray(window, dtype=float)
     for i in range(n_frames):
         start = i * hop_length
-        x[start : start + frame_length] += frames[i] * win
+        x[start : start + frame_length] += frames[i]
         norm[start : start + frame_length] += win**2
-
     mask = norm > 0
     x[mask] /= norm[mask]
     if length is not None:

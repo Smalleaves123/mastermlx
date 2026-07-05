@@ -75,6 +75,69 @@ def spectral_power(x, frame_length=None, hop_length=None, window="hann", n_fft=N
     return np.abs(spec) ** 2
 
 
+def _prepare_power_spectrum(x, frame_length=None, hop_length=None, window="hann", n_fft=None):
+    power = spectral_power(x, frame_length=frame_length, hop_length=hop_length, window=window, n_fft=n_fft)
+    if power.ndim != 2:
+        power = np.asarray(power, dtype=float).reshape(1, -1)
+    return power
+
+
+def spectral_flatness(x, frame_length=None, hop_length=None, window="hann", n_fft=None, eps=1e-12):
+    power = _prepare_power_spectrum(x, frame_length=frame_length, hop_length=hop_length, window=window, n_fft=n_fft)
+    geo_mean = np.exp(np.mean(np.log(power + float(eps)), axis=1))
+    arith_mean = np.mean(power, axis=1) + float(eps)
+    flatness = geo_mean / arith_mean
+    return flatness[0] if flatness.shape[0] == 1 else flatness
+
+
+def spectral_rolloff(
+    x,
+    sample_rate=1.0,
+    roll_percent=0.85,
+    frame_length=None,
+    hop_length=None,
+    window="hann",
+    n_fft=None,
+):
+    power = _prepare_power_spectrum(x, frame_length=frame_length, hop_length=hop_length, window=window, n_fft=n_fft)
+    if not 0.0 < float(roll_percent) < 1.0:
+        raise ValueError("roll_percent must be in (0, 1)")
+    freqs = np.fft.rfftfreq(power.shape[1] * 2 - 2, d=1.0 / float(sample_rate))
+    cumulative = np.cumsum(power, axis=1)
+    total = cumulative[:, -1:] + 1e-12
+    threshold = float(roll_percent) * total
+    idx = np.argmax(cumulative >= threshold, axis=1)
+    rolloff = freqs[idx]
+    return rolloff[0] if rolloff.shape[0] == 1 else rolloff
+
+
+def log_mel_spectrogram(
+    x,
+    sample_rate,
+    frame_length=256,
+    hop_length=None,
+    n_fft=None,
+    n_mels=26,
+    fmin=0.0,
+    fmax=None,
+    window="hann",
+    eps=1e-12,
+):
+    mel = mel_spectrogram(
+        x,
+        sample_rate=sample_rate,
+        frame_length=frame_length,
+        hop_length=hop_length,
+        n_fft=n_fft,
+        n_mels=n_mels,
+        fmin=fmin,
+        fmax=fmax,
+        window=window,
+        power=2.0,
+    )
+    return np.log(np.maximum(mel, float(eps)))
+
+
 def spectral_centroid(x, sample_rate=1.0, frame_length=None, hop_length=None, window="hann", n_fft=None):
     x = np.asarray(x, dtype=float)
     if x.ndim != 1 or x.size == 0:
@@ -178,4 +241,7 @@ spec_pow = spectral_power
 spec_cent = spectral_centroid
 spec_bw = spectral_bandwidth
 mel_spec = mel_spectrogram
+log_mel_spec = log_mel_spectrogram
+spec_flat = spectral_flatness
+spec_rolloff = spectral_rolloff
 zcr = zero_crossing_rate
