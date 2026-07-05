@@ -462,11 +462,12 @@ class TimeSeriesPipeline(BaseEstimator):
     def score(self, X, y=None):
         self._require_fitted()
         if y is None:
-            if np.asarray(X).ndim == 1:
-                _, target = lagged_matrix(X, lags=self.lags, horizon=self.horizon)
-                pred = self.predict(X)
-                return -mean_squared_error(target, pred)
-            raise ValueError("y must be provided when scoring on precomputed features")
+            if self.training_features_ is None or self.training_target_ is None:
+                raise RuntimeError("No training history available")
+            if hasattr(self.model_, "score"):
+                return float(self.model_.score(self.training_features_, self.training_target_))
+            pred = self.model_.predict(self.training_features_)
+            return _score(self.training_target_, pred, self.scoring)
         features = self._features_from_input(X)
         Xt = self._transform_preprocessing(features)
         if hasattr(self.model_, "score"):
@@ -654,11 +655,14 @@ class TimeSeriesExperiment(BaseEstimator):
     def score(self, X, y=None):
         self._need()
         if y is None:
-            hist = self.history_
-            if hist is None:
+            if self.history_ is None:
                 raise RuntimeError("No training history available")
-            tgt = hist[self.lags :]
-            pred = self.best_estimator_.predict(hist)
+            hist = self.history_
+            feat, tgt = lagged_matrix(hist, lags=self.lags, horizon=self.horizon)
+            Xt = self.best_estimator_._transform_preprocessing(feat)
+            if hasattr(self.best_estimator_.model_, "score"):
+                return float(self.best_estimator_.model_.score(Xt, tgt))
+            pred = self.best_estimator_.model_.predict(Xt)
             return _score(tgt, pred, self.scoring)
         hist = _as_1d_series(X)
         tgt = np.asarray(y, dtype=float).ravel()
