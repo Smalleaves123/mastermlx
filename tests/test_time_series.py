@@ -4,6 +4,7 @@ from mastermlx.math_tools import (
     ARModel,
     autocorrelation,
     autocorrelation_function,
+    backtest,
     cusum_change_points,
     compare_time_series_models,
     dtw_distance,
@@ -143,3 +144,21 @@ def test_compare_time_series_models_returns_leaderboard():
     assert out["best_name"] in {"lr_a", "lr_b"}
     assert out["best_experiment"] is not None
     assert out["best_score"] >= out["leaderboard"][-1][1]
+
+
+def test_backtest_returns_fold_scores_and_predictions():
+    x = np.arange(1.0, 21.0)
+
+    out = backtest(
+        LinearRegression(fit_intercept=False),
+        x,
+        lags=2,
+        cv=3,
+        scoring="r2",
+    )
+
+    assert out["scores"].shape == (3,)
+    assert out["true"].shape == out["pred"].shape
+    assert len(out["folds"]) == 3
+    assert out["mean"] > 0.99
+    assert np.allclose(out["true"], out["pred"], atol=1e-8)

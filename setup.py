@@ -35,6 +35,20 @@ cpp_exts = [
         extra_compile_args=["-O3"],
         language="c++",
     ),
+    Extension(
+        "mastermlx.optimize._quad_cpp",
+        ["mastermlx/optimize/_quad_cpp.cpp"],
+        include_dirs=inc_dirs,
+        extra_compile_args=["-O3"],
+        language="c++",
+    ),
+    Extension(
+        "mastermlx.graphs._grid_cpp",
+        ["mastermlx/graphs/_grid_cpp.cpp"],
+        include_dirs=inc_dirs,
+        extra_compile_args=["-O3"],
+        language="c++",
+    ),
 ]
 
 # Cython extensions (optional)

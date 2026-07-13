@@ -29,6 +29,9 @@ from .viz import *  # noqa: F401,F403
 from .vision import *  # noqa: F401,F403
 from .preprocessing import *  # noqa: F401,F403
 from .math_tools import *  # noqa: F401,F403
+from .graphs import *  # noqa: F401,F403
+from .optimize import *  # noqa: F401,F403
+from .planning import *  # noqa: F401,F403
 
 from .clustering import *  # noqa: F401,F403  # overrides BayesGMM/VGMM with clustering aliases
 from .utils import create_rng, log_sum_exp, set_seed
@@ -43,6 +46,9 @@ from . import control as _control
 from . import estimation as _estimation
 from . import linear_models as _linear_models
 from . import math_tools as _math_tools
+from . import graphs as _graphs
+from . import optimize as _optimize
+from . import planning as _planning
 from . import manifold as _manifold
 from . import neighbors as _neighbors
 from . import neural_net as _neural_net
@@ -78,6 +84,9 @@ _extend_unique(__all__, _control.__all__)
 _extend_unique(__all__, _estimation.__all__)
 _extend_unique(__all__, _linear_models.__all__)
 _extend_unique(__all__, _math_tools.__all__)
+_extend_unique(__all__, _graphs.__all__)
+_extend_unique(__all__, _optimize.__all__)
+_extend_unique(__all__, _planning.__all__)
 _extend_unique(__all__, _manifold.__all__)
 _extend_unique(__all__, _neighbors.__all__)
 _extend_unique(__all__, _neural_net.__all__)

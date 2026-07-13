@@ -758,8 +758,56 @@ def compare_time_series_models(models, X, lags=12, horizon=1, preprocessing=None
     }
 
 
+def backtest(model, X, lags=12, horizon=1, preprocessing=None, cv=None, scoring="neg_mean_squared_error"):
+    """Evaluate a forecasting model on expanding time-series folds."""
+
+    x = _as_1d_series(X)
+    exp = TimeSeriesExperiment(
+        model=model,
+        lags=lags,
+        horizon=horizon,
+        preprocessing=preprocessing,
+        search=None,
+        cv=cv,
+        scoring=scoring,
+    )
+    rows = []
+    scores = []
+    true = []
+    pred = []
+
+    for i, (tr, te) in enumerate(exp._split(x)):
+        pipe = exp._make_pipe()
+        hist = x[tr]
+        y = x[te]
+        yh = pipe.fit(hist).forecast(steps=y.size, history=hist)
+        score = _score(y, yh, scoring)
+        rows.append({
+            "fold": i,
+            "score": float(score),
+            "n_train": int(tr.size),
+            "n_test": int(te.size),
+            "true": y.copy(),
+            "pred": yh.copy(),
+        })
+        scores.append(score)
+        true.append(y)
+        pred.append(yh)
+
+    scores = np.asarray(scores, dtype=float)
+    return {
+        "scores": scores,
+        "mean": float(np.mean(scores)),
+        "std": float(np.std(scores)),
+        "true": np.concatenate(true),
+        "pred": np.concatenate(pred),
+        "folds": rows,
+    }
+
+
 __all__ = [
     "ARModel",
+    "backtest",
     "compare_time_series_models",
     "LaggedTimeSeriesTransformer",
     "TimeSeriesExperiment",
