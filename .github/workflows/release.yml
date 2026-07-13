@@ -20,6 +20,11 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    env:
+      CIBW_TEST_COMMAND: >-
+        python -c "import numpy as np, mastermlx; from mastermlx.accel
+        import pairwise_squared_euclidean; X=np.zeros((1, 2)); Y=np.ones((1,
+        2)); assert pairwise_squared_euclidean(X, Y).shape == (1, 1); print(mastermlx.__version__)"
 
     steps:
       - uses: actions/checkout@v4
