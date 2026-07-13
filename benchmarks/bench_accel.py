@@ -37,13 +37,13 @@ section("Pairwise Distance — 3000x50")
 X = np.random.randn(3000, 50).astype(np.float64)
 Y = np.random.randn(3000, 50).astype(np.float64)
 
-# NumPy (pure Python + NumPy broadcasting)
+# NumPy fallback (BLAS-friendly, no 3D broadcast buffer)
 from mastermlx.accel.backends import _numpy_pairwise_squared_euclidean as np_sq
-np_t = bench(lambda: np_sq(X, Y), name="NumPy (10 GB intermediate)")
+np_t = bench(lambda: np_sq(X, Y), name="NumPy optimized fallback")
 os.environ["MASTERML_BACKEND"] = "auto"
 from mastermlx.accel import pairwise_squared_euclidean as accel_sq
 accel_t = bench(lambda: accel_sq(X, Y), name="C++ (O3 native)")
-print(f"  -> Speedup: {np_t/accel_t:.1f}x, Memory: 10GB -> 32MB")
+print(f"  -> Compiled speedup: {np_t/accel_t:.1f}x")
 
 
 # ---------------------------------------------------------------------------
@@ -127,7 +127,7 @@ os.environ["MASTERML_BACKEND"] = "auto"
 # Summary
 # ---------------------------------------------------------------------------
 section("Acceleration Impact Summary")
-print(f"  Pairwise Distance: {np_t/accel_t:.0f}x faster, 300x less memory")
+print(f"  Pairwise Distance: {np_t/accel_t:.0f}x faster with compiled backend")
 print(f"  DBSCAN:            {np_db/accel_db:.0f}x faster")
 print(f"  KMeans:            {np_km/accel_km:.0f}x faster")
 print(f"  RandomForest:      {np_rf/accel_rf:.0f}x faster")

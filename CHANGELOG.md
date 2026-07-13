@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.13
+
+- Optimized the pure NumPy squared-Euclidean distance fallback with a BLAS-friendly matrix formulation.
+- Removed the large three-dimensional broadcast buffer from the NumPy distance path, reducing memory usage and improving fallback performance.
+- Made default time-series cross-validation adapt to short series while validating the minimum training-fold size.
+- Added regression coverage for the optimized distance fallback and short-series model comparison.
+
 ## Unreleased
 
 - Added Cython acceleration for `confusion_matrix` counting in `mastermlx.utils.metrics`.

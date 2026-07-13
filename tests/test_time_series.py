@@ -5,6 +5,7 @@ from mastermlx.math_tools import (
     autocorrelation,
     autocorrelation_function,
     cusum_change_points,
+    compare_time_series_models,
     dtw_distance,
     dtw_path,
     difference,
@@ -123,3 +124,22 @@ def test_time_series_experiment_searches_and_refits():
     assert pred.shape == (2,)
     assert np.allclose(pred, np.array([13.0, 14.0]), atol=1e-8)
     assert exp.score(x[:10], x[10:]) > 0.99
+
+
+def test_compare_time_series_models_returns_leaderboard():
+    x = np.arange(1.0, 13.0)
+
+    out = compare_time_series_models(
+        [
+            ("lr_a", LinearRegression(fit_intercept=True)),
+            ("lr_b", LinearRegression(fit_intercept=False)),
+        ],
+        x,
+        lags=2,
+        scoring="r2",
+    )
+
+    assert out["leaderboard"]
+    assert out["best_name"] in {"lr_a", "lr_b"}
+    assert out["best_experiment"] is not None
+    assert out["best_score"] >= out["leaderboard"][-1][1]

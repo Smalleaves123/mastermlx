@@ -7,6 +7,7 @@ from mastermlx.accel import (
     pairwise_manhattan_distances,
     pairwise_squared_euclidean,
 )
+from mastermlx.accel.backends import _numpy_pairwise_squared_euclidean
 
 
 def test_backend_switching_and_pairwise_ops():
@@ -28,3 +29,11 @@ def test_backend_switching_and_pairwise_ops():
         assert np.allclose(eu ** 2, sq)
     finally:
         set_backend(old)
+
+
+def test_numpy_squared_distance_fallback_matches_reference():
+    X = np.array([[0.0, 1.0, 2.0], [2.0, -1.0, 0.5]])
+    Y = np.array([[1.0, 1.0, 1.0], [-2.0, 0.0, 3.0]])
+    reference = np.sum((X[:, None, :] - Y[None, :, :]) ** 2, axis=2)
+
+    assert np.allclose(_numpy_pairwise_squared_euclidean(X, Y), reference)

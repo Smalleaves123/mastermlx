@@ -13,8 +13,13 @@ from ..config import get_backend
 # ============================================================================
 
 def _numpy_pairwise_squared_euclidean(X, Y):
-    diff = X[:, None, :] - Y[None, :, :]
-    return np.sum(diff * diff, axis=2)
+    """Compute squared Euclidean distances without a 3D broadcast buffer."""
+    # ||x-y||² = ||x||² + ||y||² - 2 x·y.  Besides allowing BLAS to handle
+    # the expensive part, this keeps memory at O(nm) instead of O(nmd).
+    x_norms = np.einsum("ij,ij->i", X, X)[:, None]
+    y_norms = np.einsum("ij,ij->i", Y, Y)[None, :]
+    distances = x_norms + y_norms - 2.0 * (X @ Y.T)
+    return np.maximum(distances, 0.0)
 
 
 def _numpy_pairwise_distances(X, Y):

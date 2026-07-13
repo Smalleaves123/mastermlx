@@ -570,7 +570,19 @@ class TimeSeriesExperiment(BaseEstimator):
         if self.cv is None:
             from ..data.cv import TimeSeriesSplit
 
-            cv = TimeSeriesSplit(n_splits=5)
+            # Keep the default expanding-window split valid for short series.
+            # Each training fold must contain enough observations to build at
+            # least one lagged sample.
+            min_train = self.lags + self.horizon
+            n_splits = 5
+            while n_splits >= 2 and x.size // (n_splits + 1) < min_train:
+                n_splits -= 1
+            if n_splits < 2:
+                raise ValueError(
+                    "Not enough samples for time-series cross-validation with "
+                    f"lags={self.lags} and horizon={self.horizon}"
+                )
+            cv = TimeSeriesSplit(n_splits=n_splits)
         elif isinstance(self.cv, int):
             from ..data.cv import TimeSeriesSplit
 
@@ -578,9 +590,16 @@ class TimeSeriesExperiment(BaseEstimator):
         else:
             cv = self.cv
         try:
-            return list(cv.split(x))
+            splits = list(cv.split(x))
         except TypeError:
-            return list(cv.split(x, x))
+            splits = list(cv.split(x, x))
+        min_train = self.lags + self.horizon
+        if any(len(train) < min_train for train, _ in splits):
+            raise ValueError(
+                "Each time-series training fold must contain at least "
+                f"lags + horizon = {min_train} samples"
+            )
+        return splits
 
     def _cands(self):
         if self.search is None:
@@ -682,8 +701,66 @@ class TimeSeriesExperiment(BaseEstimator):
         }
 
 
+def compare_time_series_models(models, X, lags=12, horizon=1, preprocessing=None, cv=None, scoring="r2"):
+    """Fit several forecasting models and return a small leaderboard."""
+
+    if not models:
+        raise ValueError("models must be non-empty")
+
+    x = _as_1d_series(X)
+    board = []
+    best_name = None
+    best_score = -np.inf
+    best_model = None
+
+    for name, model in models:
+        exp = TimeSeriesExperiment(
+            model=model,
+            lags=lags,
+            horizon=horizon,
+            preprocessing=preprocessing,
+            search=None,
+            cv=cv,
+            scoring=scoring,
+        )
+        splits = exp._split(x)
+        scores = []
+        for tr, te in splits:
+            p = exp._make_pipe()
+            hist = x[tr]
+            test = x[te]
+            p.fit(hist)
+            pred = p.forecast(steps=test.size, history=hist)
+            scores.append(_score(test, pred, scoring))
+        score = float(np.mean(scores))
+        board.append((name, score))
+        if score > best_score:
+            best_score = score
+            best_name = name
+            best_model = model
+
+    board.sort(key=lambda item: item[1], reverse=True)
+    best_exp = TimeSeriesExperiment(
+        model=best_model,
+        lags=lags,
+        horizon=horizon,
+        preprocessing=preprocessing,
+        search=None,
+        cv=cv,
+        scoring=scoring,
+    )
+    best_exp.fit(x)
+    return {
+        "leaderboard": board,
+        "best_name": best_name,
+        "best_score": best_score,
+        "best_experiment": best_exp,
+    }
+
+
 __all__ = [
     "ARModel",
+    "compare_time_series_models",
     "LaggedTimeSeriesTransformer",
     "TimeSeriesExperiment",
     "TimeSeriesPipeline",
