@@ -61,15 +61,39 @@ by default.
 ### Mathematical signal analysis
 
 ```python
-from mastermlx.signal import coherence, frequency_response, welch_psd
+from mastermlx.signal import (
+    butterworth,
+    coherence,
+    frequency_response,
+    group_delay,
+    phase_response,
+    pole_zero,
+    verify_filter,
+    welch_psd,
+)
 
 freq, psd = welch_psd(x, sample_rate=1000, nperseg=256)
 freq, coh = coherence(x, y, sample_rate=1000, nperseg=256)
-freq, response = frequency_response([1.0, -1.0], sample_rate=1000)
+b, a = butterworth(4, 100, sample_rate=1000, btype="lowpass")
+freq, response = frequency_response(b, a, sample_rate=1000)
+_, phase = phase_response(b, a, sample_rate=1000)
+_, delay = group_delay(b, a, sample_rate=1000)
+zeros, poles, gain = pole_zero(b, a)
+report = verify_filter(
+    b, a, sample_rate=1000,
+    passband=(0, 50), stopband=(200, 500), stopband_db=20,
+)
 ```
 
 These tools cover Welch power spectral density, cross-spectral coherence, and
-frequency-domain analysis of discrete-time linear systems.
+frequency-domain analysis of discrete-time linear systems. IIR coefficients use
+the standard increasing-delay convention, ``b[0] + b[1] z^-1 + ...`` and
+``a[0] + a[1] z^-1 + ...``. The system tools provide magnitude and phase
+responses, numerical group delay, pole-zero locations, unit-circle stability
+checks, causal filtering, zero-phase filtering, and Butterworth lowpass,
+highpass, bandpass, and bandstop designs. ``verify_filter`` returns the full
+response arrays together with passband/stopband measurements and stability
+metadata.
 
 ## Module Map
 

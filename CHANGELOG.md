@@ -9,6 +9,13 @@
 
 ## Unreleased
 
+- Added IIR system analysis for magnitude, phase, and group-delay responses,
+  pole-zero inspection, stability checks, causal filtering, and zero-phase
+  filtering.
+- Added NumPy-only Butterworth lowpass, highpass, bandpass, and bandstop
+  design through bilinear transformation, with normalized passband gain.
+- Added filter verification reports with response arrays, pole-radius metrics,
+  and optional passband-ripple and stopband-attenuation checks.
 - Added mathematical signal-analysis tools for Welch PSD, periodograms, cross spectra, coherence, discrete-system frequency response, and group delay.
 - Split tabular workflows and data quality/schema/drift checks into focused implementation modules while preserving existing public imports.
 - Added an optional C++ histogram-tree kernel for `HistGradientBoostingClassifier` and `HistGradientBoostingRegressor`, with numerical parity and a NumPy fallback.

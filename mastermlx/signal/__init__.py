@@ -1,4 +1,4 @@
-"""Signal processing helpers and business-oriented signal scaffolds."""
+"""Signal-processing helpers for mathematical and numerical workflows."""
 
 from . import augmentation as augmentation
 from . import datasets as datasets
@@ -52,7 +52,23 @@ from .datasets import make_chirp, make_impulse_train, make_multi_tone, make_sign
 from .io import load_signal, load_signal_bundle, save_signal, save_signal_bundle
 from .metrics import frame_energy, signal_psnr, signal_snr
 from .spectral import coherence, cross_power_spectrum, cross_spectrum, periodogram, welch, welch_psd
-from .systems import freq_response, frequency_response, group_delay
+from .systems import (
+    butterworth,
+    butterworth_filter,
+    check_stability,
+    design_iir,
+    filtfilt,
+    freq_response,
+    frequency_response,
+    group_delay,
+    iir_filter,
+    is_stable,
+    magnitude_response,
+    phase_response,
+    pole_zero,
+    verify_filter,
+    zero_phase_filter,
+)
 from .experiment import SignalExperiment, SignalFeatureTransformer, compare_signal_models
 from .fourier import (
     FourierTransformer,
@@ -108,6 +124,9 @@ __all__ = [
     "freq_response",
     "frequency_response",
     "group_delay",
+    "magnitude_response",
+    "phase_response",
+    "pole_zero",
     "frame_energy",
     "hamming_window",
     "hann_window",
@@ -156,6 +175,13 @@ __all__ = [
     "pre_emphasis",
     "notch_filter",
     "periodogram",
+    "butterworth",
+    "butterworth_filter",
+    "check_stability",
+    "design_iir",
+    "filtfilt",
+    "iir_filter",
+    "is_stable",
     "PeakDetector",
     "PreEmphasisTransformer",
     "pad_signal",
@@ -198,8 +224,10 @@ __all__ = [
     "transforms",
     "utils",
     "zero_crossing_rate",
+    "verify_filter",
     "welch",
     "welch_psd",
+    "zero_phase_filter",
     "ifft_signal",
     "irfft_signal",
     "inverse_fft_spectrum",
