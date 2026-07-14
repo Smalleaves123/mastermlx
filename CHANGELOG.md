@@ -9,6 +9,7 @@
 
 ## Unreleased
 
+- Split tabular workflows and data quality/schema/drift checks into focused implementation modules while preserving existing public imports.
 - Added an optional C++ histogram-tree kernel for `HistGradientBoostingClassifier` and `HistGradientBoostingRegressor`, with numerical parity and a NumPy fallback.
 - Made backend loaders honor `set_backend("numpy")` and `set_backend("cython")` instead of using compiled modules unconditionally.
 - Corrected acceleration benchmarks to switch backends through the public API, report missing Cython extensions accurately, and keep development runs practical.

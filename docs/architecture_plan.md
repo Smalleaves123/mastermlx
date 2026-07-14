@@ -32,6 +32,19 @@ The codebase is organized into:
 
 This makes the library easier to publish, test, benchmark, and explain.
 
+### 3. Implementation modules and export facades
+
+Domain package `__init__.py` files should stay small and expose stable public
+names. Workflow and reporting logic belongs in focused implementation modules:
+
+- `mastermlx.tabular.workflow` contains the tabular experiment implementation.
+- `mastermlx.data.quality` contains row/column quality summaries.
+- `mastermlx.data.schema` contains train/test schema checks.
+- `mastermlx.data.drift` contains distribution drift checks.
+
+This keeps compatibility imports stable while making individual areas easier
+to test, profile, and extend.
+
 ### 3. Interview-ready technical story
 
 The project is designed to support a strong narrative:

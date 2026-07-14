@@ -2,6 +2,8 @@ import numpy as np
 import pytest
 
 from mastermlx.data import compare_schema, drift_report, quality_report
+from mastermlx.data.drift import drift_report as direct_drift_report
+from mastermlx.data.schema import compare_schema as direct_compare_schema
 from mastermlx.preprocessing import AutoPreprocessor, OneHotEncoder, SimpleImputer
 from mastermlx import LogisticRegression
 from mastermlx.tabular import TabularExperiment
@@ -36,6 +38,8 @@ def test_schema_and_drift_report_named_columns():
     schema = compare_schema(train, test)
     drift = drift_report(train, test)
 
+    assert compare_schema is direct_compare_schema
+    assert drift_report is direct_drift_report
     assert schema["order_match"]
     assert schema["missing_columns"] == []
     assert drift["columns"][1]["unseen_rate"] == 1.0

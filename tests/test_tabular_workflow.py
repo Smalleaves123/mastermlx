@@ -2,6 +2,11 @@ import numpy as np
 
 from mastermlx import LogisticRegression, StandardScaler, LinearRegression
 from mastermlx.tabular import TabularExperiment, compare_tabular_models
+from mastermlx.tabular.workflow import TabularExperiment as WorkflowExperiment
+
+
+def test_tabular_facade_exports_workflow_implementation():
+    assert TabularExperiment is WorkflowExperiment
 
 
 def test_tabular_experiment_runs_preprocessing_and_grid_search():

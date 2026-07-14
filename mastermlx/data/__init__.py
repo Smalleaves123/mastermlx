@@ -1,17 +1,15 @@
 """Data loading and synthetic dataset helpers."""
 
 from .cv import GroupKFold, KFold, LeaveOneOut, RepeatedKFold, ShuffleSplit, StratifiedKFold, TimeSeriesSplit
+from .drift import data_drift, drift_report
 from .model_selection import cross_val_predict, cross_val_score, cross_validate, learning_curve, validation_curve
 from .quality import (
     DataQualityReport,
-    compare_schema,
-    data_drift,
     data_quality,
-    drift_report,
     quality_report,
-    schema_diff,
 )
 from .search import GridSearchCV, RandomizedSearchCV
+from .schema import compare_schema, schema_diff
 from .split import train_test_split
 
 __all__ = [
