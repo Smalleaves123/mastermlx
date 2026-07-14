@@ -40,6 +40,24 @@ X_scaled = scaler.transform(X)
 from mastermlx import entropy, pairwise_distance, silhouette
 ```
 
+### Tabular data checks
+
+```python
+from mastermlx import AutoPreprocessor, quality_report
+
+report = quality_report(X)
+prep = AutoPreprocessor().fit(X)
+X_ready = prep.transform(X)
+feature_names = prep.get_feature_names_out()
+```
+
+`quality_report` summarizes missing values, duplicates, constant columns,
+categorical frequencies, numeric outliers, and target quality. Use
+`compare_schema` or `drift_report` for train/test checks. `AutoPreprocessor`
+detects numeric and categorical columns, imputes missing values, scales numeric
+features, one-hot encodes categorical features, and ignores unseen categories
+by default.
+
 ## Module Map
 
 ### `linear_models`

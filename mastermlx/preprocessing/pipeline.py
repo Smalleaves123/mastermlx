@@ -124,6 +124,17 @@ class Pipeline(BaseEstimator):
             return last.transform(Xt)
         return Xt
 
+    def get_feature_names_out(self, input_features=None):
+        """Return output names from the final transformer when available."""
+
+        self._check_fitted("steps_")
+        last = self.steps_[-1][1]
+        if not hasattr(last, "get_feature_names_out"):
+            if input_features is None:
+                input_features = [f"x{idx}" for idx in range(self.n_features_in_)]
+            return np.asarray(input_features, dtype=object)
+        return last.get_feature_names_out(input_features)
+
     def predict(self, X):
         Xt = self._transform_input(X)
         last = self.steps_[-1][1]

@@ -1,6 +1,7 @@
 """Preprocessing utilities."""
 
 from .column import ColumnTransformer
+from .auto import AutoPreprocessor, make_preprocessor
 from .binarize import Binarizer
 from .discretize import KBinsDiscretizer
 from .encoders import LabelEncoder, OneHotEncoder, OrdinalEncoder
@@ -16,10 +17,12 @@ from .target import TargetEncoder
 
 __all__ = [
     "Binarizer",
+    "AutoPreprocessor",
     "ColumnTransformer",
     "KNNImputer",
     "KBinsDiscretizer",
     "LabelEncoder",
+    "make_preprocessor",
     "MaxAbsScaler",
     "MinMaxScaler",
     "Normalizer",

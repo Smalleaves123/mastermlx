@@ -5,13 +5,17 @@ import numpy as np
 from ..data.search import GridSearchCV, RandomizedSearchCV
 from ..data.cv import KFold
 from ..data.model_selection import cross_val_score
-from ..preprocessing import Pipeline as PreprocessingPipeline
+from ..preprocessing import AutoPreprocessor, Pipeline as PreprocessingPipeline
 from ..utils.estimator import clone
 
 
 def _normalize_steps(preprocessing):
     if preprocessing is None:
         return []
+    if isinstance(preprocessing, str):
+        if preprocessing != "auto":
+            raise ValueError("preprocessing string must be 'auto'")
+        return [("preprocess", AutoPreprocessor())]
     if isinstance(preprocessing, PreprocessingPipeline):
         return list(preprocessing.steps)
     if isinstance(preprocessing, (list, tuple)):

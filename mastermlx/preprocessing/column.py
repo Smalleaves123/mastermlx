@@ -90,6 +90,10 @@ class ColumnTransformer(BaseTransformer):
 
     def transform(self, X):
         self._check_fitted("transformers_")
+        incoming = getattr(X, "columns", None)
+        if self.feature_names_in_ is not None and incoming is not None:
+            if list(incoming) != self.feature_names_in_.tolist():
+                raise ValueError("X columns do not match the fitted schema")
         X = self._check_X(X)
         parts = [self._as_block(trans.transform(X[:, cols]), X.shape[0]) for _, trans, cols in self.transformers_]
         if self._remainder_idx:
