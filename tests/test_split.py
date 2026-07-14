@@ -144,6 +144,25 @@ def test_cross_validate_supports_multiple_metrics():
     assert out["test_neg_mean_squared_error"].shape == (3,)
 
 
+def test_cross_validate_supports_probability_metrics_and_estimators():
+    X = np.array([[0.0], [1.0], [2.0], [3.0], [4.0], [5.0]])
+    y = np.array([0, 0, 0, 1, 1, 1])
+    out = cross_validate(
+        LogisticRegression(lr=0.5, n_iter=2000, random_state=0),
+        X,
+        y,
+        cv=StratifiedKFold(n_splits=3, shuffle=True, random_state=0),
+        scoring={"acc": "accuracy", "auc": "roc_auc", "loss": "neg_log_loss"},
+        return_estimator=True,
+    )
+
+    assert out["test_acc"].shape == (3,)
+    assert out["test_auc"].shape == (3,)
+    assert out["test_loss"].shape == (3,)
+    assert len(out["estimator"]) == 3
+    assert np.all(np.isfinite(out["test_auc"]))
+
+
 def test_time_series_split_keeps_time_order():
     X = np.arange(12).reshape(12, 1)
     cv = TimeSeriesSplit(n_splits=3, test_size=2)

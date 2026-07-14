@@ -1,7 +1,7 @@
 import numpy as np
 
-from mastermlx.data import GridSearchCV, GroupKFold, KFold, RandomizedSearchCV
-from mastermlx.linear_models import LogisticRegression
+from mastermlx.data import GridSearchCV, GroupKFold, KFold, RandomizedSearchCV, StratifiedKFold
+from mastermlx.linear_models import LogisticRegression, SGDClassifier
 from mastermlx.preprocessing import Pipeline, PolynomialFeatures, StandardScaler
 
 
@@ -18,6 +18,17 @@ class _BareEstimator:
 
     def score(self, X, y):
         return -float(np.mean((self.predict(X) - y) ** 2))
+
+
+class _FailEstimator(_BareEstimator):
+    def __init__(self, bias=0.0, fail=False):
+        super().__init__(bias=bias)
+        self.fail = fail
+
+    def fit(self, X, y):
+        if self.fail:
+            raise ValueError("intentional failure")
+        return super().fit(X, y)
 
 
 def test_grid_search_finds_best_estimator():
@@ -187,3 +198,36 @@ def test_grid_search_applies_params_to_plain_estimators():
 
     assert search.best_estimator_ is not None
     assert search.best_params_["bias"] == 0.0
+
+
+def test_grid_search_records_failed_candidates_and_best_index():
+    X = np.arange(6, dtype=float).reshape(-1, 1)
+    y = np.arange(6, dtype=float)
+    search = GridSearchCV(
+        _FailEstimator(),
+        param_grid={"fail": [True, False]},
+        cv=KFold(n_splits=3),
+        error_score=np.nan,
+    ).fit(X, y)
+
+    assert search.best_index_ == 1
+    assert "errors" in search.cv_results_
+    assert search.best_estimator_ is not None
+
+
+def test_search_exposes_probability_and_decision_methods():
+    X = np.array([[0.0], [1.0], [2.0], [3.0], [4.0], [5.0]])
+    y = np.array([0, 0, 0, 1, 1, 1])
+    prob_search = GridSearchCV(
+        LogisticRegression(lr=0.5, n_iter=1000, random_state=0),
+        param_grid={"lr": [0.1, 0.5]},
+        cv=KFold(n_splits=3),
+    ).fit(X, y)
+    decision_search = GridSearchCV(
+        SGDClassifier(max_iter=100, random_state=0),
+        param_grid={"max_iter": [50, 100]},
+        cv=StratifiedKFold(n_splits=3, shuffle=True, random_state=0),
+    ).fit(X, y)
+
+    assert prob_search.predict_proba(X).shape == (6, 2)
+    assert decision_search.decision_function(X).shape == (6,)

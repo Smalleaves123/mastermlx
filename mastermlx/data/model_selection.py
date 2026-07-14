@@ -5,19 +5,58 @@ import time
 
 import numpy as np
 
-from ..utils.metrics import accuracy, mean_squared_error, r2_score
+from ..utils.metrics import (
+    accuracy,
+    explained_variance_score,
+    f1_score,
+    log_loss,
+    mean_absolute_error,
+    mean_squared_error,
+    precision_score,
+    r2_score,
+    recall_score,
+    roc_auc_score,
+    root_mean_squared_error,
+)
 from ..utils.random import resolve_rng
 from .cv import KFold
 
 
+class _Scorer:
+    def __init__(self, func, method="predict"):
+        self.func = func
+        self.method = method
+
+    def __call__(self, y_true, y_pred):
+        return self.func(y_true, y_pred)
+
+
+def _positive_score(y_true, y_pred):
+    y_pred = np.asarray(y_pred)
+    if y_pred.ndim == 2:
+        if y_pred.shape[1] != 2:
+            raise ValueError("roc_auc scoring requires binary probabilities")
+        y_pred = y_pred[:, 1]
+    return roc_auc_score(y_true, y_pred)
+
+
 def _named_scorer(name):
-    if name == "accuracy":
-        return lambda y_true, y_pred: accuracy(y_true, y_pred)
-    if name == "r2":
-        return lambda y_true, y_pred: r2_score(y_true, y_pred)
-    if name == "neg_mean_squared_error":
-        return lambda y_true, y_pred: -mean_squared_error(y_true, y_pred)
-    raise ValueError("Unsupported scoring value")
+    scorers = {
+        "accuracy": _Scorer(accuracy),
+        "precision": _Scorer(precision_score),
+        "recall": _Scorer(recall_score),
+        "f1": _Scorer(f1_score),
+        "r2": _Scorer(r2_score),
+        "explained_variance": _Scorer(explained_variance_score),
+        "neg_mean_absolute_error": _Scorer(lambda yt, yp: -mean_absolute_error(yt, yp)),
+        "neg_mean_squared_error": _Scorer(lambda yt, yp: -mean_squared_error(yt, yp)),
+        "neg_root_mean_squared_error": _Scorer(lambda yt, yp: -root_mean_squared_error(yt, yp)),
+        "neg_log_loss": _Scorer(lambda yt, yp: -log_loss(yt, yp), method="predict_proba"),
+        "roc_auc": _Scorer(_positive_score, method="predict_proba"),
+    }
+    if name not in scorers:
+        raise ValueError(f"Unsupported scoring value: {name}")
+    return scorers[name]
 
 
 def _resolve_scorers(scoring):
@@ -58,7 +97,26 @@ def _single_scorer(scoring):
     return scorers
 
 
-def _run_cv(estimator, X, y, cv=None, scoring=None, return_train_score=False, groups=None):
+def _error_value(error_score):
+    if error_score == "raise":
+        return None
+    try:
+        return float(error_score)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("error_score must be 'raise' or a numeric value") from exc
+
+
+def _run_cv(
+    estimator,
+    X,
+    y,
+    cv=None,
+    scoring=None,
+    return_train_score=False,
+    groups=None,
+    error_score="raise",
+    return_estimator=False,
+):
     X = np.asarray(X)
     y = np.asarray(y)
     if X.shape[0] != y.shape[0]:
@@ -66,38 +124,62 @@ def _run_cv(estimator, X, y, cv=None, scoring=None, return_train_score=False, gr
 
     splitter = cv if cv is not None else KFold(n_splits=5, shuffle=True, random_state=0)
     scorers, multi = _resolve_scorers(scoring)
+    error_value = _error_value(error_score)
     test_scores = {}
     train_scores = {}
     fit_times = []
     score_times = []
+    estimators = []
+    errors = []
 
     for train_idx, test_idx in _split_cv(splitter, X, y, groups=groups):
-        model = copy.deepcopy(estimator)
-        t0 = time.perf_counter()
-        model.fit(X[train_idx], y[train_idx])
-        fit_times.append(time.perf_counter() - t0)
+        model = None
+        try:
+            model = copy.deepcopy(estimator)
+            t0 = time.perf_counter()
+            model.fit(X[train_idx], y[train_idx])
+            fit_times.append(time.perf_counter() - t0)
 
-        t1 = time.perf_counter()
-        if scorers is None:
-            test_score = model.score(X[test_idx], y[test_idx])
-            test_scores.setdefault("score", []).append(float(test_score))
-            if return_train_score:
-                train_score = model.score(X[train_idx], y[train_idx])
-                train_scores.setdefault("score", []).append(float(train_score))
-        else:
-            pred_test = None
-            pred_train = None
-            for name, scorer in scorers.items():
-                if pred_test is None:
-                    pred_test = model.predict(X[test_idx])
-                test_score = scorer(y[test_idx], pred_test)
-                test_scores.setdefault(name, []).append(float(test_score))
+            t1 = time.perf_counter()
+            if scorers is None:
+                test_score = model.score(X[test_idx], y[test_idx])
+                test_scores.setdefault("score", []).append(float(test_score))
                 if return_train_score:
-                    if pred_train is None:
-                        pred_train = model.predict(X[train_idx])
-                    train_score = scorer(y[train_idx], pred_train)
-                    train_scores.setdefault(name, []).append(float(train_score))
-        score_times.append(time.perf_counter() - t1)
+                    train_score = model.score(X[train_idx], y[train_idx])
+                    train_scores.setdefault("score", []).append(float(train_score))
+            else:
+                test_pred = {}
+                train_pred = {}
+                for name, scorer in scorers.items():
+                    method = getattr(scorer, "method", "predict")
+                    if method not in test_pred:
+                        test_pred[method] = getattr(model, method)(X[test_idx])
+                    test_score = scorer(y[test_idx], test_pred[method])
+                    test_scores.setdefault(name, []).append(float(test_score))
+                    if return_train_score:
+                        if method not in train_pred:
+                            train_pred[method] = getattr(model, method)(X[train_idx])
+                        train_score = scorer(y[train_idx], train_pred[method])
+                        train_scores.setdefault(name, []).append(float(train_score))
+            score_times.append(time.perf_counter() - t1)
+            errors.append(None)
+        except Exception as exc:
+            if error_value is None:
+                raise
+            fit_times.append(np.nan)
+            score_times.append(np.nan)
+            errors.append(f"{type(exc).__name__}: {exc}")
+            if scorers is None:
+                test_scores.setdefault("score", []).append(error_value)
+                if return_train_score:
+                    train_scores.setdefault("score", []).append(error_value)
+            else:
+                for name in scorers:
+                    test_scores.setdefault(name, []).append(error_value)
+                    if return_train_score:
+                        train_scores.setdefault(name, []).append(error_value)
+        if return_estimator:
+            estimators.append(model)
 
     out = {
         "fit_time": np.asarray(fit_times, dtype=float),
@@ -110,21 +192,45 @@ def _run_cv(estimator, X, y, cv=None, scoring=None, return_train_score=False, gr
         for name, values in train_scores.items():
             key = "train_score" if name == "score" and not multi else f"train_{name}"
             out[key] = np.asarray(values, dtype=float)
+    if return_estimator:
+        out["estimator"] = estimators
+    if any(error is not None for error in errors):
+        out["errors"] = errors
     return out
 
 
-def cross_val_score(estimator, X, y, cv=None, scoring=None, groups=None):
+def cross_val_score(estimator, X, y, cv=None, scoring=None, groups=None, error_score="raise"):
     """Evaluate an estimator by cross-validation."""
 
     if isinstance(scoring, (list, tuple, dict)):
         raise ValueError("cross_val_score only supports a single scoring metric")
-    return _run_cv(estimator, X, y, cv=cv, scoring=scoring, groups=groups)["test_score"]
+    return _run_cv(estimator, X, y, cv=cv, scoring=scoring, groups=groups, error_score=error_score)["test_score"]
 
 
-def cross_validate(estimator, X, y, cv=None, scoring=None, return_train_score=False, groups=None):
+def cross_validate(
+    estimator,
+    X,
+    y,
+    cv=None,
+    scoring=None,
+    return_train_score=False,
+    groups=None,
+    error_score="raise",
+    return_estimator=False,
+):
     """Run cross-validation and return scores with timing info."""
 
-    return _run_cv(estimator, X, y, cv=cv, scoring=scoring, return_train_score=return_train_score, groups=groups)
+    return _run_cv(
+        estimator,
+        X,
+        y,
+        cv=cv,
+        scoring=scoring,
+        return_train_score=return_train_score,
+        groups=groups,
+        error_score=error_score,
+        return_estimator=return_estimator,
+    )
 
 
 def cross_val_predict(estimator, X, y, cv=None, groups=None, method="predict"):
