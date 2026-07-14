@@ -58,6 +58,19 @@ detects numeric and categorical columns, imputes missing values, scales numeric
 features, one-hot encodes categorical features, and ignores unseen categories
 by default.
 
+### Mathematical signal analysis
+
+```python
+from mastermlx.signal import coherence, frequency_response, welch_psd
+
+freq, psd = welch_psd(x, sample_rate=1000, nperseg=256)
+freq, coh = coherence(x, y, sample_rate=1000, nperseg=256)
+freq, response = frequency_response([1.0, -1.0], sample_rate=1000)
+```
+
+These tools cover Welch power spectral density, cross-spectral coherence, and
+frequency-domain analysis of discrete-time linear systems.
+
 ## Module Map
 
 ### `linear_models`

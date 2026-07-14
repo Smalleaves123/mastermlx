@@ -51,6 +51,8 @@ from .streaming import SignalChunkBuffer, SlidingWindowStream, StreamingFeatureE
 from .datasets import make_chirp, make_impulse_train, make_multi_tone, make_signal_anomaly_series, make_signal_classification_dataset, make_sine_wave
 from .io import load_signal, load_signal_bundle, save_signal, save_signal_bundle
 from .metrics import frame_energy, signal_psnr, signal_snr
+from .spectral import coherence, cross_power_spectrum, cross_spectrum, periodogram, welch, welch_psd
+from .systems import freq_response, frequency_response, group_delay
 from .experiment import SignalExperiment, SignalFeatureTransformer, compare_signal_models
 from .fourier import (
     FourierTransformer,
@@ -97,9 +99,15 @@ __all__ = [
     "ensure_1d",
     "datasets",
     "detectors",
+    "coherence",
     "convolve1d",
+    "cross_power_spectrum",
+    "cross_spectrum",
     "chunk_signal",
     "frame_signal",
+    "freq_response",
+    "frequency_response",
+    "group_delay",
     "frame_energy",
     "hamming_window",
     "hann_window",
@@ -147,6 +155,7 @@ __all__ = [
     "pre_emph",
     "pre_emphasis",
     "notch_filter",
+    "periodogram",
     "PeakDetector",
     "PreEmphasisTransformer",
     "pad_signal",
@@ -189,6 +198,8 @@ __all__ = [
     "transforms",
     "utils",
     "zero_crossing_rate",
+    "welch",
+    "welch_psd",
     "ifft_signal",
     "irfft_signal",
     "inverse_fft_spectrum",

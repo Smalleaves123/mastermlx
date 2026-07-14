@@ -21,8 +21,11 @@ from mastermlx.signal import (
     SignalPipeline,
     StreamingFeatureExtractor,
     compare_signal_models,
+    coherence,
+    frequency_response,
     make_signal_classification_dataset,
     rms_energy,
+    welch_psd,
     zero_crossing_rate,
 )
 
@@ -144,6 +147,20 @@ def benchmark_spectral_features():
     return features
 
 
+def benchmark_spectral_analysis():
+    sample_rate = 8000.0
+    t = np.arange(16_000) / sample_rate
+    x = np.sin(2.0 * np.pi * 440.0 * t)
+    y = 0.8 * x + 0.05 * np.random.default_rng(0).normal(size=x.size)
+
+    elapsed, psd = bench(lambda: welch_psd(x, sample_rate=sample_rate, nperseg=512), n_runs=3)
+    print(f"  welch psd               {elapsed:8.4f}s  bins={psd[0].size}")
+    elapsed, coh = bench(lambda: coherence(x, y, sample_rate=sample_rate, nperseg=512), n_runs=3)
+    print(f"  cross coherence         {elapsed:8.4f}s  bins={coh[0].size}")
+    elapsed, response = bench(lambda: frequency_response([1.0, -1.0], n_freqs=2048, sample_rate=sample_rate), n_runs=3)
+    print(f"  frequency response      {elapsed:8.4f}s  bins={response[0].size}")
+
+
 def benchmark_signal_experiment():
     X, y = make_signal_classification_dataset(n_samples=180, sample_rate=8000, duration=0.25, random_state=0)
     X_train, X_test = X[:140], X[140:]
@@ -206,6 +223,9 @@ def main():
 
     section("Spectral Features")
     benchmark_spectral_features()
+
+    section("Spectral Analysis")
+    benchmark_spectral_analysis()
 
     section("Signal Experiment")
     benchmark_signal_experiment()

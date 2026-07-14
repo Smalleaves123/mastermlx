@@ -9,6 +9,7 @@
 
 ## Unreleased
 
+- Added mathematical signal-analysis tools for Welch PSD, periodograms, cross spectra, coherence, discrete-system frequency response, and group delay.
 - Split tabular workflows and data quality/schema/drift checks into focused implementation modules while preserving existing public imports.
 - Added an optional C++ histogram-tree kernel for `HistGradientBoostingClassifier` and `HistGradientBoostingRegressor`, with numerical parity and a NumPy fallback.
 - Made backend loaders honor `set_backend("numpy")` and `set_backend("cython")` instead of using compiled modules unconditionally.
