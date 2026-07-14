@@ -1,8 +1,19 @@
 import numpy as np
+import pytest
 
-from mastermlx.linear_models import LogisticRegression
+from mastermlx.linear_models import LinearRegression, LogisticRegression
 from mastermlx.preprocessing import Pipeline, PolynomialFeatures, StandardScaler
-from mastermlx.utils import clone, get_params, set_params, clip_gradients
+from mastermlx.utils import (
+    NotFittedError,
+    check_X,
+    check_X_y,
+    check_is_fitted,
+    clip_gradients,
+    clone,
+    resolve_rng,
+    set_params,
+    shuffle_indices,
+)
 
 
 class _Layer:
@@ -64,3 +75,61 @@ def test_clip_gradients_scales_large_updates():
     assert total_norm > 2.5
     assert scale < 1.0
     assert np.isclose(np.sqrt(np.sum(layer.dW_ ** 2) + np.sum(layer.db_ ** 2)), 2.5)
+
+
+def test_common_validation_tracks_features_and_fit_state():
+    model = LinearRegression().fit([[0.0, 1.0], [1.0, 2.0]], [0.0, 1.0])
+
+    assert model.n_features_in_ == 2
+    assert check_X([[1.0, 2.0]]).shape == (1, 2)
+    assert check_X_y([[1.0], [2.0]], [0.0, 1.0])[0].shape == (2, 1)
+    check_is_fitted(model, ["coef_", "intercept_"])
+
+    with pytest.raises(NotFittedError):
+        LinearRegression().predict([[0.0, 1.0]])
+    with pytest.raises(ValueError, match="different number of features"):
+        model.predict([[0.0, 1.0, 2.0]])
+
+
+def test_scaler_uses_common_fit_state_and_feature_check():
+    scaler = StandardScaler()
+
+    with pytest.raises(NotFittedError):
+        scaler.transform([[1.0, 2.0]])
+
+    scaler.fit([[1.0, 2.0], [3.0, 4.0]])
+    assert scaler.n_features_in_ == 2
+    with pytest.raises(ValueError, match="different number of features"):
+        scaler.transform([[1.0, 2.0, 3.0]])
+
+
+def test_resolve_rng_accepts_generator_and_preserves_reproducibility():
+    rng = np.random.default_rng(7)
+    assert resolve_rng(rng) is rng
+    assert np.array_equal(
+        shuffle_indices(8, random_state=np.random.default_rng(7)),
+        shuffle_indices(8, random_state=np.random.default_rng(7)),
+    )
+
+
+def test_split_modules_keep_compatibility_facades():
+    from mastermlx.math_tools import time_series as ts
+    from mastermlx.math_tools.ts_core import rolling_mean as core_rolling_mean
+    from mastermlx.neural_net import sequential as seq
+    from mastermlx.neural_net.seq_fit import _SequentialFit
+
+    assert ts.rolling_mean is core_rolling_mean
+    assert seq.Sequential.__mro__[1].__name__ == "_SequentialRuntime"
+    assert hasattr(_SequentialFit, "fit")
+
+
+def test_estimator_state_can_be_saved_and_restored(tmp_path):
+    model = LinearRegression().fit([[0.0], [1.0], [2.0]], [1.0, 3.0, 5.0])
+    expected = model.predict([[3.0]])
+    path = tmp_path / "linear.pkl"
+
+    model.save(path)
+    restored = LinearRegression.load(path)
+
+    assert np.allclose(restored.predict([[3.0]]), expected)
+    assert restored.state_dict()["n_features_in_"] == 1

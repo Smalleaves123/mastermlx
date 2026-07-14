@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+import copy
+import pickle
+from pathlib import Path
 
+from .common import BaseAPI
 from ..utils.estimator import get_params as _get_params, set_params as _set_params
 
 
-class BaseEstimator(ABC):
+class BaseEstimator(BaseAPI, ABC):
     """Common interface for models with fit/predict semantics."""
 
     @abstractmethod
@@ -20,3 +24,33 @@ class BaseEstimator(ABC):
 
     def set_params(self, **params):
         return _set_params(self, **params)
+
+    def state_dict(self):
+        """Return a detached copy of the estimator state."""
+
+        return copy.deepcopy(vars(self))
+
+    def load_state_dict(self, state):
+        """Restore state previously returned by :meth:`state_dict`."""
+
+        if not isinstance(state, dict):
+            raise TypeError("state must be a dict")
+        self.__dict__.update(copy.deepcopy(state))
+        return self
+
+    def save(self, path):
+        """Save the fitted estimator to a pickle file."""
+
+        with Path(path).open("wb") as handle:
+            pickle.dump(self, handle, protocol=pickle.HIGHEST_PROTOCOL)
+        return self
+
+    @classmethod
+    def load(cls, path):
+        """Load an estimator saved with :meth:`save`."""
+
+        with Path(path).open("rb") as handle:
+            obj = pickle.load(handle)
+        if not isinstance(obj, cls):
+            raise TypeError(f"saved object must be a {cls.__name__}")
+        return obj

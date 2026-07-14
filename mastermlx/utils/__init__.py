@@ -1,5 +1,16 @@
 from .types import ArrayLike
-from .validation import check_2d_array, check_1d_array, check_same_rows, as_2d
+from .validation import (
+    NotFittedError,
+    as_2d,
+    check_1d_array,
+    check_2d_array,
+    check_X,
+    check_X_y,
+    check_feature_count,
+    check_is_fitted,
+    check_same_rows,
+    set_n_features,
+)
 from .array import batch_iterator, one_hot, shuffle_arrays
 from .estimator import clone, get_params, set_params
 from .metrics import (
@@ -59,18 +70,25 @@ from .kernels import (
     sigmoid_kernel,
 )
 from .grad import clip_grads, clip_gradients
-from .random import create_rng, set_seed, shuffle_indices
+from .random import create_rng, resolve_rng, set_seed, shuffle_indices
 from .math import log_sum_exp
 
 __all__ = [
     "ArrayLike",
+    "NotFittedError",
     "accuracy",
     "avg_precision_score",
     "as_2d",
     "batch_iterator",
     "additive_chi2_kernel",
+    "bray_curtis_distance",
+    "canberra_distance",
     "check_1d_array",
     "check_2d_array",
+    "check_X",
+    "check_X_y",
+    "check_feature_count",
+    "check_is_fitted",
     "check_same_rows",
     "clone",
     "clip_grads",
@@ -86,6 +104,7 @@ __all__ = [
     "expl_var",
     "explained_variance_score",
     "f1_score",
+    "fbeta_score",
     "hamming_distance",
     "hellinger_kernel",
     "get_params",
@@ -94,6 +113,7 @@ __all__ = [
     "laplacian_kernel",
     "linear_kernel",
     "jaccard_distance",
+    "jaccard_score",
     "manhattan",
     "manhattan_distance",
     "mahalanobis_distance",
@@ -111,6 +131,7 @@ __all__ = [
     "precision_score",
     "prf1",
     "r2_score",
+    "resolve_rng",
     "recall_score",
     "rbf_kernel",
     "roc_auc_score",
@@ -120,9 +141,11 @@ __all__ = [
     "specificity_score",
     "sigmoid_kernel",
     "set_params",
+    "set_n_features",
     "set_seed",
     "shuffle_arrays",
     "shuffle_indices",
     "top_k_accuracy_score",
     "zero_one_loss",
+    "wasserstein_distance",
 ]

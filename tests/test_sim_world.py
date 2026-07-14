@@ -28,6 +28,37 @@ def test_simple_world_collision_and_scan():
     assert ax is not None
 
 
+def test_world_hit_checks_link_segments():
+    robot = RobotModel.from_dh(_planar_2r_dh())
+    world = SimpleWorld(robot)
+    world.add_obstacle(center=(0.5, 0.0), radius=0.1)
+
+    assert world.hit([0.0, 0.0])
+    assert any("segment_index" in item for item in world.collision_report([0.0, 0.0]))
+    assert not world.hit([np.pi / 2.0, 0.0])
+
+
+def test_world_plans_collision_free_joint_path():
+    robot = RobotModel.from_dh(_planar_2r_dh())
+    world = SimpleWorld(robot)
+    world.add_obstacle(center=(1.5, 0.0), radius=0.15)
+
+    path = world.plan_path(
+        [np.pi / 2.0, 0.0],
+        [-np.pi / 2.0, 0.0],
+        bounds=[[-np.pi, np.pi], [-np.pi, np.pi]],
+        step=0.15,
+        goal_rate=0.25,
+        max_iter=3000,
+        random_state=0,
+    )
+
+    assert path is not None
+    assert np.allclose(path[0], [np.pi / 2.0, 0.0])
+    assert np.allclose(path[-1], [-np.pi / 2.0, 0.0])
+    assert not np.any([world.hit(q) for q in path])
+
+
 def test_load_world_config_from_dict_and_json():
     cfg = {
         "robot": {

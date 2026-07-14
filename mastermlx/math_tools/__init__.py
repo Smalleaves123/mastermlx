@@ -1,4 +1,6 @@
 """Unified mathematical tools for distances, kernels, information, and time series."""
+# The package intentionally re-exports metric helpers from a compatibility module.
+# ruff: noqa: F405
 
 from .attention import (
     multi_head_attention,
@@ -114,6 +116,7 @@ from .kernels import (
 )
 from .time_series import (
     ARModel,
+    ForecastMetrics,
     autocorrelation,
     autocorrelation_function,
     backtest,
@@ -129,10 +132,12 @@ from .time_series import (
     TimeSeriesExperiment,
     TimeSeriesPipeline,
     rolling_mean,
+    rolling_backtest,
 )
 
 __all__ = [
     "ARModel",
+    "ForecastMetrics",
     "accuracy",
     "additive_chi2_kernel",
     "autocorrelation",
@@ -245,6 +250,7 @@ __all__ = [
     "swap",
     "resolve_gamma",
     "rolling_mean",
+    "rolling_backtest",
     "TimeSeriesExperiment",
     "TimeSeriesPipeline",
     "reliability_curve",

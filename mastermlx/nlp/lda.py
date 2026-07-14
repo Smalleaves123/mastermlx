@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from ..utils.random import resolve_rng
+
 
 class LDA:
     """Latent Dirichlet Allocation via online variational Bayes.
@@ -42,7 +44,7 @@ class LDA:
             raise ValueError("X must be non-negative")
         n_docs, n_words = X.shape
         k = self.n_topics
-        rng = np.random.default_rng(self.random_state)
+        rng = resolve_rng(self.random_state)
 
         # Initialize topic-word matrix (k, n_words) as exp(E[log beta])
         self.components_ = rng.gamma(1.0, 1.0, size=(k, n_words))
@@ -69,7 +71,7 @@ class LDA:
                     word_ids = np.repeat(np.arange(n_words), doc.astype(int))
                     n_tokens = len(word_ids)
                     if n_tokens > 0:
-                        phi = np.random.dirichlet(np.ones(k), size=n_tokens)
+                        phi = rng.dirichlet(np.ones(k), size=n_tokens)
                         for _ in range(20):  # inner VI loop
                             phi_prev = phi.copy()
                             # Update phi

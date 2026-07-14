@@ -8,6 +8,7 @@ import numpy as np
 
 from ..robotics.model import RobotModel
 from ..robotics.visualizer import plot_chain
+from ..planning import rrt
 from .core import SimpleRobotSim
 
 
@@ -34,6 +35,16 @@ class SimpleWorld:
             return points[:, :2]
         return points
 
+    @staticmethod
+    def _seg_dist(point, start, end):
+        edge = end - start
+        length_sq = float(np.dot(edge, edge))
+        if length_sq == 0.0:
+            return float(np.linalg.norm(point - start))
+        t = float(np.dot(point - start, edge) / length_sq)
+        t = min(1.0, max(0.0, t))
+        return float(np.linalg.norm(point - (start + t * edge)))
+
     def collision_report(self, joint_values=None):
         points = self.link_positions(joint_values)
         hits = []
@@ -48,7 +59,32 @@ class SimpleWorld:
                             "distance": dist,
                         }
                     )
+        for idx, (start, end) in enumerate(zip(points[:-1], points[1:])):
+            for obstacle in self.obstacles:
+                dist = self._seg_dist(
+                    np.asarray(obstacle.center, dtype=float),
+                    np.asarray(start[:2], dtype=float),
+                    np.asarray(end[:2], dtype=float),
+                )
+                if dist <= obstacle.radius:
+                    hits.append(
+                        {
+                            "segment_index": idx,
+                            "obstacle": obstacle,
+                            "distance": dist,
+                        }
+                    )
         return hits
+
+    def hit(self, joint_values=None):
+        """Return whether any joint, link segment, or obstacle overlaps."""
+
+        return bool(self.collision_report(joint_values))
+
+    def plan_path(self, q_start, q_goal, bounds, **kwargs):
+        """Plan a collision-free path in joint space."""
+
+        return rrt(q_start, q_goal, bounds, hit=self.hit, **kwargs)
 
     def lidar_scan(self, joint_values=None, num_rays=64, max_range=10.0):
         """Very small planar range scan against circular obstacles."""

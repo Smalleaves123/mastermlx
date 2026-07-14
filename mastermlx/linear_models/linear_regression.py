@@ -4,7 +4,7 @@ import numpy as np
 
 from ..base import BaseEstimator
 from ..utils.metrics import r2_score
-from ..utils.validation import check_2d_array
+from ..utils.validation import check_X_y
 
 
 class LinearRegression(BaseEstimator):
@@ -16,12 +16,8 @@ class LinearRegression(BaseEstimator):
         self.intercept_ = None
 
     def fit(self, X, y=None):
-        X = check_2d_array(X)
-        y = np.asarray(y)
-        if y.ndim != 1:
-            raise ValueError("y must be a 1D array")
-        if X.shape[0] != y.shape[0]:
-            raise ValueError("X and y must contain the same number of samples")
+        X, y = check_X_y(X, y)
+        self._set_n_features(X)
 
         if self.fit_intercept:
             X_aug = np.column_stack([np.ones(X.shape[0]), X])
@@ -40,11 +36,9 @@ class LinearRegression(BaseEstimator):
         return self
 
     def predict(self, X):
-        X = check_2d_array(X)
-        if self.coef_ is None:
-            raise RuntimeError("Model has not been fit yet")
+        self._check_fitted(["coef_", "intercept_"])
+        X = self._check_X(X)
         return X @ self.coef_ + self.intercept_
 
     def score(self, X, y):
         return r2_score(y, self.predict(X))
-

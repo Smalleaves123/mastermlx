@@ -3,6 +3,8 @@ from __future__ import annotations
 import numpy as np
 
 from ..utils.array import batch_iterator
+from ..utils.random import resolve_rng
+from .callbacks import History
 
 
 def run_supervised_training_loop(
@@ -24,11 +26,15 @@ def run_supervised_training_loop(
     snapshot_state=None,
     restore_state=None,
     on_epoch_end=None,
+    callbacks=None,
 ):
-    rng = np.random.default_rng(random_state)
+    rng = resolve_rng(random_state)
     loss_history = []
     val_loss_history = []
-    history = []
+    history = History()
+    hooks = [history, *(callbacks or [])]
+    for hook in hooks:
+        hook.on_train_begin(logs={})
     best_loss = np.inf
     best_epoch = None
     best_val_loss = None
@@ -72,33 +78,31 @@ def run_supervised_training_loop(
             else:
                 print(f"epoch={epoch + 1} loss={train_loss:.6f} val_loss={monitor_loss:.6f}")
 
-        history.append(
-            {
-                "epoch": epoch + 1,
-                "train_loss": float(train_loss),
-                "val_loss": None if val_loss is None else float(val_loss),
-            }
-        )
+        logs = {
+            "train_loss": float(train_loss),
+            "val_loss": None if val_loss is None else float(val_loss),
+            "monitor_loss": float(monitor_loss),
+            "best_loss": float(best_loss),
+            "best_epoch": best_epoch,
+        }
+        for hook in hooks:
+            hook.on_epoch_end(epoch + 1, logs=logs)
 
         if on_epoch_end is not None:
-            on_epoch_end(
-                epoch=epoch + 1,
-                logs={
-                    "train_loss": float(train_loss),
-                    "val_loss": None if val_loss is None else float(val_loss),
-                    "monitor_loss": float(monitor_loss),
-                    "best_loss": float(best_loss),
-                    "best_epoch": best_epoch,
-                },
-            )
+            on_epoch_end(epoch=epoch + 1, logs=logs)
 
         if patience is not None and wait >= int(patience):
+            break
+        if any(getattr(hook, "stop_training", False) for hook in hooks):
             break
         if X_val is None and epoch > 0 and len(loss_history) >= 2 and abs(loss_history[-2] - loss_history[-1]) < tol:
             break
 
     if best_state is not None and restore_state is not None:
         restore_state(best_state)
+
+    for hook in hooks:
+        hook.on_train_end(logs={"best_epoch": best_epoch, "best_loss": best_loss})
 
     return {
         "loss": loss_history,

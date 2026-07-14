@@ -5,6 +5,21 @@ from mastermlx.linear_models import LogisticRegression
 from mastermlx.preprocessing import Pipeline, PolynomialFeatures, StandardScaler
 
 
+class _BareEstimator:
+    def __init__(self, bias=0.0):
+        self.bias = bias
+
+    def fit(self, X, y):
+        self.mean_ = float(np.mean(y)) + self.bias
+        return self
+
+    def predict(self, X):
+        return np.full(np.asarray(X).shape[0], self.mean_)
+
+    def score(self, X, y):
+        return -float(np.mean((self.predict(X) - y) ** 2))
+
+
 def test_grid_search_finds_best_estimator():
     X = np.array([[0.0], [1.0], [2.0], [3.0], [4.0], [5.0]])
     y = np.array([0, 0, 0, 1, 1, 1])
@@ -159,3 +174,16 @@ def test_grid_search_accepts_groups():
 
     assert search.best_estimator_ is not None
     assert len(search.cv_results_["params"]) == 4
+
+
+def test_grid_search_applies_params_to_plain_estimators():
+    X = np.arange(6, dtype=float).reshape(-1, 1)
+    y = np.arange(6, dtype=float)
+    search = GridSearchCV(
+        _BareEstimator(),
+        param_grid={"bias": [-1.0, 0.0, 1.0]},
+        cv=KFold(n_splits=3),
+    ).fit(X, y)
+
+    assert search.best_estimator_ is not None
+    assert search.best_params_["bias"] == 0.0

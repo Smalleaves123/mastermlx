@@ -5,7 +5,8 @@ from itertools import product
 import numpy as np
 
 from .model_selection import cross_validate
-from ..utils.estimator import clone, set_params as _set_params
+from ..utils.estimator import clone, set_params as _apply_params
+from ..utils.random import resolve_rng
 
 
 def _param_grid_iter(param_grid):
@@ -25,13 +26,13 @@ def _param_grid_iter(param_grid):
 def _set_params(estimator, params):
     if hasattr(estimator, "set_params"):
         return estimator.set_params(**params)
-    return _set_params(estimator, **params)
+    return _apply_params(estimator, **params)
 
 
 def _sample_param_distributions(param_distributions, n_iter, random_state=None):
     if not isinstance(param_distributions, dict) or not param_distributions:
         raise ValueError("param_distributions must be a non-empty dict")
-    rng = np.random.default_rng(random_state)
+    rng = resolve_rng(random_state)
     keys = list(param_distributions)
     out = []
     for _ in range(int(n_iter)):

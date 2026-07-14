@@ -24,6 +24,19 @@ def test_lda_transform():
     assert dt.shape == (5, 3)
 
 
+def test_lda_random_state_is_reproducible():
+    X = np.array([
+        [2.0, 0.0, 1.0, 0.0],
+        [0.0, 3.0, 0.0, 1.0],
+        [1.0, 0.0, 2.0, 0.0],
+    ])
+    first = LDA(n_topics=2, max_iter=5, random_state=4).fit(X)
+    second = LDA(n_topics=2, max_iter=5, random_state=4).fit(X)
+
+    assert np.allclose(first.components_, second.components_)
+    assert np.allclose(first.doc_topic_, second.doc_topic_)
+
+
 def test_lda_empty_docs():
     X = np.zeros((10, 20))
     X[0, 0] = 1

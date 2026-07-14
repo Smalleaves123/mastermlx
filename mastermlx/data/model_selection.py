@@ -6,6 +6,7 @@ import time
 import numpy as np
 
 from ..utils.metrics import accuracy, mean_squared_error, r2_score
+from ..utils.random import resolve_rng
 from .cv import KFold
 
 
@@ -195,7 +196,7 @@ def learning_curve(estimator, X, y, train_sizes=None, cv=None, scoring=None, shu
 
     train_scores = np.zeros((sizes.shape[0], len(splits)), dtype=float)
     test_scores = np.zeros((sizes.shape[0], len(splits)), dtype=float)
-    rng = np.random.default_rng(random_state)
+    rng = resolve_rng(random_state)
 
     for fold_idx, (train_idx, test_idx) in enumerate(splits):
         base_train_idx = np.asarray(train_idx, dtype=int)

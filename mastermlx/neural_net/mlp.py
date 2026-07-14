@@ -57,6 +57,7 @@ class _BaseMLP:
         validation_split=0.0,
         patience=None,
         verbose=0,
+        callbacks=None,
     ):
         self.hidden_layer_sizes = tuple(hidden_layer_sizes)
         self.activation = activation
@@ -68,6 +69,7 @@ class _BaseMLP:
         self.tol = tol
         self.random_state = random_state
         self.optimizer = optimizer
+        self.callbacks = list(callbacks or [])
         if training_config is None:
             self.training_config_ = resolve_train_cfg(
                 None,
@@ -300,7 +302,8 @@ class MLPClassifier(_BaseMLP, BaseEstimator):
             evaluate_val_loss=lambda Xt, yt: self._evaluate_loss(Xt, yt, loss_fn, classes=classes),
             snapshot_state=self._snapshot_layers,
             restore_state=self._restore_layers,
-                on_epoch_end=self._on_epoch_end,
+            on_epoch_end=self._on_epoch_end,
+            callbacks=self.callbacks,
         )
         self.loss_ = result["loss"]
         self.val_loss_ = result["val_loss"]
@@ -383,6 +386,7 @@ class MLPRegressor(_BaseMLP, BaseEstimator):
             snapshot_state=self._snapshot_layers,
             restore_state=self._restore_layers,
                 on_epoch_end=self._on_epoch_end,
+            callbacks=self.callbacks,
         )
         self.loss_ = result["loss"]
         self.val_loss_ = result["val_loss"]

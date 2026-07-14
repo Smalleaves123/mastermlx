@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from ..utils.random import resolve_rng
+
 
 class KFold:
     """K-fold cross-validator."""
@@ -21,7 +23,7 @@ class KFold:
 
         idx = np.arange(n_samples)
         if self.shuffle:
-            rng = np.random.default_rng(self.random_state)
+            rng = resolve_rng(self.random_state)
             rng.shuffle(idx)
 
         fold_sizes = np.full(self.n_splits, n_samples // self.n_splits, dtype=int)
@@ -53,7 +55,7 @@ class StratifiedKFold:
             raise ValueError("n_splits must be at least 2")
 
         idx = np.arange(n_samples)
-        rng = np.random.default_rng(self.random_state)
+        rng = resolve_rng(self.random_state)
         by_fold = [[] for _ in range(self.n_splits)]
 
         for cls in np.unique(y):
@@ -183,7 +185,7 @@ class ShuffleSplit:
         if self.n_splits < 1:
             raise ValueError("n_splits must be at least 1")
         n_train, n_test = self._resolve_sizes(n_samples)
-        rng = np.random.default_rng(self.random_state)
+        rng = resolve_rng(self.random_state)
 
         for _ in range(self.n_splits):
             idx = rng.permutation(n_samples)
@@ -201,7 +203,7 @@ class RepeatedKFold:
         self.random_state = random_state
 
     def split(self, X, y=None, groups=None):
-        rng = np.random.default_rng(self.random_state)
+        rng = resolve_rng(self.random_state)
         for _ in range(self.n_repeats):
             kf = KFold(n_splits=self.n_splits, shuffle=True, random_state=rng.integers(0, 1 << 31))
             yield from kf.split(X, y)

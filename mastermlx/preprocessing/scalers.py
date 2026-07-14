@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 
 from ..base import BaseTransformer
-from ..utils.validation import check_2d_array
+from ..utils.validation import check_X
 
 
 class StandardScaler(BaseTransformer):
@@ -14,24 +14,21 @@ class StandardScaler(BaseTransformer):
         self.scale_ = None
 
     def fit(self, X, y=None):
-        X = check_2d_array(X).astype(float)
+        X = check_X(X, dtype=float)
+        self._set_n_features(X)
         self.mean_ = np.mean(X, axis=0)
         self.scale_ = np.std(X, axis=0)
         self.scale_ = np.where(self.scale_ == 0.0, 1.0, self.scale_)
         return self
 
     def transform(self, X):
-        X = check_2d_array(X).astype(float)
-        if self.mean_ is None or self.scale_ is None:
-            raise RuntimeError("Scaler has not been fit yet")
-        if X.shape[1] != self.mean_.shape[0]:
-            raise ValueError("X has a different number of features than the fitted data")
+        self._check_fitted(["mean_", "scale_"])
+        X = self._check_X(X, dtype=float)
         return (X - self.mean_) / self.scale_
 
     def inverse_transform(self, X):
-        X = check_2d_array(X).astype(float)
-        if self.mean_ is None or self.scale_ is None:
-            raise RuntimeError("Scaler has not been fit yet")
+        self._check_fitted(["mean_", "scale_"])
+        X = self._check_X(X, dtype=float)
         return X * self.scale_ + self.mean_
 
 
@@ -46,7 +43,8 @@ class MinMaxScaler(BaseTransformer):
         self.data_max_ = None
 
     def fit(self, X, y=None):
-        X = check_2d_array(X).astype(float)
+        X = check_X(X, dtype=float)
+        self._set_n_features(X)
         low, high = self.feature_range
         if high <= low:
             raise ValueError("feature_range must have high > low")
@@ -59,15 +57,13 @@ class MinMaxScaler(BaseTransformer):
         return self
 
     def transform(self, X):
-        X = check_2d_array(X).astype(float)
-        if self.min_ is None or self.scale_ is None:
-            raise RuntimeError("Scaler has not been fit yet")
+        self._check_fitted(["min_", "scale_"])
+        X = self._check_X(X, dtype=float)
         return X * self.scale_ + self.min_
 
     def inverse_transform(self, X):
-        X = check_2d_array(X).astype(float)
-        if self.min_ is None or self.scale_ is None:
-            raise RuntimeError("Scaler has not been fit yet")
+        self._check_fitted(["min_", "scale_"])
+        X = self._check_X(X, dtype=float)
         return (X - self.min_) / self.scale_
 
 
@@ -78,23 +74,20 @@ class MaxAbsScaler(BaseTransformer):
         self.scale_ = None
 
     def fit(self, X, y=None):
-        X = check_2d_array(X).astype(float)
+        X = check_X(X, dtype=float)
+        self._set_n_features(X)
         self.scale_ = np.max(np.abs(X), axis=0)
         self.scale_ = np.where(self.scale_ == 0.0, 1.0, self.scale_)
         return self
 
     def transform(self, X):
-        X = check_2d_array(X).astype(float)
-        if self.scale_ is None:
-            raise RuntimeError("Scaler has not been fit yet")
-        if X.shape[1] != self.scale_.shape[0]:
-            raise ValueError("X has a different number of features than the fitted data")
+        self._check_fitted("scale_")
+        X = self._check_X(X, dtype=float)
         return X / self.scale_
 
     def inverse_transform(self, X):
-        X = check_2d_array(X).astype(float)
-        if self.scale_ is None:
-            raise RuntimeError("Scaler has not been fit yet")
+        self._check_fitted("scale_")
+        X = self._check_X(X, dtype=float)
         return X * self.scale_
 
 
@@ -107,7 +100,8 @@ class RobustScaler(BaseTransformer):
         self.scale_ = None
 
     def fit(self, X, y=None):
-        X = check_2d_array(X).astype(float)
+        X = check_X(X, dtype=float)
+        self._set_n_features(X)
         q_low, q_high = self.quantile_range
         if not 0.0 <= q_low < q_high <= 100.0:
             raise ValueError("quantile_range must satisfy 0 <= low < high <= 100")
@@ -119,13 +113,11 @@ class RobustScaler(BaseTransformer):
         return self
 
     def transform(self, X):
-        X = check_2d_array(X).astype(float)
-        if self.center_ is None or self.scale_ is None:
-            raise RuntimeError("Scaler has not been fit yet")
+        self._check_fitted(["center_", "scale_"])
+        X = self._check_X(X, dtype=float)
         return (X - self.center_) / self.scale_
 
     def inverse_transform(self, X):
-        X = check_2d_array(X).astype(float)
-        if self.center_ is None or self.scale_ is None:
-            raise RuntimeError("Scaler has not been fit yet")
+        self._check_fitted(["center_", "scale_"])
+        X = self._check_X(X, dtype=float)
         return X * self.scale_ + self.center_

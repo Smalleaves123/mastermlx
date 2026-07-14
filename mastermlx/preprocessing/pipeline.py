@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import numpy as np
 
-from ..utils.estimator import clone, get_params as _get_params, set_params as _set_params
+from ..base import BaseEstimator
+from ..utils.estimator import clone
+from ..utils.validation import check_X
 
 
-class Pipeline:
+class Pipeline(BaseEstimator):
     """Chain transformers and a final estimator."""
 
     def __init__(self, steps):
@@ -74,22 +76,25 @@ class Pipeline:
 
     def fit(self, X, y=None):
         steps = self._validate_steps()
-        Xt = np.asarray(X)
-        self.steps_ = []
+        Xt = check_X(X)
+        self._set_n_features(Xt)
+        self.steps_ = None
+        fitted = []
 
         for name, step in steps[:-1]:
             obj = clone(step)
             if not hasattr(obj, "fit") or not hasattr(obj, "transform"):
                 raise TypeError(f"Step '{name}' must define fit and transform")
             Xt = obj.fit_transform(Xt, y)
-            self.steps_.append((name, obj))
+            fitted.append((name, obj))
 
         name, step = steps[-1]
         obj = clone(step)
         if not hasattr(obj, "fit"):
             raise TypeError(f"Step '{name}' must define fit")
         obj.fit(Xt, y)
-        self.steps_.append((name, obj))
+        fitted.append((name, obj))
+        self.steps_ = fitted
         return self
 
     def fit_transform(self, X, y=None):
@@ -100,9 +105,8 @@ class Pipeline:
         return self._transform_input(X)
 
     def _transform_input(self, X):
-        if self.steps_ is None:
-            raise RuntimeError("Pipeline has not been fit yet")
-        Xt = np.asarray(X)
+        self._check_fitted("steps_")
+        Xt = self._check_X(X)
         for _, step in self.steps_[:-1]:
             Xt = step.transform(Xt)
         return Xt

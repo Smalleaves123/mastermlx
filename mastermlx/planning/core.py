@@ -5,10 +5,12 @@ import math
 import numpy as np
 
 
-def _bounds(bounds):
+def _bounds(bounds, dims=None):
     out = np.asarray(bounds, dtype=float)
-    if out.shape != (2, 2) or np.any(out[:, 0] >= out[:, 1]):
-        raise ValueError("bounds must have shape (2, 2) with lower < upper")
+    if out.ndim != 2 or out.shape[1] != 2 or out.shape[0] < 1 or np.any(out[:, 0] >= out[:, 1]):
+        raise ValueError("bounds must have shape (n_dims, 2) with lower < upper")
+    if dims is not None and out.shape[0] != dims:
+        raise ValueError(f"bounds must have {dims} rows")
     return out
 
 
@@ -34,13 +36,13 @@ def _path(nodes, parents, idx):
 
 
 def rrt(start, goal, bounds, hit=None, step=0.1, goal_rate=0.1, max_iter=5000, random_state=None):
-    """Plan a 2D collision-free path with a rapidly exploring tree."""
+    """Plan a collision-free path in an arbitrary-dimensional state space."""
 
     start = np.asarray(start, dtype=float).reshape(-1)
     goal = np.asarray(goal, dtype=float).reshape(-1)
-    bounds = _bounds(bounds)
-    if start.size != 2 or goal.size != 2:
-        raise ValueError("start and goal must be 2D points")
+    if start.size == 0 or goal.size != start.size:
+        raise ValueError("start and goal must have the same non-zero dimension")
+    bounds = _bounds(bounds, start.size)
     if np.any(start < bounds[:, 0]) or np.any(start > bounds[:, 1]):
         raise ValueError("start must be inside bounds")
     if np.any(goal < bounds[:, 0]) or np.any(goal > bounds[:, 1]):
@@ -79,11 +81,11 @@ def rrt(start, goal, bounds, hit=None, step=0.1, goal_rate=0.1, max_iter=5000, r
 
 
 def smooth(path, hit=None, n=100, random_state=None):
-    """Shortcut a 2D path while keeping it collision-free."""
+    """Shortcut a path in an arbitrary-dimensional state space."""
 
     path = np.asarray(path, dtype=float)
-    if path.ndim != 2 or path.shape[1] != 2 or path.shape[0] < 2:
-        raise ValueError("path must have shape (n, 2) with at least two points")
+    if path.ndim != 2 or path.shape[1] < 1 or path.shape[0] < 2:
+        raise ValueError("path must have shape (n, n_dims) with at least two points")
     n = int(n)
     if n < 0:
         raise ValueError("n must be non-negative")

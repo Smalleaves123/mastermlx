@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from ..utils.random import resolve_rng
+
 
 def train_test_split(X, y, test_size=0.25, shuffle=True, random_state=None):
     """Split arrays into train and test subsets.
@@ -38,11 +40,10 @@ def train_test_split(X, y, test_size=0.25, shuffle=True, random_state=None):
 
     indices = np.arange(n_samples)
     if shuffle:
-        rng = np.random.default_rng(random_state)
+        rng = resolve_rng(random_state)
         rng.shuffle(indices)
 
     test_indices = indices[:n_test]
     train_indices = indices[n_test:]
 
     return X[train_indices], X[test_indices], y[train_indices], y[test_indices]
-

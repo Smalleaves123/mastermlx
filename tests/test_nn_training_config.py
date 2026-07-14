@@ -1,6 +1,6 @@
 import numpy as np
 
-from mastermlx.neural_net import MLPClassifier, Sequential, Dense, Dropout, OptimizerConfig, TrainingConfig, build_optimizer
+from mastermlx.neural_net import EarlyStop, History, MLPClassifier, Sequential, Dense, Dropout, OptimizerConfig, TrainingConfig, build_optimizer
 from mastermlx.utils import batch_iterator, one_hot, set_seed, shuffle_arrays, shuffle_indices
 
 
@@ -97,6 +97,21 @@ def test_sequential_restores_training_mode_after_validation_and_predict():
     assert model.summary()["num_parameters"] == 22
     assert len(model.history_) >= 1
     assert model.best_epoch_ is not None
+
+
+def test_training_history_and_callback_hooks():
+    history = History()
+    stop = EarlyStop(monitor="train_loss", patience=2)
+    stop.on_train_begin()
+    history.on_train_begin()
+    for epoch, loss in enumerate([1.0, 0.5, 0.5, 0.5], start=1):
+        logs = {"train_loss": loss}
+        history.on_epoch_end(epoch, logs)
+        stop.on_epoch_end(epoch, logs)
+
+    assert len(history) == 4
+    assert history.get("train_loss") == [1.0, 0.5, 0.5, 0.5]
+    assert stop.stop_training
 
 
 def test_nn_clip_norm_is_accepted():

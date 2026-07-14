@@ -18,6 +18,7 @@ class PCA(BaseTransformer):
 
     def fit(self, X, y=None):
         X = check_2d_array(X)
+        self._set_n_features(X)
         n, m = X.shape
         if self.n_components is None:
             k = m
@@ -44,17 +45,13 @@ class PCA(BaseTransformer):
         return self
 
     def transform(self, X):
-        X = check_2d_array(X)
-        if self.components_ is None:
-            raise RuntimeError("PCA has not been fit yet")
-        if X.shape[1] != self.mean_.shape[0]:
-            raise ValueError("X has a different number of features than the fitted data")
+        self._check_fitted(["components_", "mean_"])
+        X = self._check_X(X)
         return (X - self.mean_) @ self.components_.T
 
     def inverse_transform(self, X):
+        self._check_fitted(["components_", "mean_"])
         X = as_2d(X)
-        if self.components_ is None:
-            raise RuntimeError("PCA has not been fit yet")
         return X @ self.components_ + self.mean_
 
 

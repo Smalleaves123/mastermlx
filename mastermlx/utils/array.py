@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from .random import resolve_rng
+
 
 def one_hot(y, n_classes=None, dtype=float):
     y = np.asarray(y)
@@ -35,7 +37,7 @@ def shuffle_arrays(*arrays, random_state=None):
     for arr in arrays[1:]:
         if arr.shape[0] != n_samples:
             raise ValueError("all arrays must contain the same number of samples")
-    rng = np.random.default_rng(random_state)
+    rng = resolve_rng(random_state)
     idx = rng.permutation(n_samples)
     return tuple(arr[idx] for arr in arrays)
 
@@ -55,7 +57,7 @@ def batch_iterator(*arrays, batch_size, shuffle=True, drop_last=False, random_st
 
     indices = np.arange(n_samples)
     if shuffle:
-        rng = np.random.default_rng(random_state)
+        rng = resolve_rng(random_state)
         rng.shuffle(indices)
 
     for start in range(0, n_samples, batch_size):

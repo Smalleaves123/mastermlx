@@ -14,8 +14,10 @@ from mastermlx.math_tools import (
     lagged_matrix,
     TimeSeriesExperiment,
     TimeSeriesPipeline,
+    ForecastMetrics,
     partial_autocorrelation,
     rolling_mean,
+    rolling_backtest,
 )
 from mastermlx.linear_models import LinearRegression
 
@@ -162,3 +164,21 @@ def test_backtest_returns_fold_scores_and_predictions():
     assert len(out["folds"]) == 3
     assert out["mean"] > 0.99
     assert np.allclose(out["true"], out["pred"], atol=1e-8)
+
+
+def test_rolling_backtest_and_forecast_metrics():
+    x = np.arange(1.0, 16.0)
+    out = rolling_backtest(
+        LinearRegression(fit_intercept=True),
+        x,
+        lags=1,
+        test_size=2,
+        step=2,
+        scoring="r2",
+    )
+    report = ForecastMetrics.report(out["true"], out["pred"])
+
+    assert len(out["folds"]) > 1
+    assert out["metrics"] == report
+    assert report["mae"] < 1e-8
+    assert report["rmse"] < 1e-8
