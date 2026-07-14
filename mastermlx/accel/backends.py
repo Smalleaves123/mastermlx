@@ -53,11 +53,11 @@ def _numpy_pairwise_bray_curtis(X, Y):
 
 
 # ============================================================================
-#  Backend loaders (lazy, cached)
+#  Backend loaders (lazy and backend-aware)
 # ============================================================================
 
 @lru_cache(maxsize=1)
-def _load_cpp_backend():
+def _import_cpp_backend():
     try:
         return importlib.import_module("mastermlx.accel._distance_cpp")
     except ImportError:
@@ -65,7 +65,7 @@ def _load_cpp_backend():
 
 
 @lru_cache(maxsize=1)
-def _load_cython_backend():
+def _import_cython_backend():
     try:
         return importlib.import_module("mastermlx.accel._distance_ops")
     except ImportError:
@@ -73,7 +73,7 @@ def _load_cython_backend():
 
 
 @lru_cache(maxsize=1)
-def _load_cpp_kernels():
+def _import_cpp_kernels():
     try:
         return importlib.import_module("mastermlx.accel._kernels_cpp")
     except ImportError:
@@ -81,11 +81,27 @@ def _load_cpp_kernels():
 
 
 @lru_cache(maxsize=1)
-def _load_cython_tree():
+def _import_cython_tree():
     try:
         return importlib.import_module("mastermlx.accel._tree_ops")
     except ImportError:
         return None
+
+
+def _load_cpp_backend():
+    return _import_cpp_backend() if get_backend() == "auto" else None
+
+
+def _load_cython_backend():
+    return _import_cython_backend() if get_backend() in {"auto", "cython"} else None
+
+
+def _load_cpp_kernels():
+    return _import_cpp_kernels() if get_backend() == "auto" else None
+
+
+def _load_cython_tree():
+    return _import_cython_tree() if get_backend() in {"auto", "cython"} else None
 
 
 def get_active_backend():

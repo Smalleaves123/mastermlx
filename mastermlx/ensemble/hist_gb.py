@@ -3,7 +3,15 @@ from __future__ import annotations
 import numpy as np
 
 from ..base import BaseEstimator
+from ..config import get_backend
 from ..utils import accuracy, as_2d, check_1d_array, check_2d_array, r2_score
+
+try:
+    from ._hist_cpp import fit_hist_tree as _fit_hist_cpp
+    from ._hist_cpp import predict_hist_tree as _predict_hist_cpp
+except ImportError:  # pragma: no cover - optional compiled extension
+    _fit_hist_cpp = None
+    _predict_hist_cpp = None
 
 
 def _bin_data(X, n_bins=256):
@@ -47,12 +55,30 @@ class _HistTree:
         self.l2_reg = l2_reg
         self.n_bins = n_bins
         self.root = None
+        self._compiled = False
+        self._nodes = None
 
     def fit(self, X, g, h):
         """X: binned int32 (n, d). g, h: gradients and hessians (n,)."""
+        X = np.asarray(X, dtype=np.int32)
+        g = np.asarray(g, dtype=float)
+        h = np.asarray(h, dtype=float)
         n, d = X.shape
         self.n_bins = min(self.n_bins, n)
+        self._compiled = False
+        self._nodes = None
+        if _fit_hist_cpp is not None and get_backend() == "auto":
+            self._nodes = tuple(
+                np.asarray(values)
+                for values in _fit_hist_cpp(
+                    X, g, h, self.min_samples_leaf, self.max_depth, self.l2_reg
+                )
+            )
+            self._compiled = True
+            self.root = None
+            return self
         self.root = self._grow(X, g, h, np.arange(n), 0)
+        return self
 
     def _grow(self, X, g, h, indices, depth):
         n = len(indices)
@@ -126,6 +152,20 @@ class _HistTree:
 
     def predict(self, X):
         """X: binned int32 (n, d). Returns predictions (n,)."""
+        X = np.asarray(X, dtype=np.int32)
+        if X.ndim != 2:
+            raise ValueError("X must be a 2D binned matrix")
+        if self._compiled and _predict_hist_cpp is not None and get_backend() == "auto":
+            return _predict_hist_cpp(X, *self._nodes)
+        if self._compiled:
+            features, bins, left, right, values = self._nodes
+            pred = np.empty(X.shape[0], dtype=float)
+            for i, row in enumerate(X):
+                node = 0
+                while features[node] >= 0:
+                    node = left[node] if row[features[node]] <= bins[node] else right[node]
+                pred[i] = values[node]
+            return pred
         n = X.shape[0]
         pred = np.zeros(n, dtype=float)
         for i in range(n):

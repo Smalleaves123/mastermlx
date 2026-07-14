@@ -7,7 +7,11 @@ from mastermlx.accel import (
     pairwise_manhattan_distances,
     pairwise_squared_euclidean,
 )
-from mastermlx.accel.backends import _numpy_pairwise_squared_euclidean
+from mastermlx.accel.backends import (
+    _load_cpp_backend,
+    _load_cython_backend,
+    _numpy_pairwise_squared_euclidean,
+)
 
 
 def test_backend_switching_and_pairwise_ops():
@@ -15,6 +19,8 @@ def test_backend_switching_and_pairwise_ops():
     try:
         set_backend("numpy")
         assert get_active_backend() == "numpy"
+        assert _load_cpp_backend() is None
+        assert _load_cython_backend() is None
 
         X = np.array([[0.0, 0.0], [1.0, 1.0]])
         Y = np.array([[1.0, 0.0], [2.0, 2.0]])

@@ -19,6 +19,8 @@ development model.
   - kernels
   - tree split search
   - convolution and max pooling
+- `mastermlx.ensemble`
+  - histogram-tree growth and prediction for gradient boosting
 - `mastermlx.control`
   - iLQR rollout
   - finite-difference Jacobians

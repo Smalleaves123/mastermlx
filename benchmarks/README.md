@@ -20,6 +20,15 @@ python benchmarks/bench_tabular.py
 python benchmarks/bench_signal.py
 ```
 
+For Cython-backed sections, install the development extras first:
+
+```bash
+pip install -e ".[dev]"
+```
+
+`bench_accel.py` switches backends through the public `set_backend()` API and
+labels metric sections as fallback paths when Cython is not installed.
+
 ## Benchmarking rules
 
 - Keep runs short enough to be practical in development

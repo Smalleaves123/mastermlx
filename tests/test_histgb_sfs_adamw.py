@@ -4,6 +4,7 @@ from mastermlx.ensemble import HistGradientBoostingClassifier, HistGradientBoost
 from mastermlx.neural_net import AdamW
 from mastermlx.selection import SequentialFeatureSelector
 from mastermlx.linear_models import LogisticRegression
+from mastermlx import get_backend, set_backend
 
 
 # --- HistGradientBoosting ---
@@ -39,6 +40,27 @@ def test_histgb_reg_single():
     y = X[:, 0] * 2 + 0.1 * np.random.randn(100)
     reg = HistGradientBoostingRegressor(n_estimators=10, max_depth=3, random_state=0).fit(X, y)
     assert isinstance(float(reg.predict(X[:1])[0]), float)
+
+
+def test_histgb_numpy_and_compiled_paths_match():
+    rng = np.random.default_rng(0)
+    X = rng.normal(size=(160, 5))
+    y = (X[:, 0] - X[:, 1] > 0).astype(int)
+    old = get_backend()
+    try:
+        set_backend("numpy")
+        numpy_model = HistGradientBoostingClassifier(
+            n_estimators=8, max_depth=3, min_samples_leaf=5, random_state=0
+        ).fit(X, y)
+        set_backend("auto")
+        compiled_model = HistGradientBoostingClassifier(
+            n_estimators=8, max_depth=3, min_samples_leaf=5, random_state=0
+        ).fit(X, y)
+        assert np.allclose(
+            numpy_model.predict_proba(X), compiled_model.predict_proba(X), atol=1e-10
+        )
+    finally:
+        set_backend(old)
 
 
 # --- AdamW ---

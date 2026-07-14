@@ -49,6 +49,13 @@ cpp_exts = [
         extra_compile_args=["-O3"],
         language="c++",
     ),
+    Extension(
+        "mastermlx.ensemble._hist_cpp",
+        ["mastermlx/ensemble/_hist_cpp.cpp"],
+        include_dirs=inc_dirs,
+        extra_compile_args=["-O3"],
+        language="c++",
+    ),
 ]
 
 # Cython extensions (optional)
