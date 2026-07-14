@@ -6,6 +6,7 @@ from . import detectors as detectors
 from . import io as io
 from . import metrics as metrics
 from . import streaming as streaming
+from . import time_frequency as time_frequency
 from . import transforms as transforms
 from . import utils as utils
 
@@ -52,6 +53,23 @@ from .datasets import make_chirp, make_impulse_train, make_multi_tone, make_sign
 from .io import load_signal, load_signal_bundle, save_signal, save_signal_bundle
 from .metrics import frame_energy, signal_psnr, signal_snr
 from .spectral import coherence, cross_power_spectrum, cross_spectrum, periodogram, welch, welch_psd
+from .time_frequency import (
+    analytic_signal,
+    continuous_wavelet_transform,
+    cwt,
+    extract_ridge,
+    hilbert,
+    hilbert_transform,
+    instantaneous_amplitude,
+    instantaneous_features,
+    instantaneous_frequency,
+    instantaneous_phase,
+    ridge,
+    time_frequency_ridge,
+    wavelet_power,
+    wavelet_scales,
+    wavelet_transform,
+)
 from .systems import (
     butterworth,
     butterworth_filter,
@@ -115,15 +133,25 @@ __all__ = [
     "ensure_1d",
     "datasets",
     "detectors",
+    "analytic_signal",
     "coherence",
+    "continuous_wavelet_transform",
     "convolve1d",
     "cross_power_spectrum",
     "cross_spectrum",
+    "cwt",
     "chunk_signal",
+    "extract_ridge",
     "frame_signal",
     "freq_response",
     "frequency_response",
     "group_delay",
+    "hilbert",
+    "hilbert_transform",
+    "instantaneous_amplitude",
+    "instantaneous_features",
+    "instantaneous_frequency",
+    "instantaneous_phase",
     "magnitude_response",
     "phase_response",
     "pole_zero",
@@ -188,6 +216,7 @@ __all__ = [
     "phase_spectrum",
     "spectral_feature_vector",
     "resample_linear",
+    "ridge",
     "save_signal",
     "save_signal_bundle",
     "power_spectrum",
@@ -217,6 +246,8 @@ __all__ = [
     "top_frequency_peaks",
     "stack_signal_features",
     "streaming",
+    "time_frequency",
+    "time_frequency_ridge",
     "STFTTransformer",
     "trim_signal",
     "zcr",
@@ -227,6 +258,9 @@ __all__ = [
     "verify_filter",
     "welch",
     "welch_psd",
+    "wavelet_power",
+    "wavelet_scales",
+    "wavelet_transform",
     "zero_phase_filter",
     "ifft_signal",
     "irfft_signal",

@@ -9,6 +9,11 @@
 
 ## Unreleased
 
+- Added FFT-based Hilbert analytic signals with instantaneous amplitude, phase,
+  and frequency extraction.
+- Added NumPy continuous wavelet transforms with Morlet and Mexican-hat
+  wavelets, scale generation, wavelet power maps, and time-frequency ridge
+  extraction.
 - Added IIR system analysis for magnitude, phase, and group-delay responses,
   pole-zero inspection, stability checks, causal filtering, and zero-phase
   filtering.

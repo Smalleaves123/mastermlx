@@ -63,9 +63,12 @@ by default.
 ```python
 from mastermlx.signal import (
     butterworth,
+    cwt,
     coherence,
+    extract_ridge,
     frequency_response,
     group_delay,
+    instantaneous_features,
     phase_response,
     pole_zero,
     verify_filter,
@@ -83,6 +86,10 @@ report = verify_filter(
     b, a, sample_rate=1000,
     passband=(0, 50), stopband=(200, 500), stopband_db=20,
 )
+
+features = instantaneous_features(x, sample_rate=1000)
+scales, frequencies, coefficients = cwt(x, scales=[4, 8, 16, 32], sample_rate=1000)
+ridge = extract_ridge(np.abs(coefficients) ** 2, frequencies)
 ```
 
 These tools cover Welch power spectral density, cross-spectral coherence, and
@@ -94,6 +101,12 @@ checks, causal filtering, zero-phase filtering, and Butterworth lowpass,
 highpass, bandpass, and bandstop designs. ``verify_filter`` returns the full
 response arrays together with passband/stopband measurements and stability
 metadata.
+
+The time-frequency tools provide FFT-based Hilbert analytic signals,
+instantaneous amplitude/phase/frequency, Morlet and Mexican-hat continuous
+wavelet transforms, wavelet power maps, and dynamic-programming ridge
+extraction. CWT scales are measured in samples; the returned frequencies are
+pseudo-frequencies suitable for comparing dominant components over time.
 
 ## Module Map
 
