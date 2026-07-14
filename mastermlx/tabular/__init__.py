@@ -3,6 +3,8 @@ from __future__ import annotations
 import numpy as np
 
 from ..data.search import GridSearchCV, RandomizedSearchCV
+from ..data.cv import KFold
+from ..data.model_selection import cross_val_score
 from ..preprocessing import Pipeline as PreprocessingPipeline
 from ..utils.estimator import clone
 
@@ -66,6 +68,7 @@ class TabularExperiment:
         self.best_params_ = None
         self.best_score_ = None
         self.cv_results_ = None
+        self.cv_scores_ = None
 
     def _resolve_searcher(self, pipeline):
         if self.search is None:
@@ -136,6 +139,21 @@ class TabularExperiment:
         self._require_fitted()
         return self.best_estimator_.score(X, y)
 
+    def cv_score(self, X, y, groups=None):
+        """Return cross-validated scores for the configured workflow."""
+
+        self._require_fitted()
+        cv = self.cv
+        if cv is None:
+            n_splits = min(5, np.asarray(X).shape[0])
+            if n_splits < 2:
+                raise ValueError("at least two samples are required for cross-validation")
+            cv = KFold(n_splits=n_splits, shuffle=True, random_state=0)
+        pipe = _build_pipeline(clone(self.model), self.preprocessing)
+        scores = cross_val_score(pipe, X, y, cv=cv, scoring=self.scoring, groups=groups)
+        self.cv_scores_ = np.asarray(scores, dtype=float)
+        return self.cv_scores_
+
     def summary(self):
         self._require_fitted()
         return {
@@ -169,7 +187,9 @@ def compare_tabular_models(models, X, y, preprocessing=None, cv=None, scoring=No
             task=task,
         )
         experiment.fit(X, y)
-        score = experiment.score(X, y)
+        scores = experiment.cv_score(X, y)
+        score = float(np.mean(scores))
+        experiment.best_score_ = score
         leaderboard.append((name, float(score)))
         if score > best_score:
             best_score = float(score)

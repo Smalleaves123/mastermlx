@@ -3,11 +3,12 @@ from __future__ import annotations
 import numpy as np
 
 from ..base import BaseTransformer
+from ..utils.estimator import clone
 from ..utils.validation import check_2d_array
 
 
 class ColumnTransformer(BaseTransformer):
-    """Apply different transformers to different column subsets."""
+    """Apply cloned transformers to different column subsets."""
 
     def __init__(self, transformers, remainder="drop"):
         self.transformers = list(transformers)
@@ -15,33 +16,72 @@ class ColumnTransformer(BaseTransformer):
         self._columns = []
         self._names = []
         self._remainder_idx = None
+        self.transformers_ = None
+        self.feature_names_in_ = None
+        self.output_dims_ = None
+
+    @staticmethod
+    def _resolve_cols(X, cols, n_cols):
+        if cols is None or (isinstance(cols, (list, np.ndarray)) and len(cols) == 0):
+            raise ValueError("columns must not be empty")
+        if isinstance(cols, slice):
+            return np.arange(n_cols)[cols]
+        if isinstance(cols, str):
+            cols = [cols]
+        if isinstance(cols, (list, tuple, np.ndarray)) and any(isinstance(item, str) for item in cols):
+            names = getattr(X, "columns", None)
+            if names is None:
+                raise TypeError("string columns require input with a 'columns' attribute")
+            index = {name: idx for idx, name in enumerate(names)}
+            try:
+                cols = [index[item] for item in cols]
+            except KeyError as exc:
+                raise ValueError(f"unknown column {exc.args[0]!r}") from None
+        cols = np.atleast_1d(np.asarray(cols, dtype=int)).ravel()
+        if cols.size == 0:
+            raise ValueError("columns must not be empty")
+        if np.any(cols < 0) or np.any(cols >= n_cols):
+            raise ValueError(f"columns out of range [0, {n_cols})")
+        return cols
+
+    @staticmethod
+    def _as_block(value, n_rows):
+        value = np.asarray(value)
+        if value.ndim == 1:
+            value = value.reshape(n_rows, 1)
+        if value.ndim != 2 or value.shape[0] != n_rows:
+            raise ValueError("transformers must return a 2D array with one row per sample")
+        return value
 
     def fit(self, X, y=None):
+        raw = X
         X = check_2d_array(X)
         n_cols = X.shape[1]
         if n_cols == 0:
             raise ValueError("X must have at least one column")
-        used = np.zeros(n_cols, dtype=bool)
+        self._set_n_features(X)
+        names = getattr(raw, "columns", None)
+        self.feature_names_in_ = None if names is None else np.asarray(list(names), dtype=object)
 
+        used = np.zeros(n_cols, dtype=bool)
         self._columns = []
         self._names = []
+        self.transformers_ = []
+        self.output_dims_ = []
         for name, trans, cols in self.transformers:
-            if cols is None or (isinstance(cols, (list, np.ndarray)) and len(cols) == 0):
-                raise ValueError(f"Columns for '{name}' must not be empty")
-            if isinstance(cols, slice):
-                cols = np.arange(n_cols)[cols]
-            cols = np.atleast_1d(np.asarray(cols, dtype=int)).ravel()
-            if cols.size == 0:
-                raise ValueError(f"Columns for '{name}' resolved to empty")
-            if np.any(cols < 0) or np.any(cols >= n_cols):
-                raise ValueError(f"Columns for '{name}' out of range [0, {n_cols})")
+            cols = self._resolve_cols(raw, cols, n_cols)
             if np.any(used[cols]):
                 raise ValueError(f"Columns for '{name}' overlap with another transformer")
             used[cols] = True
+            obj = clone(trans)
+            obj.fit(X[:, cols], y)
+            block = self._as_block(obj.transform(X[:, cols]), X.shape[0])
             self._columns.append(cols)
             self._names.append(name)
-            trans.fit(X[:, cols], y)
+            self.transformers_.append((name, obj, cols))
+            self.output_dims_.append(block.shape[1])
 
+        self._remainder_idx = []
         if self.remainder == "passthrough":
             self._remainder_idx = np.flatnonzero(~used).tolist()
         elif self.remainder != "drop":
@@ -49,24 +89,48 @@ class ColumnTransformer(BaseTransformer):
         return self
 
     def transform(self, X):
-        X = check_2d_array(X)
-        parts = []
-        for cols, trans in zip(self._columns, self._names):
-            trans_obj = None
-            for name, t, _ in self.transformers:
-                if name == trans:
-                    trans_obj = t
-                    break
-            if trans_obj is None:
-                raise RuntimeError(f"Transformer '{trans}' not found")
-            parts.append(trans_obj.transform(X[:, cols]))
-
-        if self._remainder_idx and len(self._remainder_idx) > 0:
+        self._check_fitted("transformers_")
+        X = self._check_X(X)
+        parts = [self._as_block(trans.transform(X[:, cols]), X.shape[0]) for _, trans, cols in self.transformers_]
+        if self._remainder_idx:
             parts.append(X[:, self._remainder_idx])
-
         if not parts:
             return np.zeros((X.shape[0], 0), dtype=float)
         return np.column_stack(parts) if len(parts) > 1 else parts[0]
 
+    def get_feature_names_out(self, input_features=None):
+        """Return stable names for transformed columns."""
+
+        self._check_fitted(["transformers_", "output_dims_"])
+        if input_features is None:
+            input_features = self.feature_names_in_
+        if input_features is None:
+            input_features = np.asarray([f"x{idx}" for idx in range(self.n_features_in_)], dtype=object)
+        input_features = np.asarray(input_features, dtype=object).ravel()
+        if input_features.size != self.n_features_in_:
+            raise ValueError("input_features must match the fitted number of columns")
+
+        names = []
+        for (name, trans, cols), width in zip(self.transformers_, self.output_dims_):
+            custom = None
+            if hasattr(trans, "get_feature_names_out"):
+                try:
+                    custom = np.asarray(trans.get_feature_names_out(input_features[cols]), dtype=object).ravel()
+                except TypeError:
+                    custom = np.asarray(trans.get_feature_names_out(), dtype=object).ravel()
+            if custom is not None and custom.size == width:
+                names.extend([f"{name}__{item}" for item in custom])
+            elif width == len(cols):
+                names.extend([f"{name}__{input_features[col]}" for col in cols])
+            else:
+                names.extend([f"{name}__x{idx}" for idx in range(width)])
+
+        if self.remainder == "passthrough" and self._remainder_idx:
+            names.extend([str(input_features[idx]) for idx in self._remainder_idx])
+        return np.asarray(names, dtype=object)
+
     def fit_transform(self, X, y=None):
         return self.fit(X, y).transform(X)
+
+
+__all__ = ["ColumnTransformer"]

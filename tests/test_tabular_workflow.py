@@ -58,3 +58,15 @@ def test_compare_tabular_models_returns_leaderboard():
     assert result["leaderboard"]
     assert result["best_name"] in {"linear_a", "linear_b"}
     assert result["best_experiment"] is not None
+    assert result["best_score"] == result["best_experiment"].best_score_
+
+
+def test_tabular_cv_score_uses_fitted_pipeline_contract():
+    X = np.arange(12, dtype=float).reshape(-1, 1)
+    y = 2.0 * X.ravel() + 1.0
+    experiment = TabularExperiment(model=LinearRegression(), search=None, cv=3, task="regression")
+    experiment.fit(X, y)
+    scores = experiment.cv_score(X, y)
+
+    assert scores.shape == (3,)
+    assert np.all(scores > 0.99)

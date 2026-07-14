@@ -38,12 +38,38 @@ def test_column_transformer_slice():
     assert ct.transform(X).shape == (50, 3)
 
 
+def test_column_transformer_clones_steps_and_names_outputs():
+    X = np.random.randn(20, 3)
+    scaler = StandardScaler()
+    ct = ColumnTransformer([("scale", scaler, [0, 1])], remainder="passthrough").fit(X)
+
+    assert scaler.mean_ is None
+    assert ct.transformers_[0][1] is not scaler
+    assert ct.get_feature_names_out().tolist() == ["scale__x0", "scale__x1", "x2"]
+
+
+def test_column_transformer_accepts_named_columns():
+    class Frame:
+        columns = ["age", "score", "keep"]
+
+        def __init__(self, data):
+            self.data = np.asarray(data)
+
+        def __array__(self, dtype=None):
+            return np.asarray(self.data, dtype=dtype)
+
+    X = Frame(np.random.randn(10, 3))
+    ct = ColumnTransformer([("scale", StandardScaler(), ["age", "score"])], remainder="passthrough").fit(X)
+
+    assert ct.get_feature_names_out().tolist() == ["scale__age", "scale__score", "keep"]
+
+
 def test_column_transformer_empty_raises():
     with pytest.raises(ValueError, match="remainder"):
         ColumnTransformer([("x", StandardScaler(), [0])], remainder="bad").fit(np.random.randn(10, 3))
     with pytest.raises(ValueError, match="overlap"):
-        ct = ColumnTransformer([("a", StandardScaler(), [0, 1]),
-                                ("b", MinMaxScaler(), [1, 2])]).fit(np.random.randn(10, 3))
+        ColumnTransformer([("a", StandardScaler(), [0, 1]),
+                           ("b", MinMaxScaler(), [1, 2])]).fit(np.random.randn(10, 3))
     with pytest.raises(ValueError, match="out of range"):
         ColumnTransformer([("a", StandardScaler(), [99])]).fit(np.random.randn(10, 3))
 
