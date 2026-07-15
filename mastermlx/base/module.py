@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from pathlib import Path
-import pickle
 
 import numpy as np
+
+from ..version import __version__
+from .checkpoint import load_object, save_object
 
 
 def _name(name):
@@ -189,16 +191,13 @@ class Module:
         return self.load_state_dict(state, strict=strict)
 
     def save_checkpoint(self, path):
-        """Save the complete trusted training object, including optimizer state."""
-        with Path(path).open("wb") as handle:
-            pickle.dump(self, handle, protocol=pickle.HIGHEST_PROTOCOL)
-        return Path(path)
+        """Save a versioned checkpoint without executable pickle payloads."""
+        return save_object(self, path, __version__)
 
     @classmethod
     def load_checkpoint(cls, path):
-        """Load a checkpoint created by :meth:`save_checkpoint`."""
-        with Path(path).open("rb") as handle:
-            obj = pickle.load(handle)
+        """Load a versioned checkpoint created by :meth:`save_checkpoint`."""
+        obj = load_object(path)
         if not isinstance(obj, cls):
             raise TypeError(f"checkpoint must contain a {cls.__name__}")
         for callback in getattr(obj, "callbacks", ()):

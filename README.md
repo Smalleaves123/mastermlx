@@ -71,6 +71,12 @@ For the benchmark design, dataset choices, and expected output format, see:
 - [`docs/benchmark_plan.md`](docs/benchmark_plan.md)
 - [`benchmarks/README.md`](benchmarks/README.md)
 
+## Neural API and persistence
+
+The neural estimator shapes, `evaluate()` result format, safe versioned
+checkpoints, and backend selection rules are documented in
+[`docs/neural_api.md`](docs/neural_api.md).
+
 ## Acceleration
 
 The library includes optional compiled helpers for:

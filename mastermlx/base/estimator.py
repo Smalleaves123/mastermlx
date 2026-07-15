@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 import copy
-import pickle
-from pathlib import Path
 
 from .common import BaseAPI
+from .checkpoint import load_object, save_object
+from ..version import __version__
 from ..utils.estimator import get_params as _get_params, set_params as _set_params
 
 
@@ -39,18 +39,18 @@ class BaseEstimator(BaseAPI, ABC):
         return self
 
     def save(self, path):
-        """Save the fitted estimator to a pickle file."""
+        """Save the fitted estimator to a versioned safe archive."""
 
-        with Path(path).open("wb") as handle:
-            pickle.dump(self, handle, protocol=pickle.HIGHEST_PROTOCOL)
+        save_object(self, path, __version__)
         return self
 
     @classmethod
     def load(cls, path):
         """Load an estimator saved with :meth:`save`."""
-
-        with Path(path).open("rb") as handle:
-            obj = pickle.load(handle)
+        obj = load_object(path)
         if not isinstance(obj, cls):
             raise TypeError(f"saved object must be a {cls.__name__}")
+        for callback in getattr(obj, "callbacks", ()):
+            if hasattr(callback, "set_model"):
+                callback.set_model(obj)
         return obj

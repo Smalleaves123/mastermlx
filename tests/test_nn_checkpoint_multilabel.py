@@ -1,4 +1,6 @@
 import numpy as np
+import pytest
+import zipfile
 
 from mastermlx.neural_net import (
     Dense,
@@ -53,3 +55,23 @@ def test_model_checkpoint_roundtrips_full_training_object(tmp_path):
     previous_step = restored.optimizer_._t
     restored.fit(X, y, resume=True)
     assert restored.optimizer_._t > previous_step
+
+
+def test_checkpoint_has_versioned_safe_manifest(tmp_path):
+    model = Sequential([Dense(2, 2, random_state=0)], n_iter=1, task="classification")
+    model.fit(np.array([[0.0, 0.0], [1.0, 1.0]]), np.array([0, 1]))
+    path = tmp_path / "safe.checkpoint"
+    model.save_checkpoint(path)
+
+    with zipfile.ZipFile(path) as archive:
+        manifest = archive.read("manifest.json").decode("utf-8")
+    assert '"format":"mastermlx-checkpoint"' in manifest
+    assert '"schema_version":1' in manifest
+    assert '"state_schema":{"name":"object_graph","version":1}' in manifest
+
+
+def test_legacy_checkpoint_format_is_rejected(tmp_path):
+    path = tmp_path / "legacy.checkpoint"
+    path.write_bytes(b"not a checkpoint")
+    with pytest.raises(ValueError, match="unsupported checkpoint format"):
+        Sequential.load_checkpoint(path)

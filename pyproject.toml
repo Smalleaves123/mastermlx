@@ -50,6 +50,8 @@ dev = [
   "pytest>=8.0",
   "cython>=3.0",
   "pybind11>=2.10",
+  "ruff>=0.12",
+  "mypy>=1.10",
 ]
 
 [tool.setuptools]
@@ -66,6 +68,16 @@ exclude = ["tests*", "scripts*", "benchmarks*", "examples*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+exclude = ["build", "dist"]
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+check_untyped_defs = true
 
 [tool.cibuildwheel]
 build = "cp310-* cp311-* cp312-* cp313-*"

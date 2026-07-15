@@ -10,3 +10,5 @@ dependencies:
   - cython>=3.0
   - pybind11>=2.10
   - pytest>=8.0
+  - ruff>=0.12
+  - mypy>=1.10
