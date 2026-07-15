@@ -14,7 +14,7 @@ class MSELoss:
     def grad(self, y_true, y_pred):
         y_true = np.asarray(y_true, dtype=float)
         y_pred = np.asarray(y_pred, dtype=float)
-        return 2.0 * (y_pred - y_true) / y_true.shape[0]
+        return 2.0 * (y_pred - y_true) / y_true.size
 
 
 class CrossEntropyLoss:
@@ -69,5 +69,5 @@ class BinaryCrossEntropyLoss:
             probs[positive] = 1.0 / (1.0 + np.exp(-y_pred[positive]))
             exp_logits = np.exp(y_pred[~positive])
             probs[~positive] = exp_logits / (1.0 + exp_logits)
-            return (probs - y_true) / y_true.shape[0]
-        return (y_pred - y_true) / (np.maximum(y_pred * (1.0 - y_pred), self.eps) * y_true.shape[0])
+            return (probs - y_true) / y_true.size
+        return (y_pred - y_true) / (np.maximum(y_pred * (1.0 - y_pred), self.eps) * y_true.size)

@@ -3,7 +3,35 @@ from __future__ import annotations
 import numpy as np
 
 
-GRAD_NAMES = ("dW_", "db_", "dgamma_", "dbeta_", "dU_", "du_", "dc_")
+# Kept as a compatibility list for lightweight third-party layers.  Built-in
+# layers are discovered dynamically from their ``d<parameter>_`` attributes.
+GRAD_NAMES = (
+    "dW_", "db_", "dgamma_", "dbeta_", "dU_", "du_", "dc_",
+    "dW_xh_", "dW_hh_", "dW_zr_", "dW_h_", "dU_zr_", "dU_h_",
+    "db_zr_", "db_h_", "dW_q_", "dW_k_", "dW_v_", "dW_o_",
+    "db_q_", "db_k_", "db_v_", "db_o_",
+)
+
+
+def _grad_items(layer):
+    """Yield ``(name, value)`` pairs for all gradients on a layer.
+
+    Matching gradients to their parameter names keeps clipping and
+    accumulation aligned as new layers add parameters, while ``GRAD_NAMES``
+    preserves support for small external layer stubs without parameter attrs.
+    """
+    own_parameters = getattr(layer, "_own_parameters", None)
+    param_names = set() if own_parameters is None else {
+        name for name, _ in own_parameters()
+    }
+    for name, value in vars(layer).items():
+        if value is None or not name.startswith("d") or not name.endswith("_"):
+            continue
+        if name not in GRAD_NAMES and name[1:] not in param_names:
+            continue
+        if not isinstance(value, (np.ndarray, np.generic, float, int)):
+            continue
+        yield name, np.asarray(value, dtype=float)
 
 
 def clip_gradients(layers, max_norm):
@@ -11,12 +39,7 @@ def clip_gradients(layers, max_norm):
     if max_norm <= 0.0:
         raise ValueError("max_norm must be positive")
 
-    grads = []
-    for layer in layers:
-        for name in ("dW_", "db_", "dgamma_", "dbeta_"):
-            value = getattr(layer, name, None)
-            if value is not None:
-                grads.append(value)
+    grads = [value for layer in layers for _, value in _grad_items(layer)]
 
     if not grads:
         return 0.0, 1.0
@@ -27,22 +50,16 @@ def clip_gradients(layers, max_norm):
 
     scale = max_norm / (total_norm + 1e-12)
     for layer in layers:
-        for name in ("dW_", "db_", "dgamma_", "dbeta_"):
-            value = getattr(layer, name, None)
-            if value is not None:
-                setattr(layer, name, value * scale)
+        for name, value in _grad_items(layer):
+            setattr(layer, name, value * scale)
     return total_norm, scale
 
 
 def accumulate_gradients(layers, store):
     """Add current layer gradients to an accumulation mapping."""
     for layer_idx, layer in enumerate(layers):
-        for name in GRAD_NAMES:
-            value = getattr(layer, name, None)
-            if value is None:
-                continue
+        for name, value in _grad_items(layer):
             key = (layer_idx, name)
-            value = np.asarray(value, dtype=float)
             if key in store:
                 store[key] += value
             else:
@@ -54,11 +71,8 @@ def load_accumulated_gradients(layers, store, count):
     count = int(count)
     if count < 1:
         raise ValueError("count must be positive")
-    for layer_idx, layer in enumerate(layers):
-        for name in GRAD_NAMES:
-            key = (layer_idx, name)
-            if key in store:
-                setattr(layer, name, store[key] / count)
+    for (layer_idx, name), value in store.items():
+        setattr(layers[layer_idx], name, value / count)
 
 
 clip_grads = clip_gradients

@@ -50,24 +50,21 @@ class SimpleRNN(BaseLayer):
         self.dW_xh_ = np.zeros_like(self.W_xh_)
         self.dW_hh_ = np.zeros_like(self.W_hh_)
         self.db_ = np.zeros_like(self.b_)
+        dX = np.zeros_like(self.X_)
         dh = np.zeros((N, self.n_units), dtype=float)
-
         if grad.ndim == 2:
             dh = grad
-        else:
-            dh = grad[:, -1, :].copy()
 
         for t in range(T - 1, -1, -1):
+            if grad.ndim == 3:
+                dh = dh + grad[:, t, :]
             dtanh = dh * (1.0 - self.H_[:, t, :] ** 2)
             self.dW_xh_ += self.X_[:, t, :].T @ dtanh
             self.db_ += np.sum(dtanh, axis=0)
             h_prev = self.H_[:, t - 1, :] if t > 0 else np.zeros((N, self.n_units))
             self.dW_hh_ += h_prev.T @ dtanh
-            if grad.ndim == 3:
-                dh = dtanh @ self.W_hh_.T + grad[:, t, :]
-            else:
-                dh = dtanh @ self.W_hh_.T
-        dX = np.zeros_like(self.X_)
+            dX[:, t, :] = dtanh @ self.W_xh_.T
+            dh = dtanh @ self.W_hh_.T
         return dX
 
     def step(self, lr=None, optimizer=None, key_prefix="rnn"):
@@ -141,7 +138,7 @@ class LSTM(BaseLayer):
                 dh = grad[:, t, :] + dh
             f, i, cc, o = gates[t]
             c_prev = Cs[t - 1] if t > 0 else np.zeros((N, u))
-            do = dh * np.tanh(Cs[t])
+            do = dh * np.tanh(Cs[t]) * o * (1.0 - o)
             dc = dc + dh * o * (1.0 - np.tanh(Cs[t]) ** 2)
             df = dc * c_prev * f * (1.0 - f)
             di = dc * cc * i * (1.0 - i)
