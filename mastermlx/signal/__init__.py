@@ -1,10 +1,13 @@
 """Signal-processing helpers for mathematical and numerical workflows."""
 
+from . import advanced_spectral as advanced_spectral
 from . import augmentation as augmentation
+from . import correlation as correlation
 from . import datasets as datasets
 from . import detectors as detectors
 from . import io as io
 from . import metrics as metrics
+from . import parametric as parametric
 from . import streaming as streaming
 from . import time_frequency as time_frequency
 from . import transforms as transforms
@@ -53,6 +56,26 @@ from .datasets import make_chirp, make_impulse_train, make_multi_tone, make_sign
 from .io import load_signal, load_signal_bundle, save_signal, save_signal_bundle
 from .metrics import frame_energy, signal_psnr, signal_snr
 from .spectral import coherence, cross_power_spectrum, cross_spectrum, periodogram, welch, welch_psd
+from .advanced_spectral import (
+    cepstrum_peaks,
+    complex_cepstrum,
+    cyclic_spectral_density,
+    cyclic_spectrum,
+    cyclostationary_spectrum,
+    envelope,
+    envelope_demodulate,
+    envelope_demodulation,
+    envelope_spectrum,
+    real_cepstrum,
+)
+from .correlation import (
+    autocorrelation_peaks,
+    correlation_peaks,
+    cross_correlation_peaks,
+    signal_autocorrelation,
+    signal_cross_correlation,
+)
+from .parametric import ar_spectrum, arma_spectrum, esprit, fit_ar, fit_arma, prony
 from .time_frequency import (
     analytic_signal,
     continuous_wavelet_transform,
@@ -265,4 +288,28 @@ __all__ = [
     "ifft_signal",
     "irfft_signal",
     "inverse_fft_spectrum",
+    "advanced_spectral",
+    "ar_spectrum",
+    "arma_spectrum",
+    "autocorrelation_peaks",
+    "cepstrum_peaks",
+    "complex_cepstrum",
+    "correlation",
+    "correlation_peaks",
+    "cross_correlation_peaks",
+    "cyclic_spectral_density",
+    "cyclic_spectrum",
+    "cyclostationary_spectrum",
+    "envelope",
+    "envelope_demodulate",
+    "envelope_demodulation",
+    "envelope_spectrum",
+    "esprit",
+    "fit_ar",
+    "fit_arma",
+    "parametric",
+    "prony",
+    "real_cepstrum",
+    "signal_autocorrelation",
+    "signal_cross_correlation",
 ]

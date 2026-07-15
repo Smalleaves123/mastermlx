@@ -9,6 +9,11 @@
 
 ## Unreleased
 
+- Added cepstral analysis and cepstrum-peak extraction, Hilbert envelope
+  demodulation, envelope spectra, and cyclic spectral-density estimation.
+- Added signal autocorrelation/cross-correlation with lag-aware peak analysis.
+- Added Yule-Walker AR, Hannan-Rissanen ARMA, Prony, and ESPRIT estimators with
+  spectra, modal frequencies, damping, and amplitude outputs.
 - Added FFT-based Hilbert analytic signals with instantaneous amplitude, phase,
   and frequency extraction.
 - Added NumPy continuous wavelet transforms with Morlet and Mexican-hat

@@ -63,14 +63,22 @@ by default.
 ```python
 from mastermlx.signal import (
     butterworth,
+    ar_spectrum,
+    arma_spectrum,
+    cyclic_spectrum,
     cwt,
     coherence,
+    envelope_spectrum,
+    esprit,
     extract_ridge,
     frequency_response,
     group_delay,
     instantaneous_features,
     phase_response,
     pole_zero,
+    prony,
+    real_cepstrum,
+    signal_cross_correlation,
     verify_filter,
     welch_psd,
 )
@@ -90,6 +98,15 @@ report = verify_filter(
 features = instantaneous_features(x, sample_rate=1000)
 scales, frequencies, coefficients = cwt(x, scales=[4, 8, 16, 32], sample_rate=1000)
 ridge = extract_ridge(np.abs(coefficients) ** 2, frequencies)
+
+quefrency, cepstrum = real_cepstrum(x, sample_rate=1000)
+env_freq, env_spec = envelope_spectrum(x, sample_rate=1000)
+corr_lags, corr = signal_cross_correlation(x, y)
+cyclic_freq, alpha, cyclic = cyclic_spectrum(x, [0, 20], sample_rate=1000)
+ar_freq, ar_psd = ar_spectrum(x, order=8, sample_rate=1000)
+arma_freq, arma_psd = arma_spectrum(x, ar_order=4, ma_order=2, sample_rate=1000)
+prony_modes = prony(x, order=4, sample_rate=1000)
+esprit_modes = esprit(x, n_components=2, sample_rate=1000)
 ```
 
 These tools cover Welch power spectral density, cross-spectral coherence, and
@@ -107,6 +124,13 @@ instantaneous amplitude/phase/frequency, Morlet and Mexican-hat continuous
 wavelet transforms, wavelet power maps, and dynamic-programming ridge
 extraction. CWT scales are measured in samples; the returned frequencies are
 pseudo-frequencies suitable for comparing dominant components over time.
+
+Advanced spectral tools cover real/complex cepstrum analysis, envelope
+demodulation and envelope spectra, cyclic spectral density, lag-domain
+correlation and peak extraction, AR/ARMA spectra, and Prony/ESPRIT modal
+frequency estimation. Parametric estimators return model coefficients or
+modal dictionaries so their stability, damping, and frequency estimates can
+be inspected directly.
 
 ## Module Map
 
