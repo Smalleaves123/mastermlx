@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import pickle
 
 import numpy as np
 
@@ -186,6 +187,24 @@ class Module:
         with np.load(Path(path), allow_pickle=False) as archive:
             state = {key: archive[key] for key in archive.files}
         return self.load_state_dict(state, strict=strict)
+
+    def save_checkpoint(self, path):
+        """Save the complete trusted training object, including optimizer state."""
+        with Path(path).open("wb") as handle:
+            pickle.dump(self, handle, protocol=pickle.HIGHEST_PROTOCOL)
+        return Path(path)
+
+    @classmethod
+    def load_checkpoint(cls, path):
+        """Load a checkpoint created by :meth:`save_checkpoint`."""
+        with Path(path).open("rb") as handle:
+            obj = pickle.load(handle)
+        if not isinstance(obj, cls):
+            raise TypeError(f"checkpoint must contain a {cls.__name__}")
+        for callback in getattr(obj, "callbacks", ()):
+            if hasattr(callback, "set_model"):
+                callback.set_model(obj)
+        return obj
 
     def extra_repr(self):
         return ""

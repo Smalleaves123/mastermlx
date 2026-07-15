@@ -28,6 +28,15 @@ class TrainingConfig:
     patience: int | None = None
     verbose: int = 0
     clip_norm: float | None = None
+    accumulation_steps: int = 1
+    metrics: tuple[str, ...] = ()
+
+    def __post_init__(self):
+        if int(self.accumulation_steps) < 1:
+            raise ValueError("accumulation_steps must be at least 1")
+        names = (self.metrics,) if isinstance(self.metrics, str) else tuple(self.metrics or ())
+        object.__setattr__(self, "accumulation_steps", int(self.accumulation_steps))
+        object.__setattr__(self, "metrics", names)
 
 
 def _coerce_dict(value, cls):

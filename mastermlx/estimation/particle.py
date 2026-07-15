@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from ..config import get_backend
+
 try:
     from ._particle_ops import normalize_weights as _cy_normalize_weights
     from ._particle_ops import systematic_resample as _cy_systematic_resample
@@ -11,7 +13,7 @@ except ImportError:  # pragma: no cover - fallback when Cython extensions are un
 
 
 def systematic_resample(weights, rng=None):
-    if _cy_systematic_resample is not None:
+    if get_backend() != "numpy" and _cy_systematic_resample is not None:
         return _cy_systematic_resample(weights, rng=rng)
     weights = np.asarray(weights, dtype=float).reshape(-1)
     if weights.size == 0:
@@ -44,7 +46,7 @@ class ParticleFilter:
             total = float(np.sum(self.weights_))
             if total <= 0:
                 self.weights_ = np.full(self.n_particles_, 1.0 / self.n_particles_, dtype=float)
-            elif _cy_normalize_weights is not None:
+            elif get_backend() != "numpy" and _cy_normalize_weights is not None:
                 self.weights_ = _cy_normalize_weights(self.weights_)
             else:
                 self.weights_ = self.weights_ / total
@@ -80,7 +82,7 @@ class ParticleFilter:
         total = float(np.sum(weights))
         if total <= 0:
             self.weights_ = np.full(self.n_particles_, 1.0 / self.n_particles_, dtype=float)
-        elif _cy_normalize_weights is not None:
+        elif get_backend() != "numpy" and _cy_normalize_weights is not None:
             self.weights_ = _cy_normalize_weights(weights)
         else:
             self.weights_ = weights / total

@@ -5,3 +5,8 @@ dependencies:
   - python>=3.10
   - numpy>=1.26
   - matplotlib>=3.8
+  - seaborn>=0.13
+  - plotly>=5.20
+  - cython>=3.0
+  - pybind11>=2.10
+  - pytest>=8.0

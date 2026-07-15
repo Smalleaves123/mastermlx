@@ -49,6 +49,7 @@ compare = [
 dev = [
   "pytest>=8.0",
   "cython>=3.0",
+  "pybind11>=2.10",
 ]
 
 [tool.setuptools]

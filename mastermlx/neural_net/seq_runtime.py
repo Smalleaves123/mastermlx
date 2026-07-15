@@ -5,9 +5,10 @@ import copy
 import numpy as np
 
 from ..utils.array import one_hot
-from ..utils.grad import clip_grads
+from ..utils.grad import accumulate_gradients, clip_grads, load_accumulated_gradients
 from .config import OptCfg, OptimizerConfig, build_opt, resolve_opt_cfg
 from .layers import Dense, Embedding
+from .metric_eval import evaluate_metrics
 
 
 class _SequentialRuntime:
@@ -90,6 +91,33 @@ class _SequentialRuntime:
         for layer in reversed(self.layers):
             out = layer.backward(out)
 
+        steps = max(1, int(self.training_config_.accumulation_steps))
+        if not hasattr(self, "_grad_accum_"):
+            self._reset_grad_accumulation()
+        if steps > 1:
+            accumulate_gradients(self.layers, self._grad_accum_)
+            self._accum_count_ += 1
+            if self._accum_count_ < steps:
+                return out
+            load_accumulated_gradients(self.layers, self._grad_accum_, self._accum_count_)
+            self._apply_gradients()
+            self._reset_grad_accumulation()
+            return out
+        self._apply_gradients()
+        return out
+
+    def _reset_grad_accumulation(self):
+        self._grad_accum_ = {}
+        self._accum_count_ = 0
+
+    def _flush_accumulation(self):
+        if getattr(self, "_accum_count_", 0) < 1:
+            return
+        load_accumulated_gradients(self.layers, self._grad_accum_, self._accum_count_)
+        self._apply_gradients()
+        self._reset_grad_accumulation()
+
+    def _apply_gradients(self):
         clip_norm = self.training_config_.clip_norm
         if clip_norm is not None:
             clip_grads(self.layers, clip_norm)
@@ -97,13 +125,21 @@ class _SequentialRuntime:
         dense_idx = 0
         l2 = self.training_config_.l2
         lr = self.training_config_.lr
-        for layer in self.layers:
-            if hasattr(layer, "step"):
-                if isinstance(layer, (Dense, Embedding)):
-                    layer.step(optimizer=self.optimizer_, key_prefix=f"dense{dense_idx}", l2=l2, lr=lr)
-                    dense_idx += 1
-                else:
-                    layer.step(lr=lr, optimizer=self.optimizer_, key_prefix=layer.__class__.__name__.lower())
+        begin_step = getattr(self.optimizer_, "begin_step", None)
+        end_step = getattr(self.optimizer_, "end_step", None)
+        if begin_step is not None:
+            begin_step()
+        try:
+            for layer in self.layers:
+                if hasattr(layer, "step"):
+                    if isinstance(layer, (Dense, Embedding)):
+                        layer.step(optimizer=self.optimizer_, key_prefix=f"dense{dense_idx}", l2=l2, lr=lr)
+                        dense_idx += 1
+                    else:
+                        layer.step(lr=lr, optimizer=self.optimizer_, key_prefix=layer.__class__.__name__.lower())
+        finally:
+            if end_step is not None:
+                end_step()
 
     def _evaluate_loss(self, X, y, loss_fn, classes=None):
         was_training = self._current_mode()
@@ -112,10 +148,30 @@ class _SequentialRuntime:
             out = self._forward(X)
             if self.task == "classification":
                 target = one_hot(y, classes.size)
+                value = out
             else:
-                target = y
-            loss = loss_fn(target, out if self.task == "classification" else out.ravel())
+                target = y[:, None] if np.asarray(y).ndim == 1 and out.ndim == 2 and out.shape[1] == 1 else y
+                value = out
+            loss = loss_fn(target, value)
             return loss + self._regularization_penalty()
+        finally:
+            self._set_mode(was_training)
+
+    def _evaluate_metrics(self, X, y):
+        was_training = self._current_mode()
+        self._set_mode(False)
+        try:
+            output = self._forward(X)
+            metric_y = y
+            if self.task == "classification" and self.classes_ is not None:
+                metric_y = self.classes_[np.asarray(y, dtype=int)]
+            return evaluate_metrics(
+                self.task,
+                self.training_config_.metrics,
+                metric_y,
+                output,
+                classes=self.classes_,
+            )
         finally:
             self._set_mode(was_training)
 
@@ -123,6 +179,12 @@ class _SequentialRuntime:
         return copy.deepcopy(self.layers)
 
     def _restore_layers(self, snapshot):
+        self.layers = copy.deepcopy(snapshot)
+
+    def _snapshot_state(self):
+        return copy.deepcopy(self.layers)
+
+    def _restore_state(self, snapshot):
         self.layers = copy.deepcopy(snapshot)
 
     def _on_epoch_end(self, epoch, logs):

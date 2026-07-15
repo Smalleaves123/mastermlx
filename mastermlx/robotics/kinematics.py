@@ -4,6 +4,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from ..config import get_backend
+
 try:
     from ._robotics_ops import (
         forward_kinematics_dh as _cy_forward_kinematics_dh,
@@ -124,7 +126,7 @@ def _chain_transforms(links, joint_values=None, base=None, tool=None):
         if q.size != n:
             raise ValueError(f"Expected {n} joint values, got {q.size}")
 
-    if _cy_forward_kinematics_dh is not None:
+    if get_backend() != "numpy" and _cy_forward_kinematics_dh is not None:
         T, frames = _cy_forward_kinematics_dh(a, alpha, d, theta, joint_type, offset, q, base=base, tool=tool, return_frames=True)
         frames = [np.asarray(frame, dtype=float).copy() for frame in frames]
         return np.asarray(T, dtype=float), frames, links
@@ -163,7 +165,7 @@ def chain_positions(links, joint_values=None, base=None, tool=None):
 
 
 def _forward_kinematics_packed(a, alpha, d, theta, joint_type, offset, q, base=None, tool=None, return_all=False):
-    if _cy_forward_kinematics_dh is not None:
+    if get_backend() != "numpy" and _cy_forward_kinematics_dh is not None:
         result = _cy_forward_kinematics_dh(a, alpha, d, theta, joint_type, offset, q, base=base, tool=tool, return_frames=return_all)
         if return_all:
             T, frames = result
@@ -183,7 +185,7 @@ def _forward_kinematics_packed(a, alpha, d, theta, joint_type, offset, q, base=N
 
 
 def _geometric_jacobian_packed(a, alpha, d, theta, joint_type, offset, q, base=None, tool=None):
-    if _cy_geometric_jacobian_dh is not None:
+    if get_backend() != "numpy" and _cy_geometric_jacobian_dh is not None:
         return _cy_geometric_jacobian_dh(a, alpha, d, theta, joint_type, offset, q, base=base, tool=tool)
 
     links = [

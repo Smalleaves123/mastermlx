@@ -65,9 +65,19 @@ class Adam:
         self._m = {}
         self._v = {}
         self._t = 0
+        self._in_step = False
+
+    def begin_step(self):
+        """Start one optimizer step shared by all parameter updates."""
+        self._t += 1
+        self._in_step = True
+
+    def end_step(self):
+        self._in_step = False
 
     def update(self, param, grad, key):
-        self._t += 1
+        if not self._in_step:
+            self._t += 1
         m = self._m.get(key, np.zeros_like(param))
         v = self._v.get(key, np.zeros_like(param))
         m = self.beta1 * m + (1.0 - self.beta1) * grad
@@ -91,9 +101,19 @@ class AdamW:
         self._m = {}
         self._v = {}
         self._t = 0
+        self._in_step = False
+
+    def begin_step(self):
+        """Start one optimizer step shared by all parameter updates."""
+        self._t += 1
+        self._in_step = True
+
+    def end_step(self):
+        self._in_step = False
 
     def update(self, param, grad, key):
-        self._t += 1
+        if not self._in_step:
+            self._t += 1
         m = self._m.get(key, np.zeros_like(param))
         v = self._v.get(key, np.zeros_like(param))
         m = self.beta1 * m + (1.0 - self.beta1) * grad

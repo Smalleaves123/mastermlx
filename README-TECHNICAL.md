@@ -147,7 +147,12 @@ window path and has an optional Cython packing kernel. `SimpleRNN`, `LSTM`, and
 remain available when compiled extensions are not installed. Signal IIR
 filtering and time-frequency ridge extraction use the same backend-aware
 pattern. `backend_report()` exposes the active backend and compiled capability
-status for diagnostics.
+status for diagnostics. Training supports gradient clipping and accumulation,
+configurable accuracy/precision/recall/F1/AUC or regression metrics, multilabel
+classification, multi-output regression, and `ModelCheckpoint` full-object
+checkpoints. `save_checkpoint()` preserves optimizer and scheduler state for
+trusted local resume workflows; `save()` remains the portable parameter-only
+`.npz` format.
 
 Advanced spectral tools cover real/complex cepstrum analysis, envelope
 demodulation and envelope spectra, cyclic spectral density, lag-domain

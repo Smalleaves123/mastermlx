@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+from pathlib import Path
 
 
 class Callback:
@@ -94,4 +95,48 @@ class EarlyStop(Callback):
                 self.stop_training = True
 
 
-__all__ = ["Callback", "EarlyStop", "History"]
+class ModelCheckpoint(Callback):
+    """Save a fitted model when a monitored metric improves."""
+
+    def __init__(self, path, monitor="val_loss", mode="min", save_best_only=True):
+        self.path = Path(path)
+        self.monitor = monitor
+        self.mode = mode
+        self.save_best_only = bool(save_best_only)
+        self.best = None
+        self.model = None
+        if mode not in {"min", "max"}:
+            raise ValueError("mode must be 'min' or 'max'")
+
+    def set_model(self, model):
+        self.model = model
+
+    def on_train_begin(self, logs=None):
+        self.best = None
+
+    def on_epoch_end(self, epoch, logs=None):
+        if self.model is None:
+            raise RuntimeError("ModelCheckpoint must be attached to a model before training")
+        logs = logs or {}
+        value = logs.get(self.monitor)
+        if value is None or not np.isfinite(value):
+            return
+        value = float(value)
+        improved = (
+            self.best is None
+            or (self.mode == "min" and value < self.best)
+            or (self.mode == "max" and value > self.best)
+        )
+        if self.save_best_only and not improved:
+            return
+        self.best = value
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.model.save_checkpoint(self.path)
+
+    def __getstate__(self):
+        state = dict(self.__dict__)
+        state["model"] = None
+        return state
+
+
+__all__ = ["Callback", "EarlyStop", "History", "ModelCheckpoint"]

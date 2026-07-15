@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from ..config import get_backend
+
 try:
     from ._trajectory_ops import sample_joint_trajectory as _cy_sample_joint_trajectory
     from ._trajectory_ops import sample_joint_trajectory_segments as _cy_sample_joint_trajectory_segments
@@ -56,7 +58,7 @@ def joint_trajectory(q0, qf, duration, t, kind="quintic"):
 def sample_joint_trajectory(q0, qf, duration, num_samples=100, kind="quintic"):
     """Sample a joint trajectory at evenly spaced times."""
 
-    if _cy_sample_joint_trajectory is not None:
+    if get_backend() != "numpy" and _cy_sample_joint_trajectory is not None:
         return _cy_sample_joint_trajectory(q0, qf, float(duration), int(num_samples), kind=kind)
 
     times = np.linspace(0.0, float(duration), int(num_samples))
@@ -74,7 +76,7 @@ def sample_joint_trajectory(q0, qf, duration, num_samples=100, kind="quintic"):
 def sample_joint_trajectory_segments(q_waypoints, durations, num_samples_per_segment=100, kind="quintic"):
     """Sample a piecewise joint trajectory across multiple segments."""
 
-    if _cy_sample_joint_trajectory_segments is not None:
+    if get_backend() != "numpy" and _cy_sample_joint_trajectory_segments is not None:
         return _cy_sample_joint_trajectory_segments(
             q_waypoints,
             durations,
@@ -153,7 +155,7 @@ def smooth_joint_path(reference_waypoints, smoothness=1.0, fixed_start=True, fix
     tridiagonal least-squares system for the intermediate waypoints.
     """
 
-    if _cy_smooth_joint_path is not None:
+    if get_backend() != "numpy" and _cy_smooth_joint_path is not None:
         return _cy_smooth_joint_path(
             reference_waypoints,
             float(smoothness),

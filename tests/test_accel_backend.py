@@ -43,3 +43,15 @@ def test_numpy_squared_distance_fallback_matches_reference():
     reference = np.sum((X[:, None, :] - Y[None, :, :]) ** 2, axis=2)
 
     assert np.allclose(_numpy_pairwise_squared_euclidean(X, Y), reference)
+
+
+def test_backend_report_includes_neural_and_signal_capabilities():
+    old = get_backend()
+    try:
+        set_backend("numpy")
+        report = __import__("mastermlx.accel", fromlist=["backend_report"]).backend_report()
+        for name in ("cnn", "conv1d", "rnn", "signal"):
+            assert name in report
+            assert report[name] is False
+    finally:
+        set_backend(old)

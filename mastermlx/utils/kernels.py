@@ -4,6 +4,8 @@ import weakref
 
 import numpy as np
 
+from ..config import get_backend
+
 try:
     from ._kernel_scalar_ops import (
         cosine_kernel as _cy_cosine_kernel,
@@ -80,14 +82,14 @@ def _cached_pairwise_kernel(X, Y, kernel, gamma, coef0, degree, compute):
 
 def linear_kernel(X, Y):
     X, Y = _validate_same_shape(X, Y)
-    if _cy_linear_kernel is not None:
+    if get_backend() != "numpy" and _cy_linear_kernel is not None:
         return _cy_linear_kernel(X, Y)
     return X @ Y.T
 
 
 def cosine_kernel(X, Y):
     X, Y = _validate_same_shape(X, Y)
-    if _cy_cosine_kernel is not None:
+    if get_backend() != "numpy" and _cy_cosine_kernel is not None:
         return _cy_cosine_kernel(X, Y)
     X_norm = np.linalg.norm(X, axis=1, keepdims=True)
     Y_norm = np.linalg.norm(Y, axis=1, keepdims=True).T
@@ -95,7 +97,7 @@ def cosine_kernel(X, Y):
 
 
 def poly_kernel(X, Y, gamma, coef0, degree):
-    if _cy_poly_kernel is not None:
+    if get_backend() != "numpy" and _cy_poly_kernel is not None:
         X, Y = _validate_same_shape(X, Y)
         return _cy_poly_kernel(X, Y, float(gamma), float(coef0), int(degree))
     return (gamma * linear_kernel(X, Y) + coef0) ** degree
@@ -128,7 +130,7 @@ def laplacian_kernel(X, Y, gamma):
 
 
 def sigmoid_kernel(X, Y, gamma, coef0):
-    if _cy_sigmoid_kernel is not None:
+    if get_backend() != "numpy" and _cy_sigmoid_kernel is not None:
         X, Y = _validate_same_shape(X, Y)
         return _cy_sigmoid_kernel(X, Y, float(gamma), float(coef0))
     return np.tanh(gamma * linear_kernel(X, Y) + coef0)

@@ -4,6 +4,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from ..config import get_backend
+
 try:
     from ._quad_cpp import quad_gd as _quad_cpp
 except ImportError:  # pragma: no cover - fallback when the extension is unavailable
@@ -142,7 +144,7 @@ def quad_gd(H, b, x0, lr=1e-2, max_iter=1000, tol=1e-6, bounds=None):
     def jac(x):
         return H @ x + b
 
-    if _quad_cpp is not None and bounds is None:
+    if get_backend() != "numpy" and _quad_cpp is not None and bounds is None:
         x, hist, nit, success = _quad_cpp(H, b, x0, float(lr), int(max_iter), float(tol))
         return Result(
             x=np.asarray(x, dtype=float),

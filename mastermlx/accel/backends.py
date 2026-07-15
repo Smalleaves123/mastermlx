@@ -140,6 +140,16 @@ def _load_cython_tree():
     return module if _has_api(module, ("_best_split_classifier", "_best_split_regressor")) else None
 
 
+def _load_optional_module(name, api):
+    if get_backend() == "numpy":
+        return None
+    try:
+        module = importlib.import_module(name)
+    except ImportError:
+        return None
+    return module if _has_api(module, api) else None
+
+
 def get_active_backend():
     preferred = get_backend()
     if preferred == "numpy":
@@ -162,6 +172,19 @@ def backend_report():
         "cpp_distance": _load_cpp_backend() is not None,
         "cpp_kernels": _load_cpp_kernels() is not None,
         "cython_tree": _load_cython_tree() is not None,
+        "cnn": _load_optional_module(
+            "mastermlx.accel._cnn_ops",
+            ("im2col", "col2im", "maxpool_forward", "maxpool_backward"),
+        ) is not None,
+        "conv1d": _load_optional_module(
+            "mastermlx.accel._conv1d_ops", ("im2col1d", "col2im1d")
+        ) is not None,
+        "rnn": _load_optional_module(
+            "mastermlx.accel._rnn_ops", ("simple_rnn_forward", "lstm_forward", "gru_forward")
+        ) is not None,
+        "signal": _load_optional_module(
+            "mastermlx.accel._signal_ops", ("iir_filter_1d", "ridge_path")
+        ) is not None,
     }
 
 

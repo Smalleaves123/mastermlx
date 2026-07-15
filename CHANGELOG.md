@@ -52,6 +52,15 @@
 - Made the development build tolerate missing `pybind11` by still compiling
   available Cython extensions.
 - Added `bench_neural.py` for recurrent, Conv1D, IIR, and ridge hot-path timing.
+- Corrected Adam and AdamW bias correction to advance once per optimizer step,
+  and fixed ROC-AUC ranking for tied scores.
+- Made the remaining major Cython/C++ paths honor `set_backend("numpy")`, with
+  expanded backend capability reporting and optional KD-tree fallback.
+- Added gradient accumulation, configurable neural training metrics, multilabel
+  Sequential training, multi-output regression, and full-object model
+  checkpoints with optimizer/scheduler state.
+- Changed release automation so a tag creates a GitHub Release and the release
+  workflow publishes once, avoiding the previous duplicate PyPI upload path.
 - Added Cython acceleration for time-series hot paths such as rolling mean, autocorrelation, exponential smoothing, and CUSUM detection.
 
 ## 0.1.12

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from ..config import get_backend
+
 from .lqr import finite_horizon_lqr
 
 try:
@@ -19,7 +21,7 @@ except ImportError:  # pragma: no cover - fallback when Cython extensions are un
 def rollout_dynamics(f, x0, U, dt=None, args=None):
     """Roll out a discrete or continuous-time system."""
 
-    if _cy_rollout_dynamics is not None:
+    if get_backend() != "numpy" and _cy_rollout_dynamics is not None:
         return _cy_rollout_dynamics(f, x0, U, dt=dt, args=args)
 
     x = np.asarray(x0, dtype=float).reshape(-1)
@@ -73,7 +75,7 @@ class LinearMPC:
 
 
 def _finite_difference_jacobian(f, x, u, eps=1e-5):
-    if _cy_finite_difference_jacobian is not None:
+    if get_backend() != "numpy" and _cy_finite_difference_jacobian is not None:
         return _cy_finite_difference_jacobian(f, np.asarray(x, dtype=float).reshape(-1), np.asarray(u, dtype=float).reshape(-1), eps=eps)
 
     x = np.asarray(x, dtype=float).reshape(-1)
@@ -126,7 +128,7 @@ def iLQR(
 
     def rollout(U_seq):
         X = rollout_dynamics(dynamics, x0, U_seq)
-        cost = _cy_quadratic_trajectory_cost(X, U_seq, Q, R, Qf, x_ref=x_ref, u_ref=u_ref) if _cy_quadratic_trajectory_cost is not None else None
+        cost = _cy_quadratic_trajectory_cost(X, U_seq, Q, R, Qf, x_ref=x_ref, u_ref=u_ref) if get_backend() != "numpy" and _cy_quadratic_trajectory_cost is not None else None
         if cost is None:
             cost = 0.0
             x_ref_seq = None if x_ref is None else np.asarray(x_ref, dtype=float)
@@ -205,8 +207,8 @@ def iLQR(
                 X_new.append(np.asarray(dynamics(X_new[-1], u_new), dtype=float).reshape(-1))
             X_new = np.asarray(X_new)
             U_new = np.asarray(U_new)
-            new_cost = _cy_quadratic_trajectory_cost(X_new, U_new, Q, R, Qf, x_ref=x_ref, u_ref=u_ref) if _cy_quadratic_trajectory_cost is not None else 0.0
-            if _cy_quadratic_trajectory_cost is None:
+            new_cost = _cy_quadratic_trajectory_cost(X_new, U_new, Q, R, Qf, x_ref=x_ref, u_ref=u_ref) if get_backend() != "numpy" and _cy_quadratic_trajectory_cost is not None else 0.0
+            if get_backend() == "numpy" or _cy_quadratic_trajectory_cost is None:
                 x_ref_seq = None if x_ref is None else np.asarray(x_ref, dtype=float)
                 u_ref_seq = None if u_ref is None else np.asarray(u_ref, dtype=float)
                 for t in range(T):

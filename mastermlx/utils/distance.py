@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from ..config import get_backend
+
 try:
     from ._distance_scalar_ops import (
         bray_curtis_distance as _cy_bray_curtis_distance,
@@ -29,7 +31,7 @@ except ImportError:  # pragma: no cover - fallback when Cython extensions are un
 
 
 def euclidean_distance(a, b):
-    if _cy_euclidean_distance is not None:
+    if get_backend() != "numpy" and _cy_euclidean_distance is not None:
         return _cy_euclidean_distance(a, b)
     a = np.asarray(a)
     b = np.asarray(b)
@@ -37,7 +39,7 @@ def euclidean_distance(a, b):
 
 
 def manhattan_distance(a, b):
-    if _cy_manhattan_distance is not None:
+    if get_backend() != "numpy" and _cy_manhattan_distance is not None:
         return _cy_manhattan_distance(a, b)
     a = np.asarray(a)
     b = np.asarray(b)
@@ -45,7 +47,7 @@ def manhattan_distance(a, b):
 
 
 def minkowski_distance(a, b, p=2.0):
-    if _cy_minkowski_distance is not None:
+    if get_backend() != "numpy" and _cy_minkowski_distance is not None:
         return _cy_minkowski_distance(a, b, float(p))
     a = np.asarray(a, dtype=float)
     b = np.asarray(b, dtype=float)
@@ -56,7 +58,7 @@ def minkowski_distance(a, b, p=2.0):
 
 
 def chebyshev_distance(a, b):
-    if _cy_chebyshev_distance is not None:
+    if get_backend() != "numpy" and _cy_chebyshev_distance is not None:
         return _cy_chebyshev_distance(a, b)
     a = np.asarray(a)
     b = np.asarray(b)
@@ -64,7 +66,7 @@ def chebyshev_distance(a, b):
 
 
 def cosine_distance(a, b):
-    if _cy_cosine_distance is not None:
+    if get_backend() != "numpy" and _cy_cosine_distance is not None:
         return _cy_cosine_distance(a, b)
     a = np.asarray(a, dtype=float)
     b = np.asarray(b, dtype=float)
@@ -75,7 +77,7 @@ def cosine_distance(a, b):
 
 
 def hamming_distance(a, b):
-    if _cy_hamming_distance is not None:
+    if get_backend() != "numpy" and _cy_hamming_distance is not None:
         return _cy_hamming_distance(a, b)
     a = np.asarray(a)
     b = np.asarray(b)
@@ -83,7 +85,7 @@ def hamming_distance(a, b):
 
 
 def jaccard_distance(a, b):
-    if _cy_jaccard_distance is not None:
+    if get_backend() != "numpy" and _cy_jaccard_distance is not None:
         return _cy_jaccard_distance(a, b)
     a = np.asarray(a).astype(bool)
     b = np.asarray(b).astype(bool)
@@ -93,7 +95,7 @@ def jaccard_distance(a, b):
 
 
 def mahalanobis_distance(a, b, VI=None):
-    if _cy_mahalanobis_distance is not None:
+    if get_backend() != "numpy" and _cy_mahalanobis_distance is not None:
         return _cy_mahalanobis_distance(a, b, VI=VI)
     a = np.asarray(a, dtype=float)
     b = np.asarray(b, dtype=float)
@@ -182,7 +184,7 @@ def pairwise_distance(X, Y, metric="euclidean", p=2.0, VI=None):
 
 
 def canberra_distance(a, b):
-    if _cy_canberra_distance is not None:
+    if get_backend() != "numpy" and _cy_canberra_distance is not None:
         return _cy_canberra_distance(a, b)
     a = np.asarray(a, dtype=float)
     b = np.asarray(b, dtype=float)
@@ -192,7 +194,7 @@ def canberra_distance(a, b):
 
 
 def bray_curtis_distance(a, b):
-    if _cy_bray_curtis_distance is not None:
+    if get_backend() != "numpy" and _cy_bray_curtis_distance is not None:
         return _cy_bray_curtis_distance(a, b)
     a = np.asarray(a, dtype=float)
     b = np.asarray(b, dtype=float)

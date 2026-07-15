@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from ..config import get_backend
+
 try:
     from ._kalman_ops import kalman_predict as _cy_kalman_predict
     from ._kalman_ops import kalman_update as _cy_kalman_update
@@ -47,7 +49,7 @@ class KalmanFilter:
         Q = self.Q_ if Q is None else _as_2d_matrix(Q, "Q")
         B = self.B_ if B is None else (_as_2d_matrix(B, "B") if B is not None else None)
 
-        if _cy_kalman_predict is not None:
+        if get_backend() != "numpy" and _cy_kalman_predict is not None:
             self.x_, self.P_ = _cy_kalman_predict(self.x_, self.P_, F, Q, B=B, u=u)
             self.x_ = np.asarray(self.x_, dtype=float).reshape(-1, 1)
             self.P_ = np.asarray(self.P_, dtype=float)
@@ -72,7 +74,7 @@ class KalmanFilter:
     def update(self, z, H=None, R=None):
         H = self.H_ if H is None else _as_2d_matrix(H, "H")
         R = self.R_ if R is None else _as_2d_matrix(R, "R")
-        if _cy_kalman_update is not None:
+        if get_backend() != "numpy" and _cy_kalman_update is not None:
             self.x_, self.P_ = _cy_kalman_update(self.x_, self.P_, z, H, R)
             self.x_ = np.asarray(self.x_, dtype=float).reshape(-1, 1)
             self.P_ = np.asarray(self.P_, dtype=float)

@@ -15,6 +15,16 @@ def _softmax(logits):
     return exp / np.sum(exp, axis=1, keepdims=True)
 
 
+def _sigmoid(logits):
+    logits = np.asarray(logits, dtype=float)
+    out = np.empty_like(logits)
+    positive = logits >= 0.0
+    out[positive] = 1.0 / (1.0 + np.exp(-logits[positive]))
+    exp_logits = np.exp(logits[~positive])
+    out[~positive] = exp_logits / (1.0 + exp_logits)
+    return out
+
+
 def _one_hot(y, n_classes):
     out = np.zeros((y.shape[0], n_classes), dtype=float)
     out[np.arange(y.shape[0]), y] = 1.0
@@ -44,6 +54,8 @@ class Sequential(_SequentialRuntime, _SequentialFit, Module, BaseEstimator):
         patience=None,
         verbose=0,
         callbacks=None,
+        metrics=None,
+        accumulation_steps=1,
     ):
         self.layers = list(layers or [])
         self.loss = loss
@@ -70,6 +82,8 @@ class Sequential(_SequentialRuntime, _SequentialFit, Module, BaseEstimator):
                 validation_split=validation_split,
                 patience=patience,
                 verbose=verbose,
+                metrics=tuple(metrics or ()),
+                accumulation_steps=accumulation_steps,
             )
         else:
             overrides = {}
@@ -93,6 +107,10 @@ class Sequential(_SequentialRuntime, _SequentialFit, Module, BaseEstimator):
                 overrides["patience"] = patience
             if verbose != 0:
                 overrides["verbose"] = verbose
+            if metrics is not None:
+                overrides["metrics"] = tuple(metrics)
+            if accumulation_steps != 1:
+                overrides["accumulation_steps"] = accumulation_steps
             self.training_config_ = resolve_train_cfg(training_config, **overrides)
         self.optimizer_config_ = resolve_opt_cfg(optimizer_config, lr=self.training_config_.lr)
         self.loss_ = []
@@ -105,14 +123,14 @@ class Sequential(_SequentialRuntime, _SequentialFit, Module, BaseEstimator):
 
 
     def predict_proba(self, X):
-        if self.task != "classification":
-            raise RuntimeError("predict_proba is only available for classification")
+        if self.task not in {"classification", "multilabel"}:
+            raise RuntimeError("predict_proba is only available for classification tasks")
         X = self._check_input(X)
         was_training = self._current_mode()
         self._set_mode(False)
         try:
             logits = self._forward(X)
-            probs = _softmax(logits)
+            probs = _softmax(logits) if self.task == "classification" else _sigmoid(logits)
             return probs[0] if probs.shape[0] == 1 else probs
         finally:
             self._set_mode(was_training)
@@ -128,6 +146,11 @@ class Sequential(_SequentialRuntime, _SequentialFit, Module, BaseEstimator):
                 idx = np.argmax(probs, axis=1)
                 pred = self.classes_[idx]
                 return pred[0] if pred.shape[0] == 1 else pred
+            if self.task == "multilabel":
+                pred = (_sigmoid(out) >= 0.5).astype(int)
+                return pred[0] if pred.shape[0] == 1 else pred
+            if self.task == "multioutput_regression":
+                return out[0] if out.shape[0] == 1 else out
             pred = out.ravel()
             return float(pred[0]) if pred.shape[0] == 1 else pred
         finally:
@@ -136,6 +159,10 @@ class Sequential(_SequentialRuntime, _SequentialFit, Module, BaseEstimator):
     def score(self, X, y):
         if self.task == "classification":
             return accuracy(y, self.predict(X))
+        if self.task == "multilabel":
+            pred = np.asarray(self.predict(X))
+            target = np.asarray(y)
+            return float(np.mean(np.all(pred == target, axis=1)))
         return r2_score(y, self.predict(X))
 
     def num_parameters(self):

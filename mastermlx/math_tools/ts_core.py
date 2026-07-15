@@ -3,6 +3,7 @@ from __future__ import annotations
 import numpy as np
 
 from ..base import BaseTransformer
+from ..config import get_backend
 from ..utils.metrics import mean_squared_error, r2_score
 
 try:
@@ -108,7 +109,7 @@ def rolling_mean(x, window):
         raise ValueError("window must be at least 1")
     if window > x.size:
         raise ValueError("window cannot exceed the series length")
-    if _cy_rolling_mean_1d is not None:
+    if get_backend() != "numpy" and _cy_rolling_mean_1d is not None:
         return _cy_rolling_mean_1d(x, window)
     kernel = np.ones(window, dtype=float) / window
     return np.convolve(x, kernel, mode="valid")
@@ -121,7 +122,7 @@ def autocorrelation(x, lag=1, demean=True):
     lag = int(lag)
     if lag < 0:
         raise ValueError("lag must be non-negative")
-    if _cy_autocorrelation_1d is not None:
+    if get_backend() != "numpy" and _cy_autocorrelation_1d is not None:
         return float(_cy_autocorrelation_1d(x, lag, demean=demean))
     if lag == 0:
         return 1.0
@@ -139,7 +140,7 @@ def autocorrelation_function(x, max_lag):
     max_lag = int(max_lag)
     if max_lag < 0:
         raise ValueError("max_lag must be non-negative")
-    if _cy_autocorrelation_function_1d is not None:
+    if get_backend() != "numpy" and _cy_autocorrelation_function_1d is not None:
         return np.asarray(_cy_autocorrelation_function_1d(np.asarray(x, dtype=float), max_lag), dtype=float)
     return np.asarray([autocorrelation(x, lag=lag) for lag in range(max_lag + 1)], dtype=float)
 
@@ -175,7 +176,7 @@ def exponential_smoothing(x, alpha=0.5):
     alpha = float(alpha)
     if not (0.0 < alpha <= 1.0):
         raise ValueError("alpha must be in (0, 1]")
-    if _cy_exponential_smoothing_1d is not None:
+    if get_backend() != "numpy" and _cy_exponential_smoothing_1d is not None:
         return _cy_exponential_smoothing_1d(x, alpha)
     smoothed = np.empty_like(x, dtype=float)
     smoothed[0] = x[0]
@@ -191,6 +192,8 @@ def dtw_path(x, y, window=None):
         raise ValueError("x and y must be non-empty")
     # Try C++ accelerated path
     try:
+        if get_backend() == "numpy":
+            raise ImportError
         from ..accel._dtw import dtw_path as _cpp_dtw
         w = int(window) if window is not None else max(x.size, y.size)
         path_arr, dist = _cpp_dtw(x, y, w)
@@ -246,7 +249,7 @@ def cusum_change_points(x, threshold=5.0, drift=0.0, direction="both"):
     if direction not in {"positive", "negative", "both"}:
         raise ValueError("direction must be one of: positive, negative, both")
 
-    if _cy_cusum_change_points_1d is not None:
+    if get_backend() != "numpy" and _cy_cusum_change_points_1d is not None:
         direction_code = 0 if direction == "both" else 1 if direction == "positive" else 2
         return _cy_cusum_change_points_1d(x, threshold, drift, direction_code)
 

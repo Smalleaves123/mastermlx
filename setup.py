@@ -1,4 +1,5 @@
 from setuptools import setup, Extension
+import warnings
 import numpy as np
 
 extensions = []
@@ -64,6 +65,11 @@ cpp_exts = [
     ),
 ]
 if pybind11 is None:
+    warnings.warn(
+        "pybind11 is unavailable; C++ extensions will be skipped. "
+        "Install pybind11 to enable the C++ backend.",
+        RuntimeWarning,
+    )
     cpp_exts = []
 
 # Cython extensions (optional)

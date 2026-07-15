@@ -2,8 +2,12 @@
 from __future__ import annotations
 import numpy as np
 
-from ._kdtree import KDTree as _KDTree
-_HAS_KDTREE = True
+from ..config import get_backend
+
+try:
+    from ._kdtree import KDTree as _KDTree
+except ImportError:  # pragma: no cover - optional C++ extension
+    _KDTree = None
 
 
 def knn_search(X_train, X_query, k):
@@ -20,7 +24,7 @@ def knn_search(X_train, X_query, k):
     if k < 1 or k > X_train.shape[0]:
         raise ValueError(f"k must be in [1, {X_train.shape[0]}]")
 
-    if X_train.shape[0] > 100:
+    if X_train.shape[0] > 100 and _KDTree is not None and get_backend() != "numpy":
         tree = _KDTree(X_train)
         idx, dst_sq = tree.query(X_query, k)
         return idx, np.sqrt(np.maximum(dst_sq, 0.0))

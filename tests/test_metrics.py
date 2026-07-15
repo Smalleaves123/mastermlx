@@ -70,6 +70,13 @@ def test_roc_auc_score_binary():
     assert np.isclose(roc_auc_score(y_true, y_score), 0.75)
 
 
+def test_roc_auc_score_averages_tied_scores():
+    y_true = np.array([0, 0, 1, 1])
+    y_score = np.full(4, 0.5)
+
+    assert np.isclose(roc_auc_score(y_true, y_score), 0.5)
+
+
 def test_regression_metrics_values():
     y_true = np.array([1.0, 2.0, 3.0, 4.0])
     y_pred = np.array([1.0, 2.5, 2.5, 4.5])

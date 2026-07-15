@@ -7,9 +7,15 @@ from functools import lru_cache
 
 import numpy as np
 
+from ..config import get_backend
 
-@lru_cache(maxsize=1)
-def _load_backend():
+
+@lru_cache(maxsize=3)
+def _load_backend(backend=None):
+    if backend is None:
+        backend = get_backend()
+    if backend == "numpy":
+        return None
     try:
         return importlib.import_module("mastermlx.accel._conv1d_ops")
     except ImportError:
@@ -39,14 +45,14 @@ def _numpy_col2im(cols, shape, kernel_size, stride=1, pad=0):
 
 
 def im2col1d(X, kernel_size, stride=1, pad=0):
-    mod = _load_backend()
+    mod = _load_backend(get_backend())
     if mod is not None:
         return mod.im2col1d(np.ascontiguousarray(X, dtype=np.float64), kernel_size, stride, pad)
     return _numpy_im2col(X, kernel_size, stride, pad)
 
 
 def col2im1d(cols, shape, kernel_size, stride=1, pad=0):
-    mod = _load_backend()
+    mod = _load_backend(get_backend())
     if mod is not None:
         return mod.col2im1d(np.ascontiguousarray(cols, dtype=np.float64), shape, kernel_size, stride, pad)
     return _numpy_col2im(cols, shape, kernel_size, stride, pad)

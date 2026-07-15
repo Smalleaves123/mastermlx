@@ -5,9 +5,15 @@ from functools import lru_cache
 
 import numpy as np
 
+from ..config import get_backend
 
-@lru_cache(maxsize=1)
-def _load_backend():
+
+@lru_cache(maxsize=3)
+def _load_backend(backend=None):
+    if backend is None:
+        backend = get_backend()
+    if backend == "numpy":
+        return None
     try:
         return importlib.import_module("mastermlx.accel._cnn_ops")
     except ImportError:
@@ -80,28 +86,28 @@ def _numpy_maxpool_backward(grad, argmax, shape, k, stride):
 
 
 def im2col(X, kh, kw, stride=1, pad=0):
-    mod = _load_backend()
+    mod = _load_backend(get_backend())
     if mod is not None:
         return mod.im2col(X, kh, kw, stride, pad)
     return _numpy_im2col(X, kh, kw, stride, pad)
 
 
 def col2im(cols, shape, kh, kw, stride=1, pad=0):
-    mod = _load_backend()
+    mod = _load_backend(get_backend())
     if mod is not None:
         return mod.col2im(cols, shape, kh, kw, stride, pad)
     return _numpy_col2im(cols, shape, kh, kw, stride, pad)
 
 
 def maxpool_forward(X, k, stride):
-    mod = _load_backend()
+    mod = _load_backend(get_backend())
     if mod is not None:
         return mod.maxpool_forward(X, k, stride)
     return _numpy_maxpool_forward(X, k, stride)
 
 
 def maxpool_backward(grad, argmax, shape, k, stride):
-    mod = _load_backend()
+    mod = _load_backend(get_backend())
     if mod is not None:
         return mod.maxpool_backward(grad, argmax, shape, k, stride)
     return _numpy_maxpool_backward(grad, argmax, shape, k, stride)

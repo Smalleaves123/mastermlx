@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from ..config import get_backend
+
 try:
     from ._metrics_ops import confusion_matrix_counts as _cy_confusion_matrix_counts
 except ImportError:  # pragma: no cover - fallback when Cython extensions are unavailable
@@ -18,7 +20,7 @@ def confusion_matrix(y_true, y_pred, labels=None, normalize=None):
     if labels is None:
         labels = np.unique(np.concatenate([y_true, y_pred]))
     labels = np.asarray(labels)
-    if _cy_confusion_matrix_counts is not None:
+    if get_backend() != "numpy" and _cy_confusion_matrix_counts is not None:
         cm = np.asarray(_cy_confusion_matrix_counts(y_true, y_pred, labels), dtype=float)
     else:
         index = {label: idx for idx, label in enumerate(labels)}
@@ -142,9 +144,18 @@ def roc_auc_score(y_true, y_score):
         raise ValueError("roc_auc_score currently supports only binary targets")
 
     y_bin = (y_true == classes[1]).astype(int)
-    order = np.argsort(y_score)
-    ranks = np.empty_like(order, dtype=float)
-    ranks[order] = np.arange(1, y_score.shape[0] + 1, dtype=float)
+    order = np.argsort(y_score, kind="mergesort")
+    sorted_scores = y_score[order]
+    ranks_sorted = np.arange(1, y_score.shape[0] + 1, dtype=float)
+    start = 0
+    while start < sorted_scores.size:
+        stop = start + 1
+        while stop < sorted_scores.size and sorted_scores[stop] == sorted_scores[start]:
+            stop += 1
+        ranks_sorted[start:stop] = 0.5 * (start + 1 + stop)
+        start = stop
+    ranks = np.empty_like(ranks_sorted)
+    ranks[order] = ranks_sorted
     pos = y_bin == 1
     n_pos = np.sum(pos)
     n_neg = y_bin.shape[0] - n_pos

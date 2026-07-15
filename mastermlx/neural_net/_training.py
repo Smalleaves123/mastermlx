@@ -23,6 +23,9 @@ def run_supervised_training_loop(
     train_step,
     evaluate_train_loss,
     evaluate_val_loss=None,
+    evaluate_train_metrics=None,
+    evaluate_val_metrics=None,
+    flush_step=None,
     snapshot_state=None,
     restore_state=None,
     on_epoch_end=None,
@@ -51,8 +54,14 @@ def run_supervised_training_loop(
         ):
             train_step(xb, yb)
 
+        if flush_step is not None:
+            flush_step()
+
         train_loss = float(evaluate_train_loss(X_train, y_train))
         loss_history.append(train_loss)
+        train_metrics = {} if evaluate_train_metrics is None else dict(
+            evaluate_train_metrics(X_train, y_train)
+        )
 
         monitor_loss = train_loss
         val_loss = None
@@ -60,13 +69,16 @@ def run_supervised_training_loop(
             val_loss = float(evaluate_val_loss(X_val, y_val))
             val_loss_history.append(val_loss)
             monitor_loss = val_loss
+        val_metrics = {}
+        if X_val is not None and evaluate_val_metrics is not None:
+            val_metrics = dict(evaluate_val_metrics(X_val, y_val))
 
         improved = monitor_loss + tol < best_loss
         if improved:
             best_loss = monitor_loss
             best_epoch = epoch + 1
             best_val_loss = monitor_loss
-            if X_val is not None and snapshot_state is not None:
+            if snapshot_state is not None:
                 best_state = snapshot_state()
             wait = 0
         else:
@@ -85,6 +97,8 @@ def run_supervised_training_loop(
             "best_loss": float(best_loss),
             "best_epoch": best_epoch,
         }
+        logs.update({f"train_{name}": float(value) for name, value in train_metrics.items()})
+        logs.update({f"val_{name}": float(value) for name, value in val_metrics.items()})
         for hook in hooks:
             hook.on_epoch_end(epoch + 1, logs=logs)
 
@@ -98,7 +112,7 @@ def run_supervised_training_loop(
         if X_val is None and epoch > 0 and len(loss_history) >= 2 and abs(loss_history[-2] - loss_history[-1]) < tol:
             break
 
-    if best_state is not None and restore_state is not None:
+    if best_state is not None and restore_state is not None and X_val is not None:
         restore_state(best_state)
 
     for hook in hooks:

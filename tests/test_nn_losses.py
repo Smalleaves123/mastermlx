@@ -1,6 +1,6 @@
 import numpy as np
 
-from mastermlx.neural_net import Adam, CrossEntropyLoss, MSELoss, RMSProp, SGD
+from mastermlx.neural_net import Adam, AdamW, CrossEntropyLoss, MSELoss, RMSProp, SGD
 
 
 def test_mse_and_cross_entropy_losses_work():
@@ -34,3 +34,17 @@ def test_optimizers_update_parameters():
     adam = Adam(lr=0.1)
     out3 = adam.update(param, grad, "w")
     assert out3.shape == param.shape
+
+
+def test_adam_step_counter_advances_once_per_parameter_group():
+    for optimizer in (Adam(lr=0.01), AdamW(lr=0.01)):
+        optimizer.begin_step()
+        optimizer.update(np.ones(2), np.ones(2), "w")
+        optimizer.update(np.ones(2), np.ones(2), "b")
+        optimizer.end_step()
+        assert optimizer._t == 1
+
+        optimizer.begin_step()
+        optimizer.update(np.ones(2), np.ones(2), "w")
+        optimizer.end_step()
+        assert optimizer._t == 2

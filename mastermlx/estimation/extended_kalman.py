@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from ..config import get_backend
+
 try:
     from ._kalman_ops import kalman_predict as _cy_kalman_predict
     from ._kalman_ops import kalman_update_innovation as _cy_kalman_update_innovation
@@ -49,7 +51,7 @@ class ExtendedKalmanFilter:
 
         x_pred = np.asarray(x_pred, dtype=float).reshape(-1, 1)
         F = np.asarray(F, dtype=float)
-        if _cy_kalman_predict is not None:
+        if get_backend() != "numpy" and _cy_kalman_predict is not None:
             self.x_, self.P_ = _cy_kalman_predict(x_pred, self.P_, F, self.Q_)
             self.x_ = np.asarray(self.x_, dtype=float).reshape(-1, 1)
             self.P_ = np.asarray(self.P_, dtype=float)
@@ -79,7 +81,7 @@ class ExtendedKalmanFilter:
         z_pred = np.asarray(z_pred, dtype=float).reshape(-1, 1)
         H = np.asarray(H, dtype=float)
 
-        if _cy_kalman_update_innovation is not None:
+        if get_backend() != "numpy" and _cy_kalman_update_innovation is not None:
             innovation = z - z_pred
             self.x_, self.P_ = _cy_kalman_update_innovation(self.x_, self.P_, innovation, H, R)
             self.x_ = np.asarray(self.x_, dtype=float).reshape(-1, 1)

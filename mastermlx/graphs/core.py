@@ -7,6 +7,8 @@ import numbers
 
 import numpy as np
 
+from ..config import get_backend
+
 try:
     from ._grid_cpp import astar as _astar_cpp
 except ImportError:  # pragma: no cover - fallback when the extension is unavailable
@@ -175,7 +177,7 @@ def astar(grid, start, goal, diagonal=False):
     """
 
     grid, start, goal = _grid_check(grid, start, goal)
-    if _astar_cpp is not None:
+    if get_backend() != "numpy" and _astar_cpp is not None:
         path, cost = _astar_cpp(np.asarray(grid, dtype=np.int32), start, goal, bool(diagonal))
         if path is None:
             return None, math.inf

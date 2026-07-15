@@ -12,10 +12,10 @@ from .config import (
     resolve_training_config,
 )
 from ..base import Module, Parameter
-from .losses import CrossEntropyLoss, MSELoss
+from .losses import BinaryCrossEntropyLoss, CrossEntropyLoss, MSELoss
 from .mlp import MLPClassifier, MLPRegressor
 from .sequential import Sequential
-from .callbacks import Callback, EarlyStop, History
+from .callbacks import Callback, EarlyStop, History, ModelCheckpoint
 from .optimizers import AdaGrad, Adam, AdamW, RMSProp, SGD
 from .schedulers import CosineLR, ReduceLROnPlateau, StepLR
 from .layers import (
@@ -30,6 +30,7 @@ __all__ = [
     "AdamW",
     "AttentionPooling1D",
     "BatchNorm",
+    "BinaryCrossEntropyLoss",
     "Callback",
     "Conv2D",
     "CosineLR",
@@ -50,6 +51,7 @@ __all__ = [
     "MLPClassifier",
     "MLPRegressor",
     "MSELoss",
+    "ModelCheckpoint",
     "Module",
     "MultiHeadAttention",
     "OptCfg",

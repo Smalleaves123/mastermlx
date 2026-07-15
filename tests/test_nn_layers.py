@@ -1,7 +1,7 @@
 import numpy as np
 
 from mastermlx.neural_net.layers import AttentionPooling1D, BatchNorm, Dense, Dropout, MultiHeadAttention, ReLU
-from mastermlx.neural_net import Sequential
+from mastermlx.neural_net import OptimizerConfig, Sequential
 
 
 def test_dropout_switches_between_train_and_eval():
@@ -55,6 +55,7 @@ def test_sequential_can_fit_xor_with_batchnorm_and_dropout():
             Dense(8, 2, random_state=1),
         ],
         optimizer="adam",
+        optimizer_config=OptimizerConfig(name="adam", lr=0.05, beta1=0.0),
         lr=0.05,
         n_iter=2000,
         random_state=0,

@@ -6,13 +6,14 @@ import numpy as np
 from ..base import BaseEstimator, Module
 from ..data.split import train_test_split
 from ..utils.array import one_hot
-from ..utils.grad import clip_grads
+from ..utils.grad import accumulate_gradients, clip_grads, load_accumulated_gradients
 from ..utils.metrics import accuracy, r2_score
 from ..utils.validation import as_2d, check_1d_array, check_2d_array, check_same_rows
 from .config import OptCfg, OptimizerConfig, build_opt, resolve_opt_cfg, resolve_train_cfg
 from .losses import CrossEntropyLoss, MSELoss
 from .layers import Dense, ReLU, Sigmoid, Tanh
 from ._training import run_supervised_training_loop
+from .metric_eval import evaluate_metrics
 
 
 def _softmax(logits):
@@ -58,6 +59,8 @@ class _BaseMLP(Module):
         patience=None,
         verbose=0,
         callbacks=None,
+        metrics=None,
+        accumulation_steps=1,
     ):
         self.hidden_layer_sizes = tuple(hidden_layer_sizes)
         self.activation = activation
@@ -83,6 +86,8 @@ class _BaseMLP(Module):
                 validation_split=validation_split,
                 patience=patience,
                 verbose=verbose,
+                metrics=tuple(metrics or ()),
+                accumulation_steps=accumulation_steps,
             )
         else:
             overrides = {}
@@ -106,6 +111,10 @@ class _BaseMLP(Module):
                 overrides["patience"] = patience
             if verbose != 0:
                 overrides["verbose"] = verbose
+            if metrics is not None:
+                overrides["metrics"] = tuple(metrics)
+            if accumulation_steps != 1:
+                overrides["accumulation_steps"] = accumulation_steps
             self.training_config_ = resolve_train_cfg(training_config, **overrides)
         self.optimizer_config_ = resolve_opt_cfg(optimizer_config, lr=self.training_config_.lr)
         self.layers_ = []
@@ -189,16 +198,51 @@ class _BaseMLP(Module):
         out = grad
         for layer in reversed(self.layers_):
             out = layer.backward(out)
+        steps = max(1, int(self.training_config_.accumulation_steps))
+        if not hasattr(self, "_grad_accum_"):
+            self._reset_grad_accumulation()
+        if steps > 1:
+            accumulate_gradients(self.layers_, self._grad_accum_)
+            self._accum_count_ += 1
+            if self._accum_count_ < steps:
+                return out
+            load_accumulated_gradients(self.layers_, self._grad_accum_, self._accum_count_)
+            self._apply_gradients()
+            self._reset_grad_accumulation()
+            return out
+        self._apply_gradients()
+        return out
+
+    def _reset_grad_accumulation(self):
+        self._grad_accum_ = {}
+        self._accum_count_ = 0
+
+    def _flush_accumulation(self):
+        if getattr(self, "_accum_count_", 0) < 1:
+            return
+        load_accumulated_gradients(self.layers_, self._grad_accum_, self._accum_count_)
+        self._apply_gradients()
+        self._reset_grad_accumulation()
+
+    def _apply_gradients(self):
         clip_norm = self.training_config_.clip_norm
         if clip_norm is not None:
             clip_grads(self.layers_, clip_norm)
         dense_idx = 0
         l2 = self.training_config_.l2
         lr = self.training_config_.lr
-        for layer in self.layers_:
-            if isinstance(layer, Dense):
-                layer.step(lr=lr, l2=l2, optimizer=self.optimizer_, key_prefix=f"dense{dense_idx}")
-                dense_idx += 1
+        begin_step = getattr(self.optimizer_, "begin_step", None)
+        end_step = getattr(self.optimizer_, "end_step", None)
+        if begin_step is not None:
+            begin_step()
+        try:
+            for layer in self.layers_:
+                if isinstance(layer, Dense):
+                    layer.step(lr=lr, l2=l2, optimizer=self.optimizer_, key_prefix=f"dense{dense_idx}")
+                    dense_idx += 1
+        finally:
+            if end_step is not None:
+                end_step()
 
     def _current_mode(self):
         for layer in self.layers_:
@@ -220,8 +264,19 @@ class _BaseMLP(Module):
                 target = one_hot(y, classes.size)
                 loss = loss_fn(target, out)
             else:
-                loss = loss_fn(y, out.ravel())
+                target = y[:, None] if np.asarray(y).ndim == 1 and out.ndim == 2 and out.shape[1] == 1 else y
+                loss = loss_fn(target, out)
             return loss + self._regularization_penalty()
+        finally:
+            self._set_mode(was_training)
+
+    def _evaluate_metrics(self, X, y, task, classes=None):
+        was_training = self._current_mode()
+        self._set_mode(False)
+        try:
+            out = self._forward(X)
+            metric_y = y if task != "classification" else classes[np.asarray(y, dtype=int)]
+            return evaluate_metrics(task, self.training_config_.metrics, metric_y, out, classes=classes)
         finally:
             self._set_mode(was_training)
 
@@ -229,6 +284,12 @@ class _BaseMLP(Module):
         return copy.deepcopy(self.layers_)
 
     def _restore_layers(self, snapshot):
+        self.layers_ = copy.deepcopy(snapshot)
+
+    def _snapshot_state(self):
+        return copy.deepcopy(self.layers_)
+
+    def _restore_state(self, snapshot):
         self.layers_ = copy.deepcopy(snapshot)
 
     def _on_epoch_end(self, epoch, logs):
@@ -248,7 +309,7 @@ class _BaseMLP(Module):
 class MLPClassifier(_BaseMLP, BaseEstimator):
     """Small NumPy MLP for classification."""
 
-    def fit(self, X, y=None):
+    def fit(self, X, y=None, resume=False):
         X = check_2d_array(X)
         y = check_1d_array(y)
         X, y = check_same_rows(X, y)
@@ -257,12 +318,21 @@ class MLPClassifier(_BaseMLP, BaseEstimator):
         classes = np.unique(y)
         if classes.size < 2:
             raise ValueError("MLPClassifier requires at least two classes")
+        if resume and getattr(self, "classes_", None) is not None and not np.array_equal(self.classes_, classes):
+            raise ValueError("resume data classes do not match the checkpoint")
         self.classes_ = classes
         y_idx = np.searchsorted(classes, y)
 
-        self._build_layers(X.shape[1], classes.size)
-        self._build_optimizer()
-        self._resolve_lr_scheduler()
+        if not resume or not self.layers_:
+            self._build_layers(X.shape[1], classes.size)
+            self._build_optimizer()
+            self._resolve_lr_scheduler()
+        elif self.optimizer_ is None:
+            raise RuntimeError("resume=True requires a loaded training checkpoint")
+        self._reset_grad_accumulation()
+        for callback in self.callbacks:
+            if hasattr(callback, "set_model"):
+                callback.set_model(self)
         if cfg.validation_split and cfg.validation_split > 0.0:
             X_train, X_val, y_train, y_val = train_test_split(
                 X,
@@ -298,10 +368,13 @@ class MLPClassifier(_BaseMLP, BaseEstimator):
             patience=cfg.patience,
             verbose=cfg.verbose,
             train_step=train_step,
+            flush_step=self._flush_accumulation,
             evaluate_train_loss=lambda Xt, yt: self._evaluate_loss(Xt, yt, loss_fn, classes=classes),
             evaluate_val_loss=lambda Xt, yt: self._evaluate_loss(Xt, yt, loss_fn, classes=classes),
-            snapshot_state=self._snapshot_layers,
-            restore_state=self._restore_layers,
+            evaluate_train_metrics=lambda Xt, yt: self._evaluate_metrics(Xt, yt, "classification", classes),
+            evaluate_val_metrics=lambda Xt, yt: self._evaluate_metrics(Xt, yt, "classification", classes),
+            snapshot_state=self._snapshot_state,
+            restore_state=self._restore_state,
             on_epoch_end=self._on_epoch_end,
             callbacks=self.callbacks,
         )
@@ -339,16 +412,23 @@ class MLPClassifier(_BaseMLP, BaseEstimator):
 class MLPRegressor(_BaseMLP, BaseEstimator):
     """Small NumPy MLP for regression."""
 
-    def fit(self, X, y=None):
+    def fit(self, X, y=None, resume=False):
         X = check_2d_array(X)
         y = check_1d_array(y)
         X, y = check_same_rows(X, y)
         y = y.astype(float)
         cfg = self.training_config_
 
-        self._build_layers(X.shape[1], 1)
-        self._build_optimizer()
-        self._resolve_lr_scheduler()
+        if not resume or not self.layers_:
+            self._build_layers(X.shape[1], 1)
+            self._build_optimizer()
+            self._resolve_lr_scheduler()
+        elif self.optimizer_ is None:
+            raise RuntimeError("resume=True requires a loaded training checkpoint")
+        self._reset_grad_accumulation()
+        for callback in self.callbacks:
+            if hasattr(callback, "set_model"):
+                callback.set_model(self)
         if cfg.validation_split and cfg.validation_split > 0.0:
             X_train, X_val, y_train, y_val = train_test_split(
                 X,
@@ -381,11 +461,14 @@ class MLPRegressor(_BaseMLP, BaseEstimator):
             patience=cfg.patience,
             verbose=cfg.verbose,
             train_step=train_step,
+            flush_step=self._flush_accumulation,
             evaluate_train_loss=lambda Xt, yt: self._evaluate_loss(Xt, yt, loss_fn),
             evaluate_val_loss=lambda Xt, yt: self._evaluate_loss(Xt, yt, loss_fn),
-            snapshot_state=self._snapshot_layers,
-            restore_state=self._restore_layers,
-                on_epoch_end=self._on_epoch_end,
+            evaluate_train_metrics=lambda Xt, yt: self._evaluate_metrics(Xt, yt, "regression"),
+            evaluate_val_metrics=lambda Xt, yt: self._evaluate_metrics(Xt, yt, "regression"),
+            snapshot_state=self._snapshot_state,
+            restore_state=self._restore_state,
+            on_epoch_end=self._on_epoch_end,
             callbacks=self.callbacks,
         )
         self.loss_ = result["loss"]

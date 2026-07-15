@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from ..config import get_backend
+
 try:
     from ._robotics_ops import invert_transform as _cy_invert_transform
     from ._robotics_ops import matrix_to_euler as _cy_matrix_to_euler
@@ -67,7 +69,7 @@ def euler_to_matrix(roll, pitch, yaw):
 
 
 def matrix_to_euler(R):
-    if _cy_matrix_to_euler is not None:
+    if get_backend() != "numpy" and _cy_matrix_to_euler is not None:
         return _cy_matrix_to_euler(R)
     R = np.asarray(R, dtype=float)
     if R.shape != (3, 3):
@@ -86,7 +88,7 @@ def matrix_to_euler(R):
 
 
 def quaternion_to_matrix(q):
-    if _cy_quaternion_to_matrix is not None:
+    if get_backend() != "numpy" and _cy_quaternion_to_matrix is not None:
         return _cy_quaternion_to_matrix(q)
     q = np.asarray(q, dtype=float).reshape(-1)
     if q.size != 4:
@@ -106,7 +108,7 @@ def quaternion_to_matrix(q):
 
 
 def matrix_to_quaternion(R):
-    if _cy_matrix_to_quaternion is not None:
+    if get_backend() != "numpy" and _cy_matrix_to_quaternion is not None:
         return _cy_matrix_to_quaternion(R)
     R = np.asarray(R, dtype=float)
     if R.shape != (3, 3):
@@ -152,7 +154,7 @@ def homogeneous_transform(rotation, translation):
 
 
 def invert_transform(T):
-    if _cy_invert_transform is not None:
+    if get_backend() != "numpy" and _cy_invert_transform is not None:
         return _cy_invert_transform(T)
     T = np.asarray(T, dtype=float)
     if T.shape != (4, 4):
@@ -176,7 +178,7 @@ def compose_transform(*transforms):
 
 
 def transform_points(T, points):
-    if _cy_transform_points is not None:
+    if get_backend() != "numpy" and _cy_transform_points is not None:
         return _cy_transform_points(T, points)
     T = np.asarray(T, dtype=float)
     if T.shape != (4, 4):
