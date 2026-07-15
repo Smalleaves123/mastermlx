@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
+from ...accel.conv1d_ops import col2im1d, im2col1d
 from ...base import BaseLayer
 
 
@@ -15,7 +16,7 @@ class Conv1D(BaseLayer):
         self.pad = int(pad)
         self.random_state = random_state
         self.W_ = None; self.b_ = None
-        self.X_ = None; self.X_shape_ = None; self.dW_ = None; self.db_ = None
+        self.X_ = None; self.X_shape_ = None; self.cols_ = None; self.dW_ = None; self.db_ = None
 
     def _init_params(self, in_channels):
         rng = np.random.default_rng(self.random_state)
@@ -29,36 +30,25 @@ class Conv1D(BaseLayer):
         N, T, C = X.shape
         if self.W_ is None: self._init_params(C)
         self.X_ = X; self.X_shape_ = X.shape
-        if self.pad > 0:
-            X = np.pad(X, ((0,0),(self.pad,self.pad),(0,0)))
-        N, Tp, C = X.shape
-        OT = (Tp - self.k) // self.stride + 1
-        cols = np.empty((N * OT, self.k * C), dtype=float)
-        for i in range(OT):
-            cols[i::OT] = X[:, i*self.stride:i*self.stride+self.k, :].reshape(N, -1)
+        cols, OT = im2col1d(X, self.k, self.stride, self.pad)
+        self.cols_ = cols
         out = cols @ self.W_ + self.b_
-        return out.reshape(N, OT, self.n_filters)
+        return out.reshape(X.shape[0], OT, self.n_filters)
 
     def backward(self, grad):
         grad = np.asarray(grad, dtype=float)
         N, OT, F = grad.shape
         C = self.X_shape_[2]
         grad_flat = grad.reshape(N * OT, F)
-        Xp = self.X_
-        if self.pad > 0:
-            Xp = np.pad(Xp, ((0,0),(self.pad,self.pad),(0,0)))
-        cols = np.empty((N * OT, self.k * C), dtype=float)
-        for i in range(OT):
-            cols[i::OT] = Xp[:, i*self.stride:i*self.stride+self.k, :].reshape(N, -1)
+        if self.cols_ is None:
+            cols, _ = im2col1d(self.X_, self.k, self.stride, self.pad)
+        else:
+            cols = self.cols_
         self.dW_ = cols.T @ grad_flat
+        self.cols_ = None
         self.db_ = np.sum(grad_flat, axis=0)
         d_cols = grad_flat @ self.W_.T
-        dXp = np.zeros((N, Xp.shape[1], C), dtype=float)
-        for i in range(OT):
-            dXp[:, i*self.stride:i*self.stride+self.k, :] += d_cols[i::OT].reshape(N, self.k, C)
-        if self.pad > 0:
-            return dXp[:, self.pad:-self.pad, :]
-        return dXp
+        return col2im1d(d_cols, self.X_shape_, self.k, self.stride, self.pad)
 
     def step(self, lr=None, optimizer=None, key_prefix="conv1d"):
         if self.dW_ is None: raise RuntimeError("backward required")

@@ -9,6 +9,11 @@
 
 ## Unreleased
 
+- Added a PyTorch-inspired `Module`/`Parameter` interface with recursive
+  parameter discovery, state dictionaries, strict loading, train/eval mode,
+  and portable `.npz` save/load for sequential and MLP models.
+- Vectorized the Conv1D NumPy path and added optional Cython kernels for Conv1D
+  im2col/col2im and SimpleRNN forward execution with safe fallbacks.
 - Added cepstral analysis and cepstrum-peak extraction, Hilbert envelope
   demodulation, envelope spectra, and cyclic spectral-density estimation.
 - Added signal autocorrelation/cross-correlation with lag-aware peak analysis.

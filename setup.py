@@ -78,6 +78,16 @@ try:
             include_dirs=[np.get_include()],
         ),
         Extension(
+            "mastermlx.accel._conv1d_ops",
+            ["mastermlx/accel/_conv1d_ops.pyx"],
+            include_dirs=[np.get_include()],
+        ),
+        Extension(
+            "mastermlx.accel._rnn_ops",
+            ["mastermlx/accel/_rnn_ops.pyx"],
+            include_dirs=[np.get_include()],
+        ),
+        Extension(
             "mastermlx.control._control_ops",
             ["mastermlx/control/_control_ops.pyx"],
             include_dirs=[np.get_include()],

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
+from ...accel.rnn_ops import simple_rnn_forward
 from ...base import BaseLayer
 from ...utils.math import sigmoid
 
@@ -38,11 +39,8 @@ class SimpleRNN(BaseLayer):
         if self.W_xh_ is None:
             self._init_params(D)
         self.X_ = X
-        self.H_ = np.zeros((N, T, self.n_units), dtype=float)
-        h = np.zeros((N, self.n_units), dtype=float)
-        for t in range(T):
-            h = np.tanh(X[:, t, :] @ self.W_xh_ + h @ self.W_hh_ + self.b_)
-            self.H_[:, t, :] = h
+        self.H_ = simple_rnn_forward(X, self.W_xh_, self.W_hh_, self.b_)
+        h = self.H_[:, -1, :]
         if self.return_sequences:
             return self.H_
         return h

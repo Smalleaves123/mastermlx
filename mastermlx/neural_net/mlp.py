@@ -3,7 +3,7 @@ from __future__ import annotations
 import copy
 import numpy as np
 
-from ..base import BaseEstimator
+from ..base import BaseEstimator, Module
 from ..data.split import train_test_split
 from ..utils.array import one_hot
 from ..utils.grad import clip_grads
@@ -38,7 +38,7 @@ def _make_activation(name):
     raise ValueError("activation must be one of: relu, tanh, sigmoid")
 
 
-class _BaseMLP:
+class _BaseMLP(Module):
     def __init__(
         self,
         hidden_layer_sizes=(32,),

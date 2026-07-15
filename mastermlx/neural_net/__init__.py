@@ -11,6 +11,7 @@ from .config import (
     resolve_train_cfg,
     resolve_training_config,
 )
+from ..base import Module, Parameter
 from .losses import CrossEntropyLoss, MSELoss
 from .mlp import MLPClassifier, MLPRegressor
 from .sequential import Sequential
@@ -49,8 +50,10 @@ __all__ = [
     "MLPClassifier",
     "MLPRegressor",
     "MSELoss",
+    "Module",
     "MultiHeadAttention",
     "OptCfg",
+    "Parameter",
     "OptimizerConfig",
     "TrainCfg",
     "TrainingConfig",

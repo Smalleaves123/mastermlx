@@ -3,9 +3,10 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 
 from ..utils.estimator import get_params as _get_params, set_params as _set_params
+from .module import Module
 
 
-class BaseLayer(ABC):
+class BaseLayer(Module, ABC):
     """Base interface for neural network layers."""
 
     @abstractmethod

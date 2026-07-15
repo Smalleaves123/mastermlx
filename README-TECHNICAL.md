@@ -125,6 +125,27 @@ wavelet transforms, wavelet power maps, and dynamic-programming ridge
 extraction. CWT scales are measured in samples; the returned frequencies are
 pseudo-frequencies suitable for comparing dominant components over time.
 
+### Neural-network module and acceleration layer
+
+Neural-network layers share a small PyTorch-inspired module interface:
+
+```python
+from mastermlx.neural_net import Dense, ReLU, Sequential
+
+model = Sequential([Dense(8, 16), ReLU(), Dense(16, 3)])
+state = model.state_dict()
+model.save("model.npz")
+model.load("model.npz")
+model.eval()
+```
+
+`Module` exposes `parameters`, `named_parameters`, `state_dict`,
+`load_state_dict`, `train`, `eval`, `save`, and `load` while preserving the
+existing NumPy-array layer implementation. `Conv1D` uses a vectorized NumPy
+window path and has an optional Cython packing kernel. `SimpleRNN` has an
+optional Cython forward kernel with a NumPy fallback; the fallback remains
+available when compiled extensions are not installed.
+
 Advanced spectral tools cover real/complex cepstrum analysis, envelope
 demodulation and envelope spectra, cyclic spectral density, lag-domain
 correlation and peak extraction, AR/ARMA spectra, and Prony/ESPRIT modal

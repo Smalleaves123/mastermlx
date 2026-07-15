@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from ..base import BaseEstimator
+from ..base import BaseEstimator, Module
 from ..utils.metrics import accuracy, r2_score
 from .config import resolve_opt_cfg, resolve_train_cfg
 from .seq_fit import _SequentialFit
@@ -21,7 +21,7 @@ def _one_hot(y, n_classes):
     return out
 
 
-class Sequential(_SequentialRuntime, _SequentialFit, BaseEstimator):
+class Sequential(_SequentialRuntime, _SequentialFit, Module, BaseEstimator):
     """A minimal sequential neural network container."""
 
     def __init__(
