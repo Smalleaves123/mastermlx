@@ -4,7 +4,7 @@ import numpy as np
 
 from ..base import BaseEstimator, Module
 from ..utils.metrics import accuracy, r2_score
-from .config import resolve_opt_cfg, resolve_train_cfg
+from .config import normalize_metrics, resolve_opt_cfg, resolve_train_cfg
 from .seq_fit import _SequentialFit
 from .seq_runtime import _SequentialRuntime
 
@@ -82,7 +82,7 @@ class Sequential(_SequentialRuntime, _SequentialFit, Module, BaseEstimator):
                 validation_split=validation_split,
                 patience=patience,
                 verbose=verbose,
-                metrics=tuple(metrics or ()),
+                metrics=normalize_metrics(metrics),
                 accumulation_steps=accumulation_steps,
             )
         else:
@@ -108,7 +108,7 @@ class Sequential(_SequentialRuntime, _SequentialFit, Module, BaseEstimator):
             if verbose != 0:
                 overrides["verbose"] = verbose
             if metrics is not None:
-                overrides["metrics"] = tuple(metrics)
+                overrides["metrics"] = normalize_metrics(metrics)
             if accumulation_steps != 1:
                 overrides["accumulation_steps"] = accumulation_steps
             self.training_config_ = resolve_train_cfg(training_config, **overrides)
@@ -131,7 +131,7 @@ class Sequential(_SequentialRuntime, _SequentialFit, Module, BaseEstimator):
         try:
             logits = self._forward(X)
             probs = _softmax(logits) if self.task == "classification" else _sigmoid(logits)
-            return probs[0] if probs.shape[0] == 1 else probs
+            return probs
         finally:
             self._set_mode(was_training)
 
@@ -145,14 +145,13 @@ class Sequential(_SequentialRuntime, _SequentialFit, Module, BaseEstimator):
                 probs = _softmax(out)
                 idx = np.argmax(probs, axis=1)
                 pred = self.classes_[idx]
-                return pred[0] if pred.shape[0] == 1 else pred
+                return pred
             if self.task == "multilabel":
-                pred = (_sigmoid(out) >= 0.5).astype(int)
-                return pred[0] if pred.shape[0] == 1 else pred
+                return (_sigmoid(out) >= 0.5).astype(int)
             if self.task == "multioutput_regression":
-                return out[0] if out.shape[0] == 1 else out
-            pred = out.ravel()
-            return float(pred[0]) if pred.shape[0] == 1 else pred
+                return out
+            pred = np.asarray(out)
+            return pred[:, 0] if pred.ndim == 2 and pred.shape[1] == 1 else pred
         finally:
             self._set_mode(was_training)
 

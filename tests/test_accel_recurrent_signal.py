@@ -1,8 +1,10 @@
 import numpy as np
+import pytest
 
 from mastermlx import get_backend, set_backend
 from mastermlx.accel import backend_report
 from mastermlx.accel import rnn_ops, signal_ops, timefreq_ops
+from mastermlx.accel import cnn_ops, conv1d_ops
 from mastermlx.signal import extract_ridge, iir_filter
 
 
@@ -97,5 +99,29 @@ def test_numpy_backend_skips_new_extension_imports(monkeypatch):
         rnn_ops.simple_rnn_forward(X, np.zeros((1, 1)), np.zeros((1, 1)), np.zeros(1))
         signal_ops.iir_filter_1d(np.ones(4), np.ones(1), np.ones(1))
         timefreq_ops.ridge_path(np.ones((2, 3)), 0.0, None)
+    finally:
+        set_backend(old)
+
+
+def test_kernel_boundaries_reject_invalid_inputs():
+    with pytest.raises(ValueError):
+        rnn_ops.simple_rnn_forward(np.zeros((0, 2, 1)), np.zeros((1, 1)), np.zeros((1, 1)), np.zeros(1))
+    with pytest.raises(ValueError):
+        conv1d_ops.im2col1d(np.zeros((1, 2, 1)), kernel_size=3)
+    with pytest.raises(ValueError):
+        cnn_ops.im2col(np.zeros((1, 2, 2, 1)), 3, 3)
+    with pytest.raises(ValueError):
+        signal_ops.iir_filter_1d(np.ones(4), np.ones(1), np.zeros(1))
+
+
+def test_rnn_auto_threshold_skips_small_work():
+    old = get_backend()
+    try:
+        set_backend("auto")
+        fake = object()
+        small = np.zeros((1, 8, 4))
+        large = np.zeros((32, 256, 16))
+        assert not rnn_ops._use_compiled(small, 4, fake)
+        assert rnn_ops._use_compiled(large, 16, fake)
     finally:
         set_backend(old)

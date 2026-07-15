@@ -8,6 +8,7 @@ from functools import lru_cache
 import numpy as np
 
 from ..config import get_backend
+from ._validate import float_array
 
 
 @lru_cache(maxsize=3)
@@ -25,6 +26,12 @@ def _load_backend(backend=None):
 def iir_filter_1d(x, b, a):
     """Apply a real normalized IIR difference equation."""
 
+    x = float_array(x, 1, "x")
+    b = float_array(b, 1, "b")
+    a = float_array(a, 1, "a")
+    if a[0] == 0.0:
+        raise ValueError("a[0] must be non-zero")
+
     mod = _load_backend(get_backend())
     if mod is not None and callable(getattr(mod, "iir_filter_1d", None)):
         return mod.iir_filter_1d(
@@ -32,9 +39,6 @@ def iir_filter_1d(x, b, a):
             np.ascontiguousarray(b, dtype=np.float64),
             np.ascontiguousarray(a, dtype=np.float64),
         )
-    x = np.asarray(x, dtype=float)
-    b = np.asarray(b, dtype=float)
-    a = np.asarray(a, dtype=float)
     y = np.zeros_like(x)
     for n in range(x.size):
         value = 0.0

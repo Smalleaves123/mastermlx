@@ -6,6 +6,7 @@ from functools import lru_cache
 import numpy as np
 
 from ..config import get_backend
+from ._validate import float_array, int_arg
 
 
 @lru_cache(maxsize=3)
@@ -86,6 +87,13 @@ def _numpy_maxpool_backward(grad, argmax, shape, k, stride):
 
 
 def im2col(X, kh, kw, stride=1, pad=0):
+    X = float_array(X, 4, "X")
+    kh = int_arg(kh, "kh", 1)
+    kw = int_arg(kw, "kw", 1)
+    stride = int_arg(stride, "stride", 1)
+    pad = int_arg(pad, "pad", 0)
+    if X.shape[1] + 2 * pad < kh or X.shape[2] + 2 * pad < kw:
+        raise ValueError("kernel is larger than the padded image")
     mod = _load_backend(get_backend())
     if mod is not None:
         return mod.im2col(X, kh, kw, stride, pad)
@@ -93,6 +101,17 @@ def im2col(X, kh, kw, stride=1, pad=0):
 
 
 def col2im(cols, shape, kh, kw, stride=1, pad=0):
+    cols = float_array(cols, 2, "cols")
+    if len(shape) != 4 or any(int(size) < 1 for size in shape):
+        raise ValueError("shape must contain four positive dimensions")
+    kh = int_arg(kh, "kh", 1)
+    kw = int_arg(kw, "kw", 1)
+    stride = int_arg(stride, "stride", 1)
+    pad = int_arg(pad, "pad", 0)
+    oh = (int(shape[1]) + 2 * pad - kh) // stride + 1
+    ow = (int(shape[2]) + 2 * pad - kw) // stride + 1
+    if oh < 1 or ow < 1 or cols.shape[0] != int(shape[0]) * oh * ow:
+        raise ValueError("cols shape is inconsistent with shape and kernel parameters")
     mod = _load_backend(get_backend())
     if mod is not None:
         return mod.col2im(cols, shape, kh, kw, stride, pad)
@@ -100,6 +119,11 @@ def col2im(cols, shape, kh, kw, stride=1, pad=0):
 
 
 def maxpool_forward(X, k, stride):
+    X = float_array(X, 4, "X")
+    k = int_arg(k, "k", 1)
+    stride = int_arg(stride, "stride", 1)
+    if X.shape[1] < k or X.shape[2] < k:
+        raise ValueError("pooling kernel is larger than the input")
     mod = _load_backend(get_backend())
     if mod is not None:
         return mod.maxpool_forward(X, k, stride)
@@ -107,6 +131,22 @@ def maxpool_forward(X, k, stride):
 
 
 def maxpool_backward(grad, argmax, shape, k, stride):
+    grad = float_array(grad, 4, "grad")
+    argmax = np.asarray(argmax, dtype=np.intp)
+    if argmax.ndim != 4 or argmax.shape != grad.shape:
+        raise ValueError("argmax must have the same 4D shape as grad")
+    if len(shape) != 4 or any(int(size) < 1 for size in shape):
+        raise ValueError("shape must contain four positive dimensions")
+    k = int_arg(k, "k", 1)
+    stride = int_arg(stride, "stride", 1)
+    expected = (
+        int(shape[0]),
+        (int(shape[1]) - k) // stride + 1,
+        (int(shape[2]) - k) // stride + 1,
+        int(shape[3]),
+    )
+    if expected != grad.shape or int(shape[1]) < k or int(shape[2]) < k:
+        raise ValueError("grad shape is inconsistent with input shape and pooling parameters")
     mod = _load_backend(get_backend())
     if mod is not None:
         return mod.maxpool_backward(grad, argmax, shape, k, stride)

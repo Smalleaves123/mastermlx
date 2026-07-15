@@ -6,8 +6,9 @@ import numpy as np
 
 from ..utils.array import one_hot
 from ..utils.grad import accumulate_gradients, clip_grads, load_accumulated_gradients
-from .config import OptCfg, OptimizerConfig, build_opt, resolve_opt_cfg
+from .config import OptCfg, OptimizerConfig, build_opt, normalize_metrics, resolve_opt_cfg
 from .layers import Dense, Embedding
+from .losses import BinaryCrossEntropyLoss, CrossEntropyLoss, MSELoss
 from .metric_eval import evaluate_metrics
 
 
@@ -87,6 +88,9 @@ class _SequentialRuntime:
         return out
 
     def _backward(self, grad):
+        return self._backward_weighted(grad, weight=1.0)
+
+    def _backward_weighted(self, grad, weight=1.0):
         out = grad
         for layer in reversed(self.layers):
             out = layer.backward(out)
@@ -95,11 +99,12 @@ class _SequentialRuntime:
         if not hasattr(self, "_grad_accum_"):
             self._reset_grad_accumulation()
         if steps > 1:
-            accumulate_gradients(self.layers, self._grad_accum_)
+            accumulate_gradients(self.layers, self._grad_accum_, weight=weight)
             self._accum_count_ += 1
+            self._accum_weight_ += float(weight)
             if self._accum_count_ < steps:
                 return out
-            load_accumulated_gradients(self.layers, self._grad_accum_, self._accum_count_)
+            load_accumulated_gradients(self.layers, self._grad_accum_, self._accum_weight_)
             self._apply_gradients()
             self._reset_grad_accumulation()
             return out
@@ -109,11 +114,12 @@ class _SequentialRuntime:
     def _reset_grad_accumulation(self):
         self._grad_accum_ = {}
         self._accum_count_ = 0
+        self._accum_weight_ = 0.0
 
     def _flush_accumulation(self):
         if getattr(self, "_accum_count_", 0) < 1:
             return
-        load_accumulated_gradients(self.layers, self._grad_accum_, self._accum_count_)
+        load_accumulated_gradients(self.layers, self._grad_accum_, self._accum_weight_)
         self._apply_gradients()
         self._reset_grad_accumulation()
 
@@ -199,6 +205,53 @@ class _SequentialRuntime:
                 scheduler.step(monitor_loss)
         except TypeError:
             scheduler.step()
+
+    def evaluate(self, X, y, metrics=None):
+        """Return a consistent ``{"loss": ..., "metrics": ...}`` result."""
+        X = self._check_input(X)
+        was_training = self._current_mode()
+        self._set_mode(False)
+        try:
+            output = self._forward(X)
+            if self.task == "classification":
+                if self.classes_ is None:
+                    raise RuntimeError("model must be fitted before evaluate")
+                target_labels = np.asarray(y)
+                if target_labels.ndim != 1 or target_labels.shape[0] != X.shape[0]:
+                    raise ValueError("classification targets must be 1D with one value per sample")
+                if not np.all(np.isin(target_labels, self.classes_)):
+                    raise ValueError("y contains labels outside the fitted classes")
+                indices = np.searchsorted(self.classes_, target_labels)
+                target = one_hot(indices, self.classes_.size)
+                loss = CrossEntropyLoss(from_logits=True)(target, output)
+                metric_y = target_labels
+                classes = self.classes_
+            elif self.task == "multilabel":
+                target = np.asarray(y, dtype=float)
+                if target.ndim == 1:
+                    target = target[:, None]
+                if target.ndim != 2 or target.shape != output.shape:
+                    raise ValueError("multilabel targets must match model output shape")
+                loss = BinaryCrossEntropyLoss(from_logits=True)(target, output)
+                metric_y = target
+                classes = None
+            elif self.task in {"regression", "multioutput_regression"}:
+                target = np.asarray(y, dtype=float)
+                if target.ndim == 1 and output.ndim == 2 and output.shape[1] == 1:
+                    target = target[:, None]
+                if target.shape != output.shape:
+                    raise ValueError("regression targets must match model output shape")
+                loss = MSELoss()(target, output)
+                metric_y = target
+                classes = None
+            else:
+                raise ValueError(f"Unsupported task: {self.task}")
+
+            specs = self.training_config_.metrics if metrics is None else normalize_metrics(metrics)
+            values = evaluate_metrics(self.task, specs, metric_y, output, classes=classes)
+            return {"loss": float(loss + self._regularization_penalty()), "metrics": values}
+        finally:
+            self._set_mode(was_training)
 
 
 

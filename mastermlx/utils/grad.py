@@ -55,24 +55,28 @@ def clip_gradients(layers, max_norm):
     return total_norm, scale
 
 
-def accumulate_gradients(layers, store):
-    """Add current layer gradients to an accumulation mapping."""
+def accumulate_gradients(layers, store, weight=1.0):
+    """Add weighted layer gradients to an accumulation mapping."""
+    weight = float(weight)
+    if weight <= 0.0:
+        raise ValueError("weight must be positive")
     for layer_idx, layer in enumerate(layers):
         for name, value in _grad_items(layer):
             key = (layer_idx, name)
+            value = value * weight
             if key in store:
                 store[key] += value
             else:
                 store[key] = value.copy()
 
 
-def load_accumulated_gradients(layers, store, count):
-    """Replace current gradients with the averaged accumulated gradients."""
-    count = int(count)
-    if count < 1:
-        raise ValueError("count must be positive")
+def load_accumulated_gradients(layers, store, weight):
+    """Replace current gradients with the weighted average."""
+    weight = float(weight)
+    if weight <= 0.0:
+        raise ValueError("weight must be positive")
     for (layer_idx, name), value in store.items():
-        setattr(layers[layer_idx], name, value / count)
+        setattr(layers[layer_idx], name, value / weight)
 
 
 clip_grads = clip_gradients

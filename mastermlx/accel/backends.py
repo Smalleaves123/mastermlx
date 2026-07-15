@@ -6,6 +6,7 @@ from functools import lru_cache
 import numpy as np
 
 from ..config import get_backend
+from ._validate import float_array
 
 
 _CYTHON_API = (
@@ -82,6 +83,14 @@ def _numpy_pairwise_bray_curtis(X, Y):
     num = np.sum(np.abs(X[:, None, :] - Y[None, :, :]), axis=2)
     den = np.sum(np.abs(X[:, None, :] + Y[None, :, :]), axis=2)
     return num / np.maximum(den, 1e-12)
+
+
+def _pairwise_inputs(X, Y):
+    X = float_array(X, 2, "X")
+    Y = float_array(Y, 2, "Y")
+    if X.shape[1] != Y.shape[1]:
+        raise ValueError("X and Y must have the same number of features")
+    return X, Y
 
 
 # ============================================================================
@@ -193,8 +202,7 @@ def backend_report():
 # ============================================================================
 
 def pairwise_squared_euclidean(X, Y):
-    X = np.asarray(X, dtype=float)
-    Y = np.asarray(Y, dtype=float)
+    X, Y = _pairwise_inputs(X, Y)
     cpp = _load_cpp_backend()
     if cpp is not None:
         return cpp.pairwise_squared_euclidean(X, Y)
@@ -207,8 +215,7 @@ def pairwise_squared_euclidean(X, Y):
 
 
 def pairwise_distances(X, Y):
-    X = np.asarray(X, dtype=float)
-    Y = np.asarray(Y, dtype=float)
+    X, Y = _pairwise_inputs(X, Y)
     cpp = _load_cpp_backend()
     if cpp is not None:
         return cpp.pairwise_distances(X, Y)
@@ -219,8 +226,7 @@ def pairwise_distances(X, Y):
 
 
 def pairwise_manhattan_distances(X, Y):
-    X = np.asarray(X, dtype=float)
-    Y = np.asarray(Y, dtype=float)
+    X, Y = _pairwise_inputs(X, Y)
     cpp = _load_cpp_backend()
     if cpp is not None:
         return cpp.pairwise_manhattan_distances(X, Y)
@@ -231,8 +237,7 @@ def pairwise_manhattan_distances(X, Y):
 
 
 def pairwise_cosine_distances(X, Y):
-    X = np.asarray(X, dtype=float)
-    Y = np.asarray(Y, dtype=float)
+    X, Y = _pairwise_inputs(X, Y)
     mod = _load_cython_backend()
     if mod is not None:
         return mod.pairwise_cosine_distances(X, Y)
@@ -243,8 +248,7 @@ def pairwise_cosine_distances(X, Y):
 
 
 def pairwise_hamming_distances(X, Y):
-    X = np.asarray(X, dtype=float)
-    Y = np.asarray(Y, dtype=float)
+    X, Y = _pairwise_inputs(X, Y)
     mod = _load_cython_backend()
     if mod is not None:
         return mod.pairwise_hamming_distances(X, Y)
@@ -252,8 +256,7 @@ def pairwise_hamming_distances(X, Y):
 
 
 def pairwise_jaccard_distances(X, Y):
-    X = np.asarray(X, dtype=float)
-    Y = np.asarray(Y, dtype=float)
+    X, Y = _pairwise_inputs(X, Y)
     mod = _load_cython_backend()
     if mod is not None:
         return mod.pairwise_jaccard_distances(X, Y)
@@ -265,11 +268,12 @@ def pairwise_jaccard_distances(X, Y):
 
 
 def pairwise_mahalanobis_distances(X, Y, VI=None):
-    X = np.asarray(X, dtype=float)
-    Y = np.asarray(Y, dtype=float)
+    X, Y = _pairwise_inputs(X, Y)
     if VI is None:
         VI = np.eye(X.shape[1], dtype=float)
     VI = np.asarray(VI, dtype=float)
+    if VI.shape != (X.shape[1], X.shape[1]) or not np.isfinite(VI).all():
+        raise ValueError("VI must be a finite square matrix matching the feature count")
     mod = _load_cython_backend()
     if mod is not None:
         return mod.pairwise_mahalanobis_distances(X, Y, VI)
@@ -278,8 +282,7 @@ def pairwise_mahalanobis_distances(X, Y, VI=None):
 
 
 def pairwise_chebyshev(X, Y):
-    X = np.asarray(X, dtype=float)
-    Y = np.asarray(Y, dtype=float)
+    X, Y = _pairwise_inputs(X, Y)
     cpp = _load_cpp_backend()
     if cpp is not None:
         return cpp.pairwise_chebyshev(X, Y)
@@ -287,10 +290,9 @@ def pairwise_chebyshev(X, Y):
 
 
 def pairwise_minkowski(X, Y, p=2.0):
-    X = np.asarray(X, dtype=float)
-    Y = np.asarray(Y, dtype=float)
+    X, Y = _pairwise_inputs(X, Y)
     p = float(p)
-    if p <= 0:
+    if not np.isfinite(p) or p <= 0:
         raise ValueError("p must be positive")
     cpp = _load_cpp_backend()
     if cpp is not None:
@@ -299,8 +301,7 @@ def pairwise_minkowski(X, Y, p=2.0):
 
 
 def pairwise_canberra(X, Y):
-    X = np.asarray(X, dtype=float)
-    Y = np.asarray(Y, dtype=float)
+    X, Y = _pairwise_inputs(X, Y)
     cpp = _load_cpp_backend()
     if cpp is not None:
         return cpp.pairwise_canberra(X, Y)
@@ -308,8 +309,7 @@ def pairwise_canberra(X, Y):
 
 
 def pairwise_bray_curtis(X, Y):
-    X = np.asarray(X, dtype=float)
-    Y = np.asarray(Y, dtype=float)
+    X, Y = _pairwise_inputs(X, Y)
     cpp = _load_cpp_backend()
     if cpp is not None:
         return cpp.pairwise_bray_curtis(X, Y)
@@ -322,8 +322,7 @@ def pairwise_bray_curtis(X, Y):
 
 def cpp_rbf_kernel(X, Y, gamma):
     """RBF kernel with C++ acceleration (avoids 3D intermediate array)."""
-    X = np.asarray(X, dtype=float)
-    Y = np.asarray(Y, dtype=float)
+    X, Y = _pairwise_inputs(X, Y)
     cpp = _load_cpp_kernels()
     if cpp is not None:
         return cpp.rbf_kernel(X, Y, float(gamma))
@@ -336,21 +335,23 @@ def cpp_rbf_kernel(X, Y, gamma):
 
 def cpp_rbf_kernel_fast(X, Y, xn2, yn2, gamma):
     """RBF kernel using pre-computed squared norms (fastest path)."""
-    X = np.asarray(X, dtype=float)
-    Y = np.asarray(Y, dtype=float)
+    X, Y = _pairwise_inputs(X, Y)
+    xn2 = float_array(xn2, 1, "xn2")
+    yn2 = float_array(yn2, 1, "yn2")
+    if xn2.shape != (X.shape[0],) or yn2.shape != (Y.shape[0],):
+        raise ValueError("precomputed norms must match the number of samples")
     cpp = _load_cpp_kernels()
     if cpp is not None:
         return cpp.rbf_kernel_fast(X, Y,
-                                   np.asarray(xn2, dtype=float),
-                                   np.asarray(yn2, dtype=float),
+                                   xn2,
+                                   yn2,
                                    float(gamma))
     d2 = np.maximum(xn2[:, None] + yn2[None, :] - 2.0 * (X @ Y.T), 0.0)
     return np.exp(-float(gamma) * d2)
 
 
 def cpp_laplacian_kernel(X, Y, gamma):
-    X = np.asarray(X, dtype=float)
-    Y = np.asarray(Y, dtype=float)
+    X, Y = _pairwise_inputs(X, Y)
     cpp = _load_cpp_kernels()
     if cpp is not None:
         return cpp.laplacian_kernel(X, Y, float(gamma))
@@ -359,8 +360,7 @@ def cpp_laplacian_kernel(X, Y, gamma):
 
 
 def cpp_chi2_kernel(X, Y, gamma):
-    X = np.asarray(X, dtype=float)
-    Y = np.asarray(Y, dtype=float)
+    X, Y = _pairwise_inputs(X, Y)
     if np.any(X < 0) or np.any(Y < 0):
         raise ValueError("chi2_kernel expects non-negative inputs")
     cpp = _load_cpp_kernels()
@@ -373,8 +373,7 @@ def cpp_chi2_kernel(X, Y, gamma):
 
 
 def cpp_additive_chi2_kernel(X, Y):
-    X = np.asarray(X, dtype=float)
-    Y = np.asarray(Y, dtype=float)
+    X, Y = _pairwise_inputs(X, Y)
     if np.any(X < 0) or np.any(Y < 0):
         raise ValueError("additive_chi2_kernel expects non-negative inputs")
     cpp = _load_cpp_kernels()
@@ -386,8 +385,7 @@ def cpp_additive_chi2_kernel(X, Y):
 
 
 def cpp_hellinger_kernel(X, Y):
-    X = np.asarray(X, dtype=float)
-    Y = np.asarray(Y, dtype=float)
+    X, Y = _pairwise_inputs(X, Y)
     if np.any(X < 0) or np.any(Y < 0):
         raise ValueError("hellinger_kernel expects non-negative inputs")
     cpp = _load_cpp_kernels()

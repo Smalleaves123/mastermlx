@@ -29,14 +29,23 @@ class TrainingConfig:
     verbose: int = 0
     clip_norm: float | None = None
     accumulation_steps: int = 1
-    metrics: tuple[str, ...] = ()
+    metrics: tuple[object, ...] = ()
 
     def __post_init__(self):
         if int(self.accumulation_steps) < 1:
             raise ValueError("accumulation_steps must be at least 1")
-        names = (self.metrics,) if isinstance(self.metrics, str) else tuple(self.metrics or ())
+        names = normalize_metrics(self.metrics)
         object.__setattr__(self, "accumulation_steps", int(self.accumulation_steps))
         object.__setattr__(self, "metrics", names)
+
+
+def normalize_metrics(metrics):
+    """Normalize metric names, callables, or named metric mappings."""
+    if metrics is None:
+        return ()
+    if isinstance(metrics, (str, dict)) or callable(metrics):
+        return (metrics,)
+    return tuple(metrics)
 
 
 def _coerce_dict(value, cls):

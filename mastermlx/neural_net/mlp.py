@@ -9,7 +9,7 @@ from ..utils.array import one_hot
 from ..utils.grad import accumulate_gradients, clip_grads, load_accumulated_gradients
 from ..utils.metrics import accuracy, r2_score
 from ..utils.validation import as_2d, check_1d_array, check_2d_array, check_same_rows
-from .config import OptCfg, OptimizerConfig, build_opt, resolve_opt_cfg, resolve_train_cfg
+from .config import OptCfg, OptimizerConfig, build_opt, normalize_metrics, resolve_opt_cfg, resolve_train_cfg
 from .losses import CrossEntropyLoss, MSELoss
 from .layers import Dense, ReLU, Sigmoid, Tanh
 from ._training import run_supervised_training_loop
@@ -86,7 +86,7 @@ class _BaseMLP(Module):
                 validation_split=validation_split,
                 patience=patience,
                 verbose=verbose,
-                metrics=tuple(metrics or ()),
+                metrics=normalize_metrics(metrics),
                 accumulation_steps=accumulation_steps,
             )
         else:
@@ -112,7 +112,7 @@ class _BaseMLP(Module):
             if verbose != 0:
                 overrides["verbose"] = verbose
             if metrics is not None:
-                overrides["metrics"] = tuple(metrics)
+                overrides["metrics"] = normalize_metrics(metrics)
             if accumulation_steps != 1:
                 overrides["accumulation_steps"] = accumulation_steps
             self.training_config_ = resolve_train_cfg(training_config, **overrides)
@@ -195,6 +195,9 @@ class _BaseMLP(Module):
         return out
 
     def _backward(self, grad):
+        return self._backward_weighted(grad, weight=1.0)
+
+    def _backward_weighted(self, grad, weight=1.0):
         out = grad
         for layer in reversed(self.layers_):
             out = layer.backward(out)
@@ -202,11 +205,12 @@ class _BaseMLP(Module):
         if not hasattr(self, "_grad_accum_"):
             self._reset_grad_accumulation()
         if steps > 1:
-            accumulate_gradients(self.layers_, self._grad_accum_)
+            accumulate_gradients(self.layers_, self._grad_accum_, weight=weight)
             self._accum_count_ += 1
+            self._accum_weight_ += float(weight)
             if self._accum_count_ < steps:
                 return out
-            load_accumulated_gradients(self.layers_, self._grad_accum_, self._accum_count_)
+            load_accumulated_gradients(self.layers_, self._grad_accum_, self._accum_weight_)
             self._apply_gradients()
             self._reset_grad_accumulation()
             return out
@@ -216,11 +220,12 @@ class _BaseMLP(Module):
     def _reset_grad_accumulation(self):
         self._grad_accum_ = {}
         self._accum_count_ = 0
+        self._accum_weight_ = 0.0
 
     def _flush_accumulation(self):
         if getattr(self, "_accum_count_", 0) < 1:
             return
-        load_accumulated_gradients(self.layers_, self._grad_accum_, self._accum_count_)
+        load_accumulated_gradients(self.layers_, self._grad_accum_, self._accum_weight_)
         self._apply_gradients()
         self._reset_grad_accumulation()
 
@@ -277,6 +282,35 @@ class _BaseMLP(Module):
             out = self._forward(X)
             metric_y = y if task != "classification" else classes[np.asarray(y, dtype=int)]
             return evaluate_metrics(task, self.training_config_.metrics, metric_y, out, classes=classes)
+        finally:
+            self._set_mode(was_training)
+
+    def _eval(self, X, y, task, loss_fn, classes=None, metrics=None):
+        X = check_2d_array(X)
+        was_training = self._current_mode()
+        self._set_mode(False)
+        try:
+            output = self._forward(X)
+            if task == "classification":
+                if classes is None:
+                    raise RuntimeError("model must be fitted before evaluate")
+                target_labels = check_1d_array(y)
+                if target_labels.shape[0] != X.shape[0] or not np.all(np.isin(target_labels, classes)):
+                    raise ValueError("classification targets do not match the fitted model")
+                indices = np.searchsorted(classes, target_labels)
+                target = one_hot(indices, classes.size)
+                metric_y = target_labels
+            else:
+                target = np.asarray(y, dtype=float)
+                if target.ndim == 1 and output.ndim == 2 and output.shape[1] == 1:
+                    target = target[:, None]
+                if target.shape != output.shape:
+                    raise ValueError("regression targets must match model output shape")
+                metric_y = target
+            value = loss_fn(target, output)
+            specs = self.training_config_.metrics if metrics is None else normalize_metrics(metrics)
+            values = evaluate_metrics(task, specs, metric_y, output, classes=classes)
+            return {"loss": float(value + self._regularization_penalty()), "metrics": values}
         finally:
             self._set_mode(was_training)
 
@@ -353,7 +387,7 @@ class MLPClassifier(_BaseMLP, BaseEstimator):
             if cfg.l2:
                 loss += 0.5 * cfg.l2 * sum(np.sum(layer.W_ ** 2) for layer in self.layers_ if isinstance(layer, Dense))
             grad = loss_fn.grad(target, logits)
-            self._backward(grad)
+            self._backward_weighted(grad, weight=xb.shape[0])
 
         result = run_supervised_training_loop(
             X_train=X_train,
@@ -393,17 +427,24 @@ class MLPClassifier(_BaseMLP, BaseEstimator):
         try:
             logits = self._forward(X)
             probs = _softmax(logits)
-            return probs[0] if probs.shape[0] == 1 else probs
+            return probs
         finally:
             self._set_mode(was_training)
 
     def predict(self, X):
         probs = self.predict_proba(X)
-        if probs.ndim == 1:
-            return self.classes_[int(np.argmax(probs))]
         idx = np.argmax(probs, axis=1)
-        pred = self.classes_[idx]
-        return pred[0] if pred.shape[0] == 1 else pred
+        return self.classes_[idx]
+
+    def evaluate(self, X, y, metrics=None):
+        return self._eval(
+            X,
+            y,
+            "classification",
+            CrossEntropyLoss(from_logits=True),
+            classes=self.classes_,
+            metrics=metrics,
+        )
 
     def score(self, X, y):
         return accuracy(y, self.predict(X))
@@ -414,17 +455,24 @@ class MLPRegressor(_BaseMLP, BaseEstimator):
 
     def fit(self, X, y=None, resume=False):
         X = check_2d_array(X)
-        y = check_1d_array(y)
+        y = np.asarray(y, dtype=float)
+        if y.ndim == 1:
+            y = y[:, None]
+        if y.ndim != 2 or y.shape[1] < 1:
+            raise ValueError("regression targets must be 1D or 2D with at least one output")
         X, y = check_same_rows(X, y)
-        y = y.astype(float)
         cfg = self.training_config_
+        task = "multioutput_regression" if y.shape[1] > 1 else "regression"
 
         if not resume or not self.layers_:
-            self._build_layers(X.shape[1], 1)
+            self._build_layers(X.shape[1], y.shape[1])
             self._build_optimizer()
             self._resolve_lr_scheduler()
         elif self.optimizer_ is None:
             raise RuntimeError("resume=True requires a loaded training checkpoint")
+        elif self.layers_[-1].n_outputs != y.shape[1]:
+            raise ValueError("resume target width does not match the checkpoint")
+        self.n_outputs_ = y.shape[1]
         self._reset_grad_accumulation()
         for callback in self.callbacks:
             if hasattr(callback, "set_model"):
@@ -443,10 +491,9 @@ class MLPRegressor(_BaseMLP, BaseEstimator):
         loss_fn = MSELoss()
 
         def train_step(xb, yb):
-            yb = yb[:, None]
             pred = self._forward(xb)
             grad = loss_fn.grad(yb, pred)
-            self._backward(grad)
+            self._backward_weighted(grad, weight=xb.shape[0])
 
         result = run_supervised_training_loop(
             X_train=X_train,
@@ -464,8 +511,8 @@ class MLPRegressor(_BaseMLP, BaseEstimator):
             flush_step=self._flush_accumulation,
             evaluate_train_loss=lambda Xt, yt: self._evaluate_loss(Xt, yt, loss_fn),
             evaluate_val_loss=lambda Xt, yt: self._evaluate_loss(Xt, yt, loss_fn),
-            evaluate_train_metrics=lambda Xt, yt: self._evaluate_metrics(Xt, yt, "regression"),
-            evaluate_val_metrics=lambda Xt, yt: self._evaluate_metrics(Xt, yt, "regression"),
+            evaluate_train_metrics=lambda Xt, yt: self._evaluate_metrics(Xt, yt, task),
+            evaluate_val_metrics=lambda Xt, yt: self._evaluate_metrics(Xt, yt, task),
             snapshot_state=self._snapshot_state,
             restore_state=self._restore_state,
             on_epoch_end=self._on_epoch_end,
@@ -484,10 +531,15 @@ class MLPRegressor(_BaseMLP, BaseEstimator):
         was_training = self._current_mode()
         self._set_mode(False)
         try:
-            pred = self._forward(X).ravel()
-            return float(pred[0]) if pred.shape[0] == 1 else pred
+            output = self._forward(X)
+            return output[:, 0] if output.shape[1] == 1 else output
         finally:
             self._set_mode(was_training)
+
+    def evaluate(self, X, y, metrics=None):
+        outputs = getattr(self, "n_outputs_", 1)
+        task = "multioutput_regression" if outputs > 1 else "regression"
+        return self._eval(X, y, task, MSELoss(), metrics=metrics)
 
     def score(self, X, y):
         return r2_score(y, self.predict(X))

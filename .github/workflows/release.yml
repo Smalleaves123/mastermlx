@@ -22,9 +22,12 @@ jobs:
       contents: read
     env:
       CIBW_TEST_COMMAND: >-
-        python -c "import numpy as np, mastermlx; from mastermlx.accel
-        import pairwise_squared_euclidean; X=np.zeros((1, 2)); Y=np.ones((1,
-        2)); assert pairwise_squared_euclidean(X, Y).shape == (1, 1); print(mastermlx.__version__)"
+        python -c "import mastermlx; from mastermlx.accel import backend_report;
+        report=backend_report(); assert report['cython']; print(mastermlx.__version__)"
+        && python -m pytest {project}/tests/test_nn_api.py
+        {project}/tests/test_nn_layers_conv_rnn.py
+        {project}/tests/test_accel_recurrent_signal.py
+        {project}/tests/test_kernels_and_distance.py -q
 
     steps:
       - uses: actions/checkout@v4
@@ -54,8 +57,32 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
-  publish-testpypi:
+  sdist-smoke:
     needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install sdist
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install dist/*.tar.gz
+
+      - name: Smoke test sdist
+        run: |
+          python -c "import numpy as np, mastermlx; from mastermlx.accel import pairwise_squared_euclidean; X=np.zeros((2, 2)); assert pairwise_squared_euclidean(X, X).shape == (2, 2); print(mastermlx.__version__)"
+
+  publish-testpypi:
+    needs: [build, sdist-smoke]
     if: github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi'
     runs-on: ubuntu-latest
     permissions:
@@ -76,7 +103,7 @@ jobs:
           password: ${{ secrets.TEST_PYPI_API_TOKEN }}
 
   publish-pypi:
-    needs: build
+    needs: [build, sdist-smoke]
     if: github.event_name == 'workflow_dispatch' && inputs.target == 'pypi'
     runs-on: ubuntu-latest
     permissions:
@@ -96,7 +123,7 @@ jobs:
           password: ${{ secrets.PYPI_TOKEN }}
 
   create-github-release:
-    needs: build
+    needs: [build, sdist-smoke]
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:

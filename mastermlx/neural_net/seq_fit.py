@@ -56,7 +56,7 @@ class _SequentialFit:
                 if cfg.l2:
                     loss += 0.5 * cfg.l2 * sum(np.sum(layer.W_ ** 2) for layer in self.layers if isinstance(layer, Dense))
                 grad = loss_fn.grad(target, logits)
-                self._backward(grad)
+                self._backward_weighted(grad, weight=xb.shape[0])
 
             result = run_supervised_training_loop(
                 X_train=X_train,
@@ -108,7 +108,7 @@ class _SequentialFit:
 
             def train_step(xb, yb):
                 logits = self._forward(xb)
-                self._backward(loss_fn.grad(yb, logits))
+                self._backward_weighted(loss_fn.grad(yb, logits), weight=xb.shape[0])
 
             result = run_supervised_training_loop(
                 X_train=X_train, y_train=y_train, X_val=X_val, y_val=y_val,
@@ -152,7 +152,7 @@ class _SequentialFit:
                     yb = yb[:, None]
                 pred = self._forward(xb)
                 grad = loss_fn.grad(yb, pred)
-                self._backward(grad)
+                self._backward_weighted(grad, weight=xb.shape[0])
 
             result = run_supervised_training_loop(
                 X_train=X_train,

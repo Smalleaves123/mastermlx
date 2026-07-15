@@ -132,16 +132,16 @@ def log_loss(y_true, y_pred, eps=1e-12):
     return float(-np.mean(np.log(y_pred[np.arange(y_true.shape[0]), idx])))
 
 
-def roc_auc_score(y_true, y_score):
+def _binary_roc_auc(y_true, y_score):
     y_true = np.asarray(y_true)
     y_score = np.asarray(y_score, dtype=float)
     if y_true.ndim != 1 or y_score.ndim != 1:
-        raise ValueError("y_true and y_score must be 1D arrays")
+        raise ValueError("binary AUC inputs must be 1D arrays")
     if y_true.shape[0] != y_score.shape[0]:
         raise ValueError("y_true and y_score must have the same length")
     classes = np.unique(y_true)
     if classes.shape[0] != 2:
-        raise ValueError("roc_auc_score currently supports only binary targets")
+        raise ValueError("binary AUC requires both positive and negative samples")
 
     y_bin = (y_true == classes[1]).astype(int)
     order = np.argsort(y_score, kind="mergesort")
@@ -163,6 +163,39 @@ def roc_auc_score(y_true, y_score):
         raise ValueError("roc_auc_score requires both positive and negative samples")
     rank_sum = np.sum(ranks[pos])
     return float((rank_sum - n_pos * (n_pos + 1) / 2.0) / (n_pos * n_neg))
+
+
+def roc_auc_score(y_true, y_score, labels=None, multi_class="ovr", average="macro"):
+    """Compute binary or one-vs-rest multiclass ROC-AUC."""
+    y_true = np.asarray(y_true)
+    y_score = np.asarray(y_score, dtype=float)
+    if y_true.ndim != 1 or y_score.ndim not in {1, 2}:
+        raise ValueError("y_true must be 1D and y_score must be 1D or 2D")
+    if y_score.shape[0] != y_true.shape[0]:
+        raise ValueError("y_true and y_score must have the same length")
+    if y_score.ndim == 1:
+        return _binary_roc_auc(y_true, y_score)
+    if multi_class != "ovr":
+        raise ValueError("multi_class must be 'ovr'")
+
+    classes = np.unique(y_true) if labels is None else np.asarray(labels)
+    if classes.ndim != 1 or classes.size != y_score.shape[1]:
+        raise ValueError("labels must match the number of score columns")
+    values = np.array([
+        _binary_roc_auc((y_true == label).astype(int), y_score[:, index])
+        for index, label in enumerate(classes)
+    ])
+    if average is None:
+        return values
+    if average == "macro":
+        return float(np.mean(values))
+    if average == "weighted":
+        weights = np.array([np.sum(y_true == label) for label in classes], dtype=float)
+        return float(np.average(values, weights=weights))
+    if average == "micro":
+        target = (y_true[:, None] == classes[None, :]).astype(int).ravel()
+        return _binary_roc_auc(target, y_score.ravel())
+    raise ValueError("average must be one of: macro, weighted, micro, None")
 
 
 def specificity_score(y_true, y_pred, pos_label=1):

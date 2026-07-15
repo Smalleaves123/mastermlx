@@ -92,7 +92,7 @@ def test_sequential_restores_training_mode_after_validation_and_predict():
     model.fit(X, y)
     probs = model.predict_proba(X[:1])
 
-    assert probs.shape == (2,)
+    assert probs.shape == (1, 2)
     assert model.layers[1].training is True
     assert model.summary()["num_parameters"] == 22
     assert len(model.history_) >= 1

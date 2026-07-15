@@ -8,6 +8,7 @@ from functools import lru_cache
 import numpy as np
 
 from ..config import get_backend
+from ._validate import float_array, int_arg
 
 
 @lru_cache(maxsize=3)
@@ -45,6 +46,12 @@ def _numpy_col2im(cols, shape, kernel_size, stride=1, pad=0):
 
 
 def im2col1d(X, kernel_size, stride=1, pad=0):
+    X = float_array(X, 3, "X")
+    kernel_size = int_arg(kernel_size, "kernel_size", 1)
+    stride = int_arg(stride, "stride", 1)
+    pad = int_arg(pad, "pad", 0)
+    if X.shape[1] + 2 * pad < kernel_size:
+        raise ValueError("kernel_size is larger than the padded sequence")
     mod = _load_backend(get_backend())
     if mod is not None:
         return mod.im2col1d(np.ascontiguousarray(X, dtype=np.float64), kernel_size, stride, pad)
@@ -52,6 +59,15 @@ def im2col1d(X, kernel_size, stride=1, pad=0):
 
 
 def col2im1d(cols, shape, kernel_size, stride=1, pad=0):
+    cols = float_array(cols, 2, "cols")
+    if len(shape) != 3 or any(int(size) < 1 for size in shape):
+        raise ValueError("shape must contain three positive dimensions")
+    kernel_size = int_arg(kernel_size, "kernel_size", 1)
+    stride = int_arg(stride, "stride", 1)
+    pad = int_arg(pad, "pad", 0)
+    output = (int(shape[1]) + 2 * pad - kernel_size) // stride + 1
+    if output < 1 or cols.shape[0] != int(shape[0]) * output:
+        raise ValueError("cols shape is inconsistent with shape and kernel parameters")
     mod = _load_backend(get_backend())
     if mod is not None:
         return mod.col2im1d(np.ascontiguousarray(cols, dtype=np.float64), shape, kernel_size, stride, pad)
