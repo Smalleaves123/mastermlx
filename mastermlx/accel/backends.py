@@ -8,6 +8,38 @@ import numpy as np
 from ..config import get_backend
 
 
+_CYTHON_API = (
+    "pairwise_squared_euclidean",
+    "pairwise_distances",
+    "pairwise_manhattan_distances",
+    "pairwise_cosine_distances",
+    "pairwise_hamming_distances",
+    "pairwise_jaccard_distances",
+    "pairwise_mahalanobis_distances",
+)
+_CPP_API = (
+    "pairwise_squared_euclidean",
+    "pairwise_distances",
+    "pairwise_manhattan_distances",
+    "pairwise_chebyshev",
+    "pairwise_minkowski",
+    "pairwise_canberra",
+    "pairwise_bray_curtis",
+)
+_KERNEL_API = (
+    "rbf_kernel",
+    "rbf_kernel_fast",
+    "laplacian_kernel",
+    "chi2_kernel",
+    "additive_chi2_kernel",
+    "hellinger_kernel",
+)
+
+
+def _has_api(module, names):
+    return module is not None and all(callable(getattr(module, name, None)) for name in names)
+
+
 # ============================================================================
 #  NumPy fallback implementations (kept here for reference / benchmarking)
 # ============================================================================
@@ -89,19 +121,23 @@ def _import_cython_tree():
 
 
 def _load_cpp_backend():
-    return _import_cpp_backend() if get_backend() == "auto" else None
+    module = _import_cpp_backend() if get_backend() == "auto" else None
+    return module if _has_api(module, _CPP_API) else None
 
 
 def _load_cython_backend():
-    return _import_cython_backend() if get_backend() in {"auto", "cython"} else None
+    module = _import_cython_backend() if get_backend() in {"auto", "cython"} else None
+    return module if _has_api(module, _CYTHON_API) else None
 
 
 def _load_cpp_kernels():
-    return _import_cpp_kernels() if get_backend() == "auto" else None
+    module = _import_cpp_kernels() if get_backend() == "auto" else None
+    return module if _has_api(module, _KERNEL_API) else None
 
 
 def _load_cython_tree():
-    return _import_cython_tree() if get_backend() in {"auto", "cython"} else None
+    module = _import_cython_tree() if get_backend() in {"auto", "cython"} else None
+    return module if _has_api(module, ("_best_split_classifier", "_best_split_regressor")) else None
 
 
 def get_active_backend():
@@ -114,6 +150,19 @@ def get_active_backend():
             raise RuntimeError("Cython backend requested but compiled extensions are unavailable")
         return "cython"
     return "cython" if cython_mod is not None else "numpy"
+
+
+def backend_report():
+    """Return compiled-backend availability and the active backend."""
+
+    return {
+        "requested": get_backend(),
+        "active": get_active_backend(),
+        "cython": _load_cython_backend() is not None,
+        "cpp_distance": _load_cpp_backend() is not None,
+        "cpp_kernels": _load_cpp_kernels() is not None,
+        "cython_tree": _load_cython_tree() is not None,
+    }
 
 
 # ============================================================================
@@ -320,7 +369,9 @@ def cpp_hellinger_kernel(X, Y):
         raise ValueError("hellinger_kernel expects non-negative inputs")
     cpp = _load_cpp_kernels()
     if cpp is not None:
-        return cpp.hellinger_kernel(X, Y)
+        value = cpp.hellinger_kernel(X, Y)
+        if np.all(np.isfinite(value)):
+            return value
     return np.sum(np.sqrt(X)[:, None, :] * np.sqrt(Y)[None, :, :], axis=2)
 
 

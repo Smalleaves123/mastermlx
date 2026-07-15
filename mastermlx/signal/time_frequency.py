@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from ..accel.timefreq_ops import ridge_path
+
 
 def _signal(x, name="x"):
     arr = np.asarray(x)
@@ -233,30 +235,20 @@ def extract_ridge(
 
     score = np.log(np.maximum(power, 1e-24)) if log_power else power.copy()
     n_freqs, n_times = score.shape
-    dynamic = np.full((n_freqs, n_times), -np.inf, dtype=float)
-    back = np.zeros((n_freqs, n_times), dtype=int)
-    dynamic[:, 0] = score[:, 0]
-    for t in range(1, n_times):
-        for current in range(n_freqs):
-            low = 0 if max_jump is None else max(0, current - max_jump)
-            high = n_freqs if max_jump is None else min(n_freqs, current + max_jump + 1)
-            previous = np.arange(low, high)
-            candidate = dynamic[low:high, t - 1] - smoothness * (previous - current) ** 2
-            best = int(np.argmax(candidate))
-            back[current, t] = previous[best]
-            dynamic[current, t] = score[current, t] + candidate[best]
-
-    indices = np.zeros(n_times, dtype=int)
-    indices[-1] = int(np.argmax(dynamic[:, -1]))
-    for t in range(n_times - 1, 0, -1):
-        indices[t - 1] = back[indices[t], t]
+    indices = ridge_path(score, smoothness, max_jump)
     columns = np.arange(n_times)
+    path_score = float(score[indices[0], 0])
+    if n_times > 1:
+        jumps = np.diff(indices)
+        path_score += float(
+            np.sum(score[indices[1:], np.arange(1, n_times)] - smoothness * jumps * jumps)
+        )
     return {
         "indices": indices,
         "frequencies": frequencies[indices],
         "power": power[indices, columns],
         "time": times,
-        "score": float(dynamic[indices[-1], -1]),
+        "score": path_score,
     }
 
 

@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from ...accel.rnn_ops import simple_rnn_forward
+from ...accel.rnn_ops import gru_forward, lstm_forward, simple_rnn_forward
 from ...base import BaseLayer
-from ...utils.math import sigmoid
 
 
 class SimpleRNN(BaseLayer):
@@ -116,20 +115,12 @@ class LSTM(BaseLayer):
             self._init_params(D)
         self.X_ = X
         u = self.n_units
-        h = np.zeros((N, u), dtype=float)
-        c = np.zeros((N, u), dtype=float)
-        Hs, Cs, gates = [], [], []
-        for t in range(T):
-            g = X[:, t, :] @ self.W_ + h @ self.U_ + self.b_
-            f = sigmoid(g[:, :u])
-            i = sigmoid(g[:, u:2*u])
-            cc = np.tanh(g[:, 2*u:3*u])
-            o = sigmoid(g[:, 3*u:])
-            c = f * c + i * cc
-            h = o * np.tanh(c)
-            Hs.append(h); Cs.append(c); gates.append((f, i, cc, o))
+        H, C, G = lstm_forward(X, self.W_, self.U_, self.b_, u)
+        Hs = [H[:, t, :] for t in range(T)]
+        Cs = [C[:, t, :] for t in range(T)]
+        gates = [(G[:, t, :u], G[:, t, u:2 * u], G[:, t, 2 * u:3 * u], G[:, t, 3 * u:]) for t in range(T)]
         self.cache_ = (Hs, Cs, gates)
-        H = np.stack(Hs, axis=1)
+        h = H[:, -1, :]
         return H if self.return_sequences else h
 
     def backward(self, grad):
@@ -220,17 +211,11 @@ class GRU(BaseLayer):
             self._init_params(D)
         self.X_ = X
         u = self.n_units
-        h = np.zeros((N, u), dtype=float)
-        Hs, gates = [], []
-        for t in range(T):
-            g_zr = X[:, t, :] @ self.W_zr_ + h @ self.U_zr_ + self.b_zr_
-            z = sigmoid(g_zr[:, :u])
-            r = sigmoid(g_zr[:, u:])
-            h_tilde = np.tanh(X[:, t, :] @ self.W_h_ + (r * h) @ self.U_h_ + self.b_h_)
-            h = (1.0 - z) * h + z * h_tilde
-            Hs.append(h); gates.append((z, r, h_tilde))
+        H, G = gru_forward(X, self.W_zr_, self.W_h_, self.U_zr_, self.U_h_, self.b_zr_, self.b_h_, u)
+        Hs = [H[:, t, :] for t in range(T)]
+        gates = [(G[:, t, :u], G[:, t, u:2 * u], G[:, t, 2 * u:]) for t in range(T)]
         self.cache_ = (Hs, gates)
-        H = np.stack(Hs, axis=1)
+        h = H[:, -1, :]
         return H if self.return_sequences else h
 
     def backward(self, grad):

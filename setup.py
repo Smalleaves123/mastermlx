@@ -1,11 +1,17 @@
 from setuptools import setup, Extension
 import numpy as np
-import pybind11
 
 extensions = []
-inc_dirs = [np.get_include(), pybind11.get_include()]
+inc_dirs = [np.get_include()]
 
-# C++ extensions (always compiled, no Cython needed)
+try:
+    import pybind11
+except ImportError:
+    pybind11 = None
+else:
+    inc_dirs.append(pybind11.get_include())
+
+# C++ extensions (compiled when pybind11 is available)
 cpp_exts = [
     Extension(
         "mastermlx.accel._distance_cpp",
@@ -57,6 +63,8 @@ cpp_exts = [
         language="c++",
     ),
 ]
+if pybind11 is None:
+    cpp_exts = []
 
 # Cython extensions (optional)
 try:
@@ -85,6 +93,11 @@ try:
         Extension(
             "mastermlx.accel._rnn_ops",
             ["mastermlx/accel/_rnn_ops.pyx"],
+            include_dirs=[np.get_include()],
+        ),
+        Extension(
+            "mastermlx.accel._signal_ops",
+            ["mastermlx/accel/_signal_ops.pyx"],
             include_dirs=[np.get_include()],
         ),
         Extension(

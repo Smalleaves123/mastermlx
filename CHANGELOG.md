@@ -45,6 +45,13 @@
 - Routed RBF kernel evaluation through the C++ backend in `mastermlx.utils.kernels`.
 - Added Cython acceleration for discrete LQR recursion and batch joint-trajectory sampling.
 - Added roadmap guidance for the next Cython / C++ optimization batches.
+- Added optional Cython forward kernels for LSTM and GRU, plus backend-aware
+  IIR filtering and time-frequency ridge extraction.
+- Added backend capability reporting and regression tests for NumPy/compiled
+  numerical parity and backend switching.
+- Made the development build tolerate missing `pybind11` by still compiling
+  available Cython extensions.
+- Added `bench_neural.py` for recurrent, Conv1D, IIR, and ridge hot-path timing.
 - Added Cython acceleration for time-series hot paths such as rolling mean, autocorrelation, exponential smoothing, and CUSUM detection.
 
 ## 0.1.12

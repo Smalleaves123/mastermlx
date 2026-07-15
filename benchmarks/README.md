@@ -8,6 +8,7 @@ This directory contains the first executable benchmark entry points for `masterm
 - `bench_accel.py` measures the optional compiled backend against NumPy fallbacks
 - `bench_tabular.py` focuses on the tabular workflow introduced by `TabularExperiment`
 - `bench_signal.py` focuses on the signal-processing stack, including pipelines, streaming, detection, and `SignalExperiment`
+- `bench_neural.py` compares NumPy and compiled paths for recurrent layers, Conv1D packing, IIR filtering, and ridge extraction
 
 ## How to use them
 
@@ -18,6 +19,7 @@ python benchmarks/bench_models.py
 python benchmarks/bench_accel.py
 python benchmarks/bench_tabular.py
 python benchmarks/bench_signal.py
+PYTHONPATH=. python benchmarks/bench_neural.py
 ```
 
 For Cython-backed sections, install the development extras first:

@@ -142,9 +142,12 @@ model.eval()
 `Module` exposes `parameters`, `named_parameters`, `state_dict`,
 `load_state_dict`, `train`, `eval`, `save`, and `load` while preserving the
 existing NumPy-array layer implementation. `Conv1D` uses a vectorized NumPy
-window path and has an optional Cython packing kernel. `SimpleRNN` has an
-optional Cython forward kernel with a NumPy fallback; the fallback remains
-available when compiled extensions are not installed.
+window path and has an optional Cython packing kernel. `SimpleRNN`, `LSTM`, and
+`GRU` have optional Cython forward kernels with NumPy fallbacks; the fallbacks
+remain available when compiled extensions are not installed. Signal IIR
+filtering and time-frequency ridge extraction use the same backend-aware
+pattern. `backend_report()` exposes the active backend and compiled capability
+status for diagnostics.
 
 Advanced spectral tools cover real/complex cepstrum analysis, envelope
 demodulation and envelope spectra, cyclic spectral density, lag-domain

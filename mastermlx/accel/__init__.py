@@ -3,6 +3,7 @@
 from .cnn_ops import col2im, im2col, maxpool_backward, maxpool_forward
 from .backends import (
     active_backend,
+    backend_report,
     best_split_classifier,
     best_split_regressor,
     cpp_additive_chi2_kernel,
@@ -30,6 +31,7 @@ from .backends import (
 
 __all__ = [
     "active_backend",
+    "backend_report",
     "best_split_classifier",
     "best_split_regressor",
     "col2im",

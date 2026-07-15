@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from ..accel.signal_ops import iir_filter_1d
+
 
 def _coeffs(values, name):
     values = np.asarray(values)
@@ -130,6 +132,12 @@ def iir_filter(x, b, a=(1.0,)):
     x = x.astype(dtype, copy=False)
     b = b.astype(dtype, copy=False) / a[0]
     a = a.astype(dtype, copy=False) / a[0]
+    if not np.iscomplexobj(x) and not np.iscomplexobj(b) and not np.iscomplexobj(a):
+        return iir_filter_1d(
+            np.ascontiguousarray(x, dtype=float),
+            np.ascontiguousarray(b, dtype=float),
+            np.ascontiguousarray(a, dtype=float),
+        )
     y = np.zeros(x.size, dtype=dtype)
     for n in range(x.size):
         value = 0.0
