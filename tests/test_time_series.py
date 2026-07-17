@@ -1,5 +1,6 @@
 import numpy as np
 
+from mastermlx import get_backend, set_backend
 from mastermlx.math_tools import (
     ARModel,
     autocorrelation,
@@ -48,6 +49,42 @@ def test_dtw_distance_and_path_are_consistent():
     assert np.isclose(dist, dist2)
     assert path[0] == (0, 0)
     assert path[-1] == (2, 3)
+
+
+def test_dtw_distance_rejects_negative_window_and_matches_path():
+    x = np.array([0.0, 1.0, 0.0, 1.0])
+    y = np.array([0.0, 0.8, 0.1, 1.0])
+
+    with np.testing.assert_raises(ValueError):
+        dtw_distance(x, y, window=-1)
+    path_distance = dtw_path(x, y, window=1)[1]
+    assert np.isclose(dtw_distance(x, y, window=1), path_distance)
+
+
+def test_dtw_narrow_window_matches_numpy_and_compiled_paths():
+    x = np.array([0.0, 3.0, 1.0, 4.0, 2.0])
+    y = np.array([0.5, 2.5, 1.5, 3.5, 2.5])
+    old = get_backend()
+    try:
+        set_backend("numpy")
+        numpy_dist = dtw_distance(x, y, window=1)
+        numpy_path, numpy_path_dist = dtw_path(x, y, window=1)
+        set_backend("auto")
+        compiled_dist = dtw_distance(x, y, window=1)
+        compiled_path, compiled_path_dist = dtw_path(x, y, window=1)
+    finally:
+        set_backend(old)
+
+    assert np.isclose(numpy_dist, numpy_path_dist)
+    assert np.isclose(compiled_dist, compiled_path_dist)
+    assert np.isclose(numpy_dist, compiled_dist)
+    assert numpy_path[0] == compiled_path[0] == (0, 0)
+    assert numpy_path[-1] == compiled_path[-1] == (4, 4)
+
+
+def test_dtw_rejects_non_finite_values():
+    with np.testing.assert_raises(ValueError):
+        dtw_distance([0.0, np.nan], [0.0, 1.0])
 
 
 def test_ar_model_fits_and_forecasts_linear_series():

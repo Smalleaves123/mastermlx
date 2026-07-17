@@ -185,43 +185,79 @@ def exponential_smoothing(x, alpha=0.5):
     return smoothed
 
 
+def _dtw_window(window, n, m):
+    if window is None:
+        return max(n, m)
+    window = int(window)
+    if window < 0:
+        raise ValueError("window must be non-negative")
+    return max(window, abs(n - m))
+
+
 def dtw_path(x, y, window=None):
+    """Return an optimal DTW alignment path and its absolute-cost distance.
+
+    ``window`` limits the Sakoe-Chiba band and reduces path memory from a
+    full matrix to the active band.  Inputs must be finite, non-empty series.
+    """
     x = np.asarray(x, dtype=float).ravel()
     y = np.asarray(y, dtype=float).ravel()
     if x.size == 0 or y.size == 0:
         raise ValueError("x and y must be non-empty")
+    if not np.all(np.isfinite(x)) or not np.all(np.isfinite(y)):
+        raise ValueError("x and y must contain only finite values")
+    window = _dtw_window(window, x.size, y.size)
     # Try C++ accelerated path
     try:
         if get_backend() == "numpy":
             raise ImportError
         from ..accel._dtw import dtw_path as _cpp_dtw
-        w = int(window) if window is not None else max(x.size, y.size)
-        path_arr, dist = _cpp_dtw(x, y, w)
+        path_arr, dist = _cpp_dtw(x, y, window)
         return [(int(p[0]), int(p[1])) for p in path_arr], float(dist)
     except ImportError:
-        pass
-    n, m = x.size, y.size
-    if window is None:
-        window = max(n, m)
-    window = int(window)
-    if window < abs(n - m):
-        window = abs(n - m)
+        return _dtw_path_py(x, y, window)
 
+
+def _dtw_path_py(x, y, window):
+    n, m = x.size, y.size
     inf = np.inf
-    dp = np.full((n + 1, m + 1), inf, dtype=float)
-    dp[0, 0] = 0.0
+    row_lo = np.empty(n + 1, dtype=np.intp)
+    row_hi = np.empty(n + 1, dtype=np.intp)
+    offsets = np.empty(n + 1, dtype=np.intp)
+    total = 0
+    for i in range(n + 1):
+        lo = 0 if i == 0 else max(1, i - window)
+        hi = 0 if i == 0 else min(m, i + window)
+        row_lo[i] = lo
+        row_hi[i] = hi
+        offsets[i] = total
+        total += hi - lo + 1
+
+    dp = np.full(total, inf, dtype=float)
+    dp[0] = 0.0
+
+    def value(i, j):
+        if i < 0 or j < 0 or i > n:
+            return inf
+        lo = row_lo[i]
+        hi = row_hi[i]
+        if j < lo or j > hi:
+            return inf
+        return dp[offsets[i] + j - lo]
+
     for i in range(1, n + 1):
-        j_start = max(1, i - window)
-        j_stop = min(m, i + window)
-        for j in range(j_start, j_stop + 1):
+        lo = int(row_lo[i])
+        hi = int(row_hi[i])
+        for j in range(lo, hi + 1):
             cost = abs(x[i - 1] - y[j - 1])
-            dp[i, j] = cost + min(dp[i - 1, j], dp[i, j - 1], dp[i - 1, j - 1])
+            current = offsets[i] + j - lo
+            dp[current] = cost + min(value(i - 1, j), value(i, j - 1), value(i - 1, j - 1))
 
     i, j = n, m
     path = []
     while i > 0 and j > 0:
         path.append((i - 1, j - 1))
-        steps = np.array([dp[i - 1, j], dp[i, j - 1], dp[i - 1, j - 1]], dtype=float)
+        steps = np.array([value(i - 1, j), value(i, j - 1), value(i - 1, j - 1)], dtype=float)
         move = int(np.argmin(steps))
         if move == 0:
             i -= 1
@@ -231,11 +267,49 @@ def dtw_path(x, y, window=None):
             i -= 1
             j -= 1
     path.reverse()
-    return path, float(dp[n, m])
+    return path, float(value(n, m))
+
+
+def _dtw_distance_py(x, y, window):
+    n, m = x.size, y.size
+    inf = np.inf
+    width = m if window > (np.iinfo(np.intp).max - 1) // 2 else min(m, 2 * window + 1)
+    previous = np.full(width, inf, dtype=float)
+    current = np.full(width, inf, dtype=float)
+    previous[0] = 0.0
+    previous_lo = 0
+    previous_hi = 0
+    for i in range(1, n + 1):
+        j_start = max(1, i - window)
+        j_stop = min(m, i + window)
+        current[: j_stop - j_start + 1] = inf
+        for j in range(j_start, j_stop + 1):
+            cost = abs(x[i - 1] - y[j - 1])
+            up = previous[j - previous_lo] if previous_lo <= j <= previous_hi else inf
+            left = current[j - 1 - j_start] if j_start <= j - 1 <= j_stop else inf
+            diagonal = previous[j - 1 - previous_lo] if previous_lo <= j - 1 <= previous_hi else inf
+            current[j - j_start] = cost + min(up, left, diagonal)
+        previous, current = current, previous
+        previous_lo, previous_hi = j_start, j_stop
+    return float(previous[m - previous_lo])
 
 
 def dtw_distance(x, y, window=None):
-    return dtw_path(x, y, window=window)[1]
+    """Return the DTW distance using band-limited, linear-memory dynamic programming."""
+    x = np.asarray(x, dtype=float).ravel()
+    y = np.asarray(y, dtype=float).ravel()
+    if x.size == 0 or y.size == 0:
+        raise ValueError("x and y must be non-empty")
+    if not np.all(np.isfinite(x)) or not np.all(np.isfinite(y)):
+        raise ValueError("x and y must contain only finite values")
+    window = _dtw_window(window, x.size, y.size)
+    try:
+        if get_backend() == "numpy":
+            raise ImportError
+        from ..accel._dtw import dtw_distance as _cpp_dtw_distance
+        return float(_cpp_dtw_distance(x, y, window))
+    except ImportError:
+        return _dtw_distance_py(x, y, window)
 
 
 def cusum_change_points(x, threshold=5.0, drift=0.0, direction="both"):
