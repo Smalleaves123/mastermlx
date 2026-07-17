@@ -83,3 +83,61 @@ def test_cpp_extensions_validate_direct_inputs():
     result = cpp.pairwise_squared_euclidean(non_contiguous, non_contiguous)
     assert result.shape == (3, 3)
     assert result.dtype == np.float64
+
+
+def test_cpp_kdtree_keeps_training_data_alive():
+    from mastermlx.accel.kdtree import _KDTree
+
+    if _KDTree is None:
+        pytest.skip("C++ KDTree extension is unavailable")
+    X = np.asfortranarray(np.arange(1200, dtype=np.float32).reshape(300, 4))
+    tree = _KDTree(X)
+    del X
+    query = np.array([[4.0, 5.0, 6.0, 7.0]])
+    indices, distances = tree.query(query, 3)
+
+    assert indices.shape == (1, 3)
+    assert distances.shape == (1, 3)
+    assert indices[0, 0] == 1
+    with pytest.raises(ValueError, match="features"):
+        tree.query(np.ones((1, 3)), 1)
+
+
+def test_kdtree_fallback_returns_euclidean_distances():
+    from mastermlx.accel.kdtree import knn_search
+
+    old = get_backend()
+    try:
+        set_backend("numpy")
+        X = np.arange(101, dtype=float)[:, None]
+        indices, distances = knn_search(X, np.array([[10.5]]), 1)
+    finally:
+        set_backend(old)
+
+    assert indices.shape == (1, 1)
+    assert np.isclose(distances[0, 0], 0.5)
+
+
+def test_kdtree_rejects_empty_and_non_finite_inputs():
+    from mastermlx.accel.kdtree import knn_search
+
+    with pytest.raises(ValueError, match="non-empty"):
+        knn_search(np.empty((0, 2)), np.ones((1, 2)), 1)
+    with pytest.raises(ValueError, match="finite"):
+        knn_search(np.array([[0.0, np.nan]]), np.zeros((1, 2)), 1)
+
+
+def test_kdtree_fallback_supports_all_neighbors():
+    from mastermlx.accel.kdtree import knn_search
+
+    old = get_backend()
+    try:
+        set_backend("numpy")
+        indices, distances = knn_search(
+            np.array([[0.0], [2.0], [1.0]]), np.array([[1.0]]), 3
+        )
+    finally:
+        set_backend(old)
+
+    assert np.array_equal(indices[0], np.array([2, 0, 1]))
+    assert np.allclose(distances[0], np.array([0.0, 1.0, 1.0]))

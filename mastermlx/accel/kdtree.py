@@ -11,13 +11,20 @@ except ImportError:  # pragma: no cover - optional C++ extension
 
 
 def knn_search(X_train, X_query, k):
-    """Find k nearest neighbors of X_query in X_train.
-    Returns (indices, distances). Falls back to brute force if KD-Tree unavailable.
+    """Find ``k`` Euclidean nearest neighbors.
+
+    Both inputs must be finite 2D arrays with matching feature counts.  The
+    returned distances are Euclidean distances for both the compiled KD-Tree
+    and the NumPy fallback.
     """
     X_train = np.asarray(X_train, dtype=np.float64)
     X_query = np.asarray(X_query, dtype=np.float64)
     if X_train.ndim != 2 or X_query.ndim != 2:
         raise ValueError("X_train and X_query must be 2D")
+    if X_train.shape[0] == 0 or X_train.shape[1] == 0:
+        raise ValueError("X_train must be non-empty")
+    if not np.all(np.isfinite(X_train)) or not np.all(np.isfinite(X_query)):
+        raise ValueError("X_train and X_query must contain only finite values")
     if X_train.shape[1] != X_query.shape[1]:
         raise ValueError("Feature dimensions must match")
     k = int(k)
@@ -33,6 +40,11 @@ def knn_search(X_train, X_query, k):
     sq = np.sum(X_query**2, axis=1)[:, None] + np.sum(X_train**2, axis=1)[None, :] \
          - 2.0 * (X_query @ X_train.T)
     sq = np.maximum(sq, 0.0)
-    idx = np.argpartition(sq, k, axis=1)[:, :k]
+    if k == X_train.shape[0]:
+        idx = np.argsort(sq, axis=1, kind="stable")[:, :k]
+    else:
+        idx = np.argpartition(sq, k - 1, axis=1)[:, :k]
+        order = np.argsort(np.take_along_axis(sq, idx, axis=1), axis=1, kind="stable")
+        idx = np.take_along_axis(idx, order, axis=1)
     row_idx = np.arange(X_query.shape[0])[:, None]
-    return idx, sq[row_idx, idx]
+    return idx, np.sqrt(sq[row_idx, idx])
