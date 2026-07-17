@@ -128,6 +128,7 @@ def quad_gd(H, b, x0, lr=1e-2, max_iter=1000, tol=1e-6, bounds=None):
 
     The C++ backend is used when available and no bounds are requested.
     ``H`` should be symmetric positive semidefinite for stable convergence.
+    ``H``, ``b``, and ``x0`` must be finite and non-empty.
     """
 
     H = np.asarray(H, dtype=float)
@@ -137,6 +138,15 @@ def quad_gd(H, b, x0, lr=1e-2, max_iter=1000, tol=1e-6, bounds=None):
         raise ValueError("H must be a square matrix")
     if b.size != x0.size or H.shape[0] != x0.size:
         raise ValueError("H, b, and x0 have incompatible shapes")
+    if x0.size == 0:
+        raise ValueError("H, b, and x0 must be non-empty")
+    if not np.all(np.isfinite(H)) or not np.all(np.isfinite(b)) or not np.all(np.isfinite(x0)):
+        raise ValueError("H, b, and x0 must contain only finite values")
+    lr = float(lr)
+    max_iter = int(max_iter)
+    tol = float(tol)
+    if lr <= 0.0 or max_iter < 1 or tol < 0.0:
+        raise ValueError("lr must be positive, max_iter at least 1, and tol non-negative")
 
     def fun(x):
         return float(0.5 * x @ H @ x + b @ x)
@@ -145,7 +155,7 @@ def quad_gd(H, b, x0, lr=1e-2, max_iter=1000, tol=1e-6, bounds=None):
         return H @ x + b
 
     if get_backend() != "numpy" and _quad_cpp is not None and bounds is None:
-        x, hist, nit, success = _quad_cpp(H, b, x0, float(lr), int(max_iter), float(tol))
+        x, hist, nit, success = _quad_cpp(H, b, x0, lr, max_iter, tol)
         return Result(
             x=np.asarray(x, dtype=float),
             fun=fun(np.asarray(x, dtype=float)),
