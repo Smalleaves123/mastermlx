@@ -160,7 +160,10 @@ try:
             ["mastermlx/estimation/_particle_ops.pyx"],
             include_dirs=[np.get_include()],
         ),
-    ], language_level=3)
+    # Generated C sources can carry NumPy/Cython-specific accessor code from
+    # another build environment. Regenerate them against the active headers
+    # so source builds remain portable across NumPy and Python versions.
+    ], language_level=3, force=True)
     extensions = cpp_exts + cy_exts
 except ImportError:
     extensions = cpp_exts
