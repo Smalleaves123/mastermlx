@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from mastermlx import get_backend, set_backend
 from mastermlx.accel import (
@@ -9,6 +10,7 @@ from mastermlx.accel import (
 )
 from mastermlx.accel.backends import (
     _load_cpp_backend,
+    _load_cpp_kernels,
     _load_cython_backend,
     _numpy_pairwise_squared_euclidean,
 )
@@ -55,3 +57,29 @@ def test_backend_report_includes_neural_and_signal_capabilities():
             assert report[name] is False
     finally:
         set_backend(old)
+
+
+def test_cpp_extensions_validate_direct_inputs():
+    cpp = _load_cpp_backend()
+    kernels = _load_cpp_kernels()
+    if cpp is None or kernels is None:
+        pytest.skip("C++ extensions are unavailable")
+
+    X = np.ones((1, 2))
+    with pytest.raises(ValueError, match="2D"):
+        cpp.pairwise_distances(np.ones(2), X)
+    with pytest.raises(ValueError, match="non-empty"):
+        cpp.pairwise_distances(np.empty((0, 2)), X)
+    with pytest.raises(ValueError, match="same number of features"):
+        cpp.pairwise_distances(X, np.ones((1, 3)))
+    with pytest.raises(ValueError, match="positive"):
+        cpp.pairwise_minkowski(X, X, 0.0)
+    with pytest.raises(ValueError, match="finite"):
+        kernels.rbf_kernel(X, X, np.nan)
+    with pytest.raises(ValueError, match="match"):
+        kernels.rbf_kernel_fast(X, X, np.ones(2), np.ones(1), 1.0)
+
+    non_contiguous = np.asfortranarray(np.arange(12, dtype=np.float32).reshape(3, 4))
+    result = cpp.pairwise_squared_euclidean(non_contiguous, non_contiguous)
+    assert result.shape == (3, 3)
+    assert result.dtype == np.float64

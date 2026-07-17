@@ -1,5 +1,6 @@
 from setuptools import setup, Extension
 import warnings
+import sys
 import numpy as np
 
 extensions = []
@@ -13,12 +14,14 @@ else:
     inc_dirs.append(pybind11.get_include())
 
 # C++ extensions (compiled when pybind11 is available)
+thread_flags = [] if sys.platform == "win32" else ["-pthread"]
 cpp_exts = [
     Extension(
         "mastermlx.accel._distance_cpp",
         ["mastermlx/accel/_distance_cpp.cpp"],
         include_dirs=inc_dirs,
-        extra_compile_args=["-O3"],
+        extra_compile_args=["-O3", *thread_flags],
+        extra_link_args=thread_flags,
         language="c++",
     ),
     Extension(
@@ -39,7 +42,8 @@ cpp_exts = [
         "mastermlx.accel._kernels_cpp",
         ["mastermlx/accel/_kernels_cpp.cpp"],
         include_dirs=inc_dirs,
-        extra_compile_args=["-O3"],
+        extra_compile_args=["-O3", *thread_flags],
+        extra_link_args=thread_flags,
         language="c++",
     ),
     Extension(
