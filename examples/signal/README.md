@@ -9,6 +9,7 @@ This folder contains signal-processing demos for the `mastermlx.signal` package.
 - Fourier-domain analysis, dominant frequency detection, and band-energy summaries
 - unified STFT + FFT feature vectors for downstream models
 - streaming feature extraction on chunked input
+- stateful streaming monitoring with feature extraction and event detection
 - event detection with `CUSUMDetector` and threshold-based detectors
 - high-level signal experiments with `SignalExperiment`
 

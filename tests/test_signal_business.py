@@ -6,6 +6,7 @@ from mastermlx.signal import (
     MFCCTransformer,
     NormalizeSignalTransformer,
     SignalExperiment,
+    SignalMonitor,
     SignalPipeline,
     StreamingFeatureExtractor,
     compare_signal_models,
@@ -52,6 +53,32 @@ def test_cusum_detector_finds_mean_shift():
 
     assert events.size > 0
     assert events[0] >= 15
+
+
+def test_signal_monitor_tracks_global_event_positions():
+    class IndexDetector:
+        def transform(self, features):
+            return np.arange(features.shape[0], dtype=int)
+
+    extractor = StreamingFeatureExtractor(
+        lambda frame: np.array([rms_energy(frame)]),
+        frame_length=4,
+        hop_length=2,
+    )
+    monitor = SignalMonitor(extractor, IndexDetector())
+
+    first = monitor.push(np.ones(5))
+    second = monitor.push(np.ones(4))
+    final = monitor.flush()
+
+    features = np.vstack([item["features"] for item in (first, second, final) if item["features"].size])
+    events = np.concatenate([item["events"] for item in (first, second, final) if item["events"].size])
+    assert features.shape[0] == 3
+    assert np.array_equal(events, np.array([0, 1, 2]))
+    assert monitor.state() == {"frames_seen": 3, "has_detector": True}
+
+    monitor.reset()
+    assert monitor.state()["frames_seen"] == 0
 
 
 def test_signal_experiment_runs_end_to_end():

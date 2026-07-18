@@ -64,6 +64,7 @@ from .core import (
 )
 from .detectors import CUSUMDetector, EnergyThresholdDetector, PeakDetector
 from .streaming import SignalChunkBuffer, SlidingWindowStream, StreamingFeatureExtractor
+from .monitoring import SignalMonitor
 from .datasets import make_chirp, make_impulse_train, make_multi_tone, make_signal_anomaly_series, make_signal_classification_dataset, make_sine_wave
 from .io import load_signal, load_signal_bundle, save_signal, save_signal_bundle
 from .metrics import frame_energy, signal_psnr, signal_snr
@@ -265,6 +266,7 @@ __all__ = [
     "compare_signal_models",
     "SlidingWindowStream",
     "StreamingFeatureExtractor",
+    "SignalMonitor",
     "stft_spectrum",
     "top_frequency_peaks",
     "stack_signal_features",
