@@ -11,6 +11,7 @@ class _LabelBase(BaseEstimator):
     def __init__(self, kernel="rbf", gamma=None, n_neighbors=5, max_iter=1000, tol=1e-4):
         self.kernel = kernel
         self.gamma = gamma
+        self._gamma: float | None = None
         self.n_neighbors = int(n_neighbors)
         self.max_iter = int(max_iter)
         self.tol = float(tol)
@@ -68,7 +69,7 @@ class _LabelBase(BaseEstimator):
 class LabelPropagation(_LabelBase):
     """Label propagation on a graph built from the data."""
 
-    def fit(self, X, y):
+    def fit(self, X, y=None):
         X = check_2d_array(X).astype(float)
         y, classes, Y, labeled = self._resolve_labels(y)
         self.X_ = X
@@ -105,7 +106,7 @@ class LabelSpreading(_LabelBase):
         super().__init__(kernel=kernel, gamma=gamma, n_neighbors=n_neighbors, max_iter=max_iter, tol=tol)
         self.alpha = float(alpha)
 
-    def fit(self, X, y):
+    def fit(self, X, y=None):
         X = check_2d_array(X).astype(float)
         y, classes, Y, labeled = self._resolve_labels(y)
         self.X_ = X

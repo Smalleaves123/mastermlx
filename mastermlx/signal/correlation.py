@@ -112,7 +112,7 @@ def correlation_peaks(
                 continue
             candidates.append(idx)
     candidates.sort(key=lambda idx: score[idx], reverse=True)
-    selected = []
+    selected: list[int] = []
     for idx in candidates:
         if all(abs(idx - previous) >= min_distance for previous in selected):
             selected.append(idx)

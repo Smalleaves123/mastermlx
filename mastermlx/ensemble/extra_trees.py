@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+from typing import cast
 
 from ..base import BaseEstimator
 from ..utils import accuracy, as_2d, check_1d_array, check_2d_array, r2_score
@@ -48,7 +49,7 @@ class _ExtraTreeBase:
     def _leaf_value(self, y):
         raise NotImplementedError
 
-    def _score_split(self, yl, yr):
+    def _score_split(self, yl, yr, *args):
         raise NotImplementedError
 
     def _grow(self, X, y, depth, rng):
@@ -85,12 +86,13 @@ class _ExtraTreeBase:
         if best_feat is None:
             return _ExtraNode(value=self._leaf_value(y))
 
-        left = X[:, best_feat] <= best_thr
+        threshold = cast(float, best_thr)
+        left = X[:, best_feat] <= threshold
         right = ~left
         if left.sum() == 0 or right.sum() == 0:
             return _ExtraNode(value=self._leaf_value(y))
 
-        node = _ExtraNode(feature=best_feat, threshold=float(best_thr))
+        node = _ExtraNode(feature=best_feat, threshold=threshold)
         node.left = self._grow(X[left], y[left], depth + 1, rng)
         node.right = self._grow(X[right], y[right], depth + 1, rng)
         return node
@@ -116,7 +118,8 @@ class ExtraTreeClassifier(_ExtraTreeBase):
         vals, cnt = np.unique(y, return_counts=True)
         return vals[np.argmax(cnt)]
 
-    def _score_split(self, yl, yr, nl, nr, n):
+    def _score_split(self, yl, yr, *args):
+        nl, nr, n = args
         def gini(y):
             _, cnt = np.unique(y, return_counts=True)
             p = cnt / cnt.sum()
@@ -148,7 +151,8 @@ class ExtraTreeRegressor(_ExtraTreeBase):
     def _leaf_value(self, y):
         return float(np.mean(y))
 
-    def _score_split(self, yl, yr, nl, nr, n):
+    def _score_split(self, yl, yr, *args):
+        nl, nr, n = args
         return (nl / n) * np.var(yl) + (nr / n) * np.var(yr)
 
     def predict(self, X):
@@ -196,12 +200,12 @@ class ExtraTreesClassifier(BaseEstimator):
             raise RuntimeError("Model has not been fit yet")
         X = as_2d(X).astype(float)
         preds = np.asarray([tree.predict(X) for tree in self.trees_])
-        out = []
+        out: list[object] = []
         for col in preds.T:
             vals, cnt = np.unique(col, return_counts=True)
             out.append(vals[np.argmax(cnt)])
-        out = np.asarray(out)
-        return out[0] if out.shape[0] == 1 else out
+        result = np.asarray(out)
+        return result[0] if result.shape[0] == 1 else result
 
     def score(self, X, y):
         return accuracy(y, self.predict(X))

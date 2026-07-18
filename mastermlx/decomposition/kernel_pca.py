@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+from typing import cast
 
 from ..base import BaseTransformer
 from ..utils import as_2d, check_2d_array
@@ -32,7 +33,7 @@ class KernelPCA(BaseTransformer):
 
     def _center_new_kernel(self, K):
         row_mean = np.mean(K, axis=1, keepdims=True)
-        return K - self.row_mean_[None, :] - row_mean + self.total_mean_
+        return K - cast(np.ndarray, self.row_mean_)[None, :] - row_mean + cast(float, self.total_mean_)
 
     def fit(self, X, y=None):
         X = check_2d_array(X).astype(float)

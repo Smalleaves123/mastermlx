@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import numpy as np
 
 from ..base import BaseTransformer
 from ..utils.validation import check_2d_array

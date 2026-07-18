@@ -17,7 +17,10 @@ class ReLU(BaseLayer):
 
     def backward(self, grad):
         grad = check_2d_array(grad)
-        return grad * (self.X_ > 0.0)
+        X = self.X_
+        if X is None:
+            raise RuntimeError("forward must be called before backward")
+        return grad * (X > 0.0)
 
 
 class Tanh(BaseLayer):
@@ -31,7 +34,10 @@ class Tanh(BaseLayer):
 
     def backward(self, grad):
         grad = check_2d_array(grad)
-        return grad * (1.0 - self.out_ ** 2)
+        out = self.out_
+        if out is None:
+            raise RuntimeError("forward must be called before backward")
+        return grad * (1.0 - out**2)
 
 
 class LeakyReLU(BaseLayer):
@@ -46,7 +52,10 @@ class LeakyReLU(BaseLayer):
 
     def backward(self, grad):
         grad = check_2d_array(grad)
-        return grad * np.where(self.X_ > 0, 1.0, self.alpha)
+        X = self.X_
+        if X is None:
+            raise RuntimeError("forward must be called before backward")
+        return grad * np.where(X > 0, 1.0, self.alpha)
 
 
 class GELU(BaseLayer):
@@ -62,6 +71,8 @@ class GELU(BaseLayer):
     def backward(self, grad):
         grad = check_2d_array(grad)
         x = self.X_
+        if x is None:
+            raise RuntimeError("forward must be called before backward")
         sqrt_2_pi = np.sqrt(2.0 / np.pi)
         inner = sqrt_2_pi * (x + 0.044715 * x ** 3)
         cdf = 0.5 * (1.0 + np.tanh(inner))
@@ -86,4 +97,7 @@ class Sigmoid(BaseLayer):
 
     def backward(self, grad):
         grad = check_2d_array(grad)
-        return grad * self.out_ * (1.0 - self.out_)
+        out = self.out_
+        if out is None:
+            raise RuntimeError("forward must be called before backward")
+        return grad * out * (1.0 - out)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+from typing import cast
 
 from ..base import BaseEstimator
 from ..utils.validation import check_1d_array, check_2d_array, check_same_rows
@@ -59,7 +60,6 @@ class CalibratedClassifierCV(BaseEstimator):
             self._b = np.log(np.mean(y_bin) / max(1e-12, 1.0 - np.mean(y_bin)))
             return self
 
-        from math import log, exp
         def _platt_objective(params):
             a, b = params
             f = a * scores + b
@@ -97,7 +97,7 @@ class CalibratedClassifierCV(BaseEstimator):
     def predict(self, X):
         proba = self.predict_proba(X)
         idx = np.argmax(proba, axis=1)
-        return self.classes_[idx]
+        return cast(np.ndarray, self.classes_)[idx]
 
     def score(self, X, y):
         from ..utils.metrics import accuracy

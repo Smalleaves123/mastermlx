@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+from typing import cast
 
 from ..config import get_backend
 
@@ -163,8 +164,8 @@ def iLQR(
 
         V_x = 2.0 * Qf @ (X[T] - (np.zeros_like(X[T]) if x_ref is None else np.asarray(x_ref, dtype=float)[T]))
         V_xx = 2.0 * Qf.copy()
-        k_seq = [None] * T
-        K_seq = [None] * T
+        k_seq: list[np.ndarray | None] = [None] * T
+        K_seq: list[np.ndarray | None] = [None] * T
 
         for t in range(T - 1, -1, -1):
             x = X[t]
@@ -198,15 +199,15 @@ def iLQR(
         improved = False
         best_X, best_cost, best_U = X, cost, U
         for alpha in line_search:
-            X_new = [x0.copy()]
-            U_new = []
+            X_new_list = [x0.copy()]
+            U_new_list: list[np.ndarray] = []
             for t in range(T):
-                du = -alpha * k_seq[t] - K_seq[t] @ (X_new[-1] - X[t])
+                du = -alpha * cast(np.ndarray, k_seq[t]) - cast(np.ndarray, K_seq[t]) @ (X_new_list[-1] - X[t])
                 u_new = U[t] + du
-                U_new.append(u_new)
-                X_new.append(np.asarray(dynamics(X_new[-1], u_new), dtype=float).reshape(-1))
-            X_new = np.asarray(X_new)
-            U_new = np.asarray(U_new)
+                U_new_list.append(u_new)
+                X_new_list.append(np.asarray(dynamics(X_new_list[-1], u_new), dtype=float).reshape(-1))
+            X_new = np.asarray(X_new_list)
+            U_new = np.asarray(U_new_list)
             new_cost = _cy_quadratic_trajectory_cost(X_new, U_new, Q, R, Qf, x_ref=x_ref, u_ref=u_ref) if get_backend() != "numpy" and _cy_quadratic_trajectory_cost is not None else 0.0
             if get_backend() == "numpy" or _cy_quadratic_trajectory_cost is None:
                 x_ref_seq = None if x_ref is None else np.asarray(x_ref, dtype=float)

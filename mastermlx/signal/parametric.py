@@ -103,15 +103,15 @@ def fit_arma(x, ar_order=4, ma_order=2, demean=True):
         residual[index] = x[index] - prediction
 
     start = max(warmup, ar_order, ma_order)
-    rows = []
-    targets = []
+    rows: list[list[complex]] = []
+    target_values: list[complex] = []
     for index in range(start, x.size):
         row = [x[index - lag] for lag in range(1, ar_order + 1)]
         row.extend(residual[index - lag] for lag in range(1, ma_order + 1))
         rows.append(row)
-        targets.append(x[index])
+        target_values.append(x[index])
     design = np.asarray(rows, dtype=complex)
-    targets = np.asarray(targets, dtype=complex)
+    targets = np.asarray(target_values, dtype=complex)
     coefficients = np.linalg.lstsq(design, targets, rcond=None)[0]
     ar = coefficients[:ar_order]
     ma = coefficients[ar_order:]

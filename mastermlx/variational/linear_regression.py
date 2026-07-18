@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from typing import cast
 
 import numpy as np
 
@@ -47,22 +48,28 @@ class VariationalLinearRegression(BaseEstimator, VariationalEstimator):
         return X
 
     def _expected_noise_precision(self):
-        return self.noise_shape_ / self.noise_rate_
+        return cast(float, self.noise_shape_) / cast(float, self.noise_rate_)
 
     def _expected_weight_precision(self):
-        return self.weight_shape_ / self.weight_rate_
+        return cast(float, self.weight_shape_) / cast(float, self.weight_rate_)
 
     def _elbo(self, X, y):
+        posterior_mean = cast(np.ndarray, self.posterior_mean_)
+        posterior_cov = cast(np.ndarray, self.posterior_cov_)
+        noise_shape = cast(float, self.noise_shape_)
+        noise_rate = cast(float, self.noise_rate_)
+        weight_shape = cast(float, self.weight_shape_)
+        weight_rate = cast(float, self.weight_rate_)
         n_samples, n_features = X.shape
         e_alpha = self._expected_noise_precision()
         e_lambda = self._expected_weight_precision()
-        e_log_alpha = float(digamma(self.noise_shape_) - np.log(self.noise_rate_))
-        e_log_lambda = float(digamma(self.weight_shape_) - np.log(self.weight_rate_))
+        e_log_alpha = float(digamma(noise_shape) - np.log(noise_rate))
+        e_log_lambda = float(digamma(weight_shape) - np.log(weight_rate))
 
         xtx = X.T @ X
-        residual = y - X @ self.posterior_mean_
-        sq_error = residual @ residual + np.trace(xtx @ self.posterior_cov_)
-        weight_sq = self.posterior_mean_ @ self.posterior_mean_ + np.trace(self.posterior_cov_)
+        residual = y - X @ posterior_mean
+        sq_error = residual @ residual + np.trace(xtx @ posterior_cov)
+        weight_sq = posterior_mean @ posterior_mean + np.trace(posterior_cov)
 
         e_log_p_y = 0.5 * n_samples * (e_log_alpha - np.log(2.0 * np.pi)) - 0.5 * e_alpha * sq_error
         e_log_p_w = 0.5 * n_features * (e_log_lambda - np.log(2.0 * np.pi)) - 0.5 * e_lambda * weight_sq
@@ -79,21 +86,21 @@ class VariationalLinearRegression(BaseEstimator, VariationalEstimator):
             - self.d0 * e_lambda
         )
 
-        sign, logdet = np.linalg.slogdet(self.posterior_cov_)
+        sign, logdet = np.linalg.slogdet(posterior_cov)
         if sign <= 0:
             raise ValueError("posterior covariance must be positive definite")
         entropy_w = 0.5 * (n_features * (1.0 + np.log(2.0 * np.pi)) + logdet)
         entropy_alpha = (
-            self.noise_shape_
-            - np.log(self.noise_rate_)
-            + log_gamma(np.array(self.noise_shape_))
-            + (1.0 - self.noise_shape_) * digamma(self.noise_shape_)
+            noise_shape
+            - np.log(noise_rate)
+            + log_gamma(np.array(noise_shape))
+            + (1.0 - noise_shape) * digamma(noise_shape)
         )
         entropy_lambda = (
-            self.weight_shape_
-            - np.log(self.weight_rate_)
-            + log_gamma(np.array(self.weight_shape_))
-            + (1.0 - self.weight_shape_) * digamma(self.weight_shape_)
+            weight_shape
+            - np.log(weight_rate)
+            + log_gamma(np.array(weight_shape))
+            + (1.0 - weight_shape) * digamma(weight_shape)
         )
         return float(e_log_p_y + e_log_p_w + e_log_p_alpha + e_log_p_lambda + entropy_w + entropy_alpha + entropy_lambda)
 
@@ -159,25 +166,28 @@ class VariationalLinearRegression(BaseEstimator, VariationalEstimator):
         if self.posterior_mean_ is None or self.posterior_cov_ is None:
             raise RuntimeError("Model has not been fit yet")
 
+        posterior_mean = cast(np.ndarray, self.posterior_mean_)
+        posterior_cov = cast(np.ndarray, self.posterior_cov_)
         Xb = self._add_bias(X)
-        mean = Xb @ self.posterior_mean_
+        mean = Xb @ posterior_mean
         if not return_std:
             return float(mean[0]) if mean.shape[0] == 1 else mean
 
         noise_var = 1.0 / self._expected_noise_precision()
-        var = noise_var + np.sum((Xb @ self.posterior_cov_) * Xb, axis=1)
+        var = noise_var + np.sum((Xb @ posterior_cov) * Xb, axis=1)
         std = np.sqrt(np.maximum(var, 0.0))
         if mean.shape[0] == 1:
             return float(mean[0]), float(std[0])
         return mean, std
 
     def _posterior_summary(self):
+        posterior_mean = cast(np.ndarray, self.posterior_mean_)
         return {
-            "noise_shape": float(self.noise_shape_),
-            "noise_rate": float(self.noise_rate_),
-            "weight_shape": float(self.weight_shape_),
-            "weight_rate": float(self.weight_rate_),
-            "posterior_dim": int(self.posterior_mean_.shape[0]),
+            "noise_shape": float(cast(float, self.noise_shape_)),
+            "noise_rate": float(cast(float, self.noise_rate_)),
+            "weight_shape": float(cast(float, self.weight_shape_)),
+            "weight_rate": float(cast(float, self.weight_rate_)),
+            "posterior_dim": int(posterior_mean.shape[0]),
         }
 
     def sample_posterior_predictive(self, X, n_samples=1, random_state=None):

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+from typing import cast
 
 from ..base import BaseEstimator
 from ..utils import accuracy, as_2d, check_1d_array, check_2d_array, check_same_rows
@@ -38,27 +39,32 @@ class VariationalLogisticRegression(BaseEstimator, VariationalEstimator):
         return X
 
     def _expected_linear_square(self, Xb):
-        second_moment = self.posterior_cov_ + np.outer(self.posterior_mean_, self.posterior_mean_)
+        posterior_cov = cast(np.ndarray, self.posterior_cov_)
+        posterior_mean = cast(np.ndarray, self.posterior_mean_)
+        second_moment = posterior_cov + np.outer(posterior_mean, posterior_mean)
         return np.sum((Xb @ second_moment) * Xb, axis=1)
 
     def _elbo(self, Xb, y_bin):
-        linear_mean = Xb @ self.posterior_mean_
+        posterior_mean = cast(np.ndarray, self.posterior_mean_)
+        posterior_cov = cast(np.ndarray, self.posterior_cov_)
+        xi = cast(np.ndarray, self.xi_)
+        linear_mean = Xb @ posterior_mean
         expected_square = self._expected_linear_square(Xb)
-        lam = _lambda_xi(self.xi_)
-        log_sigmoid_xi = np.log(sigmoid(self.xi_))
+        lam = _lambda_xi(xi)
+        log_sigmoid_xi = np.log(sigmoid(xi))
 
         log_lik_bound = np.sum(
             log_sigmoid_xi
             + (y_bin - 0.5) * linear_mean
-            - 0.5 * self.xi_
-            - lam * (expected_square - self.xi_**2)
+            - 0.5 * xi
+            - lam * (expected_square - xi**2)
         )
 
-        dim = self.posterior_mean_.shape[0]
-        weight_sq = self.posterior_mean_ @ self.posterior_mean_ + np.trace(self.posterior_cov_)
+        dim = posterior_mean.shape[0]
+        weight_sq = posterior_mean @ posterior_mean + np.trace(posterior_cov)
         log_prior = 0.5 * dim * (np.log(self.alpha) - np.log(2.0 * np.pi)) - 0.5 * self.alpha * weight_sq
 
-        sign, logdet = np.linalg.slogdet(self.posterior_cov_)
+        sign, logdet = np.linalg.slogdet(posterior_cov)
         if sign <= 0:
             raise ValueError("posterior covariance must be positive definite")
         entropy = 0.5 * (dim * (1.0 + np.log(2.0 * np.pi)) + logdet)
@@ -124,7 +130,7 @@ class VariationalLogisticRegression(BaseEstimator, VariationalEstimator):
         if self.posterior_mean_ is None:
             raise RuntimeError("Model has not been fit yet")
         Xb = self._add_bias(X)
-        scores = Xb @ self.posterior_mean_
+        scores = Xb @ cast(np.ndarray, self.posterior_mean_)
         return float(scores[0]) if scores.shape[0] == 1 else scores
 
     def predict_proba(self, X):
@@ -156,14 +162,15 @@ class VariationalLogisticRegression(BaseEstimator, VariationalEstimator):
     def predict(self, X):
         proba = self.predict_proba(X)
         idx = (proba[:, 1] >= 0.5).astype(int)
-        pred = self.classes_[idx]
+        pred = cast(np.ndarray, self.classes_)[idx]
         return pred[0] if pred.shape[0] == 1 else pred
 
     def _posterior_summary(self):
+        posterior_mean = cast(np.ndarray, self.posterior_mean_)
         return {
             "alpha": float(self.alpha),
-            "posterior_dim": int(self.posterior_mean_.shape[0]),
-            "mean_norm": float(np.linalg.norm(self.posterior_mean_)),
+            "posterior_dim": int(posterior_mean.shape[0]),
+            "mean_norm": float(np.linalg.norm(posterior_mean)),
         }
 
     def score(self, X, y):

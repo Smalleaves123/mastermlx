@@ -39,11 +39,13 @@ class Dense(BaseLayer):
 
     def backward(self, grad):
         grad = check_2d_array(grad)
-        if self.X_ is None:
+        X = self.X_
+        W = self.W_
+        if X is None or W is None:
             raise RuntimeError("forward must be called before backward")
-        self.dW_ = self.X_.T @ grad
+        self.dW_ = X.T @ grad
         self.db_ = np.sum(grad, axis=0)
-        return grad @ self.W_.T
+        return grad @ W.T
 
     def step(self, lr=None, l2=0.0, optimizer=None, key_prefix="dense"):
         if self.dW_ is None or self.db_ is None:

@@ -121,7 +121,8 @@ def test_butterworth_frequency_shapes_and_verification_report():
     _, band = frequency_response(band_b, band_a, n_freqs=1001, sample_rate=1000.0)
     _, stop = frequency_response(stop_b, stop_a, n_freqs=1001, sample_rate=1000.0)
 
-    at = lambda values, hz: float(abs(values[np.argmin(abs(freq - hz))]))
+    def at(values, hz):
+        return float(abs(values[np.argmin(abs(freq - hz))]))
     assert np.isclose(at(low, 0.0), 1.0, atol=1e-8)
     assert at(low, 300.0) < 0.01
     assert np.isclose(at(high, 500.0), 1.0, atol=1e-8)

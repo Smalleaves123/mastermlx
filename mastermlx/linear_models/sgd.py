@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+from typing import cast
 
 from ..base import BaseEstimator
 from ..utils.array import batch_iterator
@@ -118,15 +119,16 @@ class _BaseSGD(BaseEstimator):
             self.intercept_ = 0.0
 
     def _decision(self, X):
-        return X @ self.coef_ + self.intercept_
+        return X @ cast(np.ndarray, self.coef_) + cast(float, self.intercept_)
 
     def _apply_l1_l2(self, lr, alpha_scaled):
         """Apply L2 shrinkage and L1 soft-threshold (proximal gradient)."""
         if self.penalty in {"l2", "elasticnet"}:
-            self.coef_ *= (1.0 - lr * alpha_scaled * (1.0 - self.l1_ratio))
+            self.coef_ = cast(np.ndarray, self.coef_) * (1.0 - lr * alpha_scaled * (1.0 - self.l1_ratio))
         if self.penalty in {"l1", "elasticnet"}:
             threshold = lr * alpha_scaled * self.l1_ratio
-            self.coef_ = np.sign(self.coef_) * np.maximum(np.abs(self.coef_) - threshold, 0.0)
+            coef = cast(np.ndarray, self.coef_)
+            self.coef_ = np.sign(coef) * np.maximum(np.abs(coef) - threshold, 0.0)
 
     def _lrate(self, t):
         t = max(t, 1)
@@ -138,7 +140,7 @@ class _BaseSGD(BaseEstimator):
             return self.eta0 / np.power(t, 0.5)
         return self.eta0
 
-    def fit(self, X, y):
+    def fit(self, X, y=None):
         X = check_2d_array(X).astype(float)
         y = check_1d_array(y).astype(float)
         X, y = check_same_rows(X, y)
@@ -149,7 +151,8 @@ class _BaseSGD(BaseEstimator):
         rng = np.random.default_rng(self.random_state)
         self.loss_curve_ = []
         prev_loss = np.inf
-        avg_coef = np.zeros_like(self.coef_)
+        coef = cast(np.ndarray, self.coef_)
+        avg_coef = np.zeros_like(coef)
         avg_intercept = 0.0
         t = 0
 
@@ -158,17 +161,17 @@ class _BaseSGD(BaseEstimator):
                                           random_state=rng.integers(0, 1 << 31)):
                 t += 1
                 lr = self._lrate(t)
-                decision = xb @ self.coef_ + self.intercept_
+                decision = xb @ cast(np.ndarray, self.coef_) + cast(float, self.intercept_)
                 grad_loss = self._loss_grad(decision, yb)
                 self.coef_ -= lr * (xb.T @ grad_loss / xb.shape[0])
                 self._apply_l1_l2(lr, self.alpha)
-                self.intercept_ -= lr * np.mean(grad_loss)
+                self.intercept_ = cast(float, self.intercept_) - lr * np.mean(grad_loss)
 
                 if self.average:
-                    avg_coef = avg_coef + (self.coef_ - avg_coef) / max(t, 1)
-                    avg_intercept += (self.intercept_ - avg_intercept) / max(t, 1)
+                    avg_coef = avg_coef + (cast(np.ndarray, self.coef_) - avg_coef) / max(t, 1)
+                    avg_intercept += (cast(float, self.intercept_) - avg_intercept) / max(t, 1)
 
-            full_decision = X @ self.coef_ + self.intercept_
+            full_decision = X @ cast(np.ndarray, self.coef_) + cast(float, self.intercept_)
             loss = self._loss(full_decision, y) + self._reg_penalty()
             self.loss_curve_.append(loss)
 
@@ -186,9 +189,9 @@ class _BaseSGD(BaseEstimator):
             return 0.0
         penalty = 0.0
         if self.penalty in {"l2", "elasticnet"}:
-            penalty += 0.5 * (1.0 - self.l1_ratio) * np.sum(self.coef_ ** 2)
+            penalty += 0.5 * (1.0 - self.l1_ratio) * np.sum(cast(np.ndarray, self.coef_) ** 2)
         if self.penalty in {"l1", "elasticnet"}:
-            penalty += self.l1_ratio * np.sum(np.abs(self.coef_))
+            penalty += self.l1_ratio * np.sum(np.abs(cast(np.ndarray, self.coef_)))
         return self.alpha * penalty
 
     def _loss(self, decision, y):
@@ -217,21 +220,22 @@ class SGDClassifier(_BaseSGD):
                          random_state=random_state, warm_start=warm_start, average=average)
         self.classes_ = None
 
-    def fit(self, X, y):
+    def fit(self, X, y=None):
         y = check_1d_array(y).astype(float)
         X = check_2d_array(X).astype(float)
         X, y = check_same_rows(X, y)
         self.classes_ = np.unique(y)
-        if self.classes_.size < 2:
+        classes = cast(np.ndarray, self.classes_)
+        if classes.size < 2:
             raise ValueError("Need at least two classes")
-        if self.classes_.size == 2:
+        if classes.size == 2:
             # Binary: map to +1 / -1
-            y_bin = np.where(y == self.classes_[1], 1.0, -1.0)
+            y_bin = np.where(y == classes[1], 1.0, -1.0)
         else:
             # Multiclass: one-vs-rest stored as list
-            self._coefs_ = []
-            self._intercepts_ = []
-            for c in self.classes_:
+            self._coefs_: list[np.ndarray] = []
+            self._intercepts_: list[float] = []
+            for c in classes:
                 y_bin_c = np.where(y == c, 1.0, -1.0)
                 est = _BinarySGDClassifier(
                     loss=self.loss, penalty=self.penalty, alpha=self.alpha,
@@ -242,8 +246,8 @@ class SGDClassifier(_BaseSGD):
                     average=self.average,
                 )
                 est.fit(X, y_bin_c)
-                self._coefs_.append(est.coef_)
-                self._intercepts_.append(est.intercept_)
+                self._coefs_.append(cast(np.ndarray, est.coef_))
+                self._intercepts_.append(cast(float, est.intercept_))
             self.coef_ = np.column_stack(self._coefs_)
             self.intercept_ = np.array(self._intercepts_)
             return self
@@ -259,9 +263,10 @@ class SGDClassifier(_BaseSGD):
 
     def predict(self, X):
         scores = self.decision_function(X)
+        classes = cast(np.ndarray, self.classes_)
         if scores.ndim == 1:
-            return np.where(scores >= 0, self.classes_[1], self.classes_[0])
-        return self.classes_[np.argmax(scores, axis=1)]
+            return np.where(scores >= 0, classes[1], classes[0])
+        return classes[np.argmax(scores, axis=1)]
 
     def _loss(self, decision, y):
         if self.loss == "hinge":
@@ -320,7 +325,7 @@ class SGDRegressor(_BaseSGD):
         self.delta = float(delta)
         self.epsilon = float(epsilon)
 
-    def fit(self, X, y):
+    def fit(self, X, y=None):
         X = check_2d_array(X).astype(float)
         y = check_1d_array(y).astype(float)
         X, y = check_same_rows(X, y)

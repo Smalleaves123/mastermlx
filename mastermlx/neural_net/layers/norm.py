@@ -30,16 +30,22 @@ class LayerNorm(BaseLayer):
 
     def backward(self, grad):
         grad = np.asarray(grad, dtype=float)
-        D = self.X_.shape[-1]
+        X = self.X_
+        norm = self.norm_
+        std = self.std_
+        if X is None or norm is None or std is None:
+            raise RuntimeError("forward must be called before backward")
+        D = X.shape[-1]
         dx_norm = grad * self.gamma_
-        self.dgamma_ = np.sum(grad * self.norm_, axis=tuple(range(grad.ndim - 1)))
+        self.dgamma_ = np.sum(grad * norm, axis=tuple(range(grad.ndim - 1)))
         self.dbeta_ = np.sum(grad, axis=tuple(range(grad.ndim - 1)))
 
-        dvar = np.sum(dx_norm * (self.X_ - np.mean(self.X_, axis=-1, keepdims=True)), axis=-1, keepdims=True) * \
-               (-0.5) * self.std_ ** (-3)
-        dmu = np.sum(dx_norm * (-1.0 / self.std_), axis=-1, keepdims=True) + \
-              dvar * np.mean(-2.0 * (self.X_ - np.mean(self.X_, axis=-1, keepdims=True)), axis=-1, keepdims=True)
-        return dx_norm / self.std_ + dvar * 2.0 * (self.X_ - np.mean(self.X_, axis=-1, keepdims=True)) / D + dmu / D
+        centered = X - np.mean(X, axis=-1, keepdims=True)
+        dvar = np.sum(dx_norm * centered, axis=-1, keepdims=True) * (-0.5) * std ** (-3)
+        dmu = np.sum(dx_norm * (-1.0 / std), axis=-1, keepdims=True) + dvar * np.mean(
+            -2.0 * centered, axis=-1, keepdims=True
+        )
+        return dx_norm / std + dvar * 2.0 * centered / D + dmu / D
 
     def step(self, lr=None, optimizer=None, key_prefix="ln"):
         if self.dgamma_ is None:

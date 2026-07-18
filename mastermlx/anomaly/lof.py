@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+from typing import cast
 
 from ..accel import pairwise_distances
 from ..base import BaseEstimator
@@ -36,7 +37,7 @@ class LocalOutlierFactor(BaseEstimator):
         d_sorted = np.take_along_axis(dist, nn, axis=1)
         self.k_distance_ = d_sorted[:, -1]
 
-        reach = np.maximum(d_sorted, self.k_distance_[nn])
+        reach = np.maximum(d_sorted, cast(np.ndarray, self.k_distance_)[nn])
         self.lrd_ = 1.0 / (np.mean(reach, axis=1) + 1e-12)
 
         lof = np.mean(self.lrd_[nn] / self.lrd_[:, None], axis=1)
@@ -51,9 +52,9 @@ class LocalOutlierFactor(BaseEstimator):
         dist = pairwise_distances(X, self.X_)
         nn = np.argsort(dist, axis=1)[:, : self.n_neighbors]
         d_sorted = np.take_along_axis(dist, nn, axis=1)
-        reach = np.maximum(d_sorted, self.k_distance_[nn])
+        reach = np.maximum(d_sorted, cast(np.ndarray, self.k_distance_)[nn])
         lrd = 1.0 / (np.mean(reach, axis=1) + 1e-12)
-        lof = np.mean(self.lrd_[nn] / lrd[:, None], axis=1)
+        lof = np.mean(cast(np.ndarray, self.lrd_)[nn] / lrd[:, None], axis=1)
         out = -lof
         return float(out[0]) if out.shape[0] == 1 else out
 

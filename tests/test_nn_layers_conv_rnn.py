@@ -1,8 +1,7 @@
 import numpy as np
 
 from mastermlx.neural_net.layers import (
-    AvgPool1D, AvgPool2D, Conv1D, Conv2D, Flatten, GELU, GlobalAveragePooling2D,
-    GRU, LayerNorm, LeakyReLU, LSTM, MaxPool2D, SimpleRNN,
+    Conv1D, Conv2D, Flatten, GELU, GRU, LayerNorm, LeakyReLU, LSTM, MaxPool2D, SimpleRNN,
 )
 
 

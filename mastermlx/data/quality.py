@@ -52,8 +52,8 @@ def _key(value):
 
 
 def _counts(values):
-    result = {}
-    display = {}
+    result: dict[tuple[str, object], int] = {}
+    display: dict[tuple[str, object], object] = {}
     for value in values:
         key = _key(value)
         result[key] = result.get(key, 0) + 1
@@ -91,7 +91,7 @@ def _dtype_at(X, idx, col):
 def _numeric_stats(values, outlier=1.5):
     values = np.asarray(values, dtype=float)
     finite = values[np.isfinite(values)]
-    result = {
+    result: dict[str, float] = {
         "mean": np.nan,
         "std": np.nan,
         "min": np.nan,

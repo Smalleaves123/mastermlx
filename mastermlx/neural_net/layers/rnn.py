@@ -46,11 +46,18 @@ class SimpleRNN(BaseLayer):
 
     def backward(self, grad):
         grad = np.asarray(grad, dtype=float)
-        N, T, _ = self.X_.shape
-        self.dW_xh_ = np.zeros_like(self.W_xh_)
-        self.dW_hh_ = np.zeros_like(self.W_hh_)
-        self.db_ = np.zeros_like(self.b_)
-        dX = np.zeros_like(self.X_)
+        X = self.X_
+        H = self.H_
+        W_xh = self.W_xh_
+        W_hh = self.W_hh_
+        b = self.b_
+        if X is None or H is None or W_xh is None or W_hh is None or b is None:
+            raise RuntimeError("forward must be called before backward")
+        N, T, _ = X.shape
+        self.dW_xh_ = np.zeros_like(W_xh)
+        self.dW_hh_ = np.zeros_like(W_hh)
+        self.db_ = np.zeros_like(b)
+        dX = np.zeros_like(X)
         dh = np.zeros((N, self.n_units), dtype=float)
         if grad.ndim == 2:
             dh = grad
@@ -58,13 +65,13 @@ class SimpleRNN(BaseLayer):
         for t in range(T - 1, -1, -1):
             if grad.ndim == 3:
                 dh = dh + grad[:, t, :]
-            dtanh = dh * (1.0 - self.H_[:, t, :] ** 2)
-            self.dW_xh_ += self.X_[:, t, :].T @ dtanh
+            dtanh = dh * (1.0 - H[:, t, :] ** 2)
+            self.dW_xh_ += X[:, t, :].T @ dtanh
             self.db_ += np.sum(dtanh, axis=0)
-            h_prev = self.H_[:, t - 1, :] if t > 0 else np.zeros((N, self.n_units))
+            h_prev = H[:, t - 1, :] if t > 0 else np.zeros((N, self.n_units))
             self.dW_hh_ += h_prev.T @ dtanh
-            dX[:, t, :] = dtanh @ self.W_xh_.T
-            dh = dtanh @ self.W_hh_.T
+            dX[:, t, :] = dtanh @ W_xh.T
+            dh = dtanh @ W_hh.T
         return dX
 
     def step(self, lr=None, optimizer=None, key_prefix="rnn"):
@@ -122,13 +129,20 @@ class LSTM(BaseLayer):
 
     def backward(self, grad):
         grad = np.asarray(grad, dtype=float)
-        N, T, _ = self.X_.shape
+        X = self.X_
+        W = self.W_
+        U = self.U_
+        b = self.b_
+        cache = self.cache_
+        if X is None or W is None or U is None or b is None or cache is None:
+            raise RuntimeError("forward must be called before backward")
+        N, T, _ = X.shape
         u = self.n_units
-        Hs, Cs, gates = self.cache_
-        self.dW_ = np.zeros_like(self.W_)
-        self.dU_ = np.zeros_like(self.U_)
-        self.db_ = np.zeros_like(self.b_)
-        dX = np.zeros_like(self.X_)
+        Hs, Cs, gates = cache
+        self.dW_ = np.zeros_like(W)
+        self.dU_ = np.zeros_like(U)
+        self.db_ = np.zeros_like(b)
+        dX = np.zeros_like(X)
         dh, dc = np.zeros((N, u)), np.zeros((N, u))
         if grad.ndim == 2:
             dh = grad
@@ -144,12 +158,12 @@ class LSTM(BaseLayer):
             di = dc * cc * i * (1.0 - i)
             dcc = dc * i * (1.0 - cc ** 2)
             dg = np.column_stack([df, di, dcc, do])
-            self.dW_ += self.X_[:, t, :].T @ dg
+            self.dW_ += X[:, t, :].T @ dg
             h_prev = Hs[t - 1] if t > 0 else np.zeros((N, u))
             self.dU_ += h_prev.T @ dg
             self.db_ += np.sum(dg, axis=0)
-            dX[:, t, :] = dg @ self.W_.T
-            dh = dg @ self.U_.T
+            dX[:, t, :] = dg @ W.T
+            dh = dg @ U.T
             dc = dc * f
         return dX
 
@@ -217,16 +231,29 @@ class GRU(BaseLayer):
 
     def backward(self, grad):
         grad = np.asarray(grad, dtype=float)
-        N, T, _ = self.X_.shape
+        X = self.X_
+        W_zr = self.W_zr_
+        W_h = self.W_h_
+        U_zr = self.U_zr_
+        U_h = self.U_h_
+        b_zr = self.b_zr_
+        b_h = self.b_h_
+        cache = self.cache_
+        if any(value is None for value in (X, W_zr, W_h, U_zr, U_h, b_zr, b_h, cache)):
+            raise RuntimeError("forward must be called before backward")
+        assert X is not None and W_zr is not None and W_h is not None
+        assert U_zr is not None and U_h is not None and b_zr is not None and b_h is not None
+        assert cache is not None
+        N, T, _ = X.shape
         u = self.n_units
-        Hs, gates = self.cache_
-        self.dW_zr_ = np.zeros_like(self.W_zr_)
-        self.dW_h_ = np.zeros_like(self.W_h_)
-        self.dU_zr_ = np.zeros_like(self.U_zr_)
-        self.dU_h_ = np.zeros_like(self.U_h_)
-        self.db_zr_ = np.zeros_like(self.b_zr_)
-        self.db_h_ = np.zeros_like(self.b_h_)
-        dX = np.zeros_like(self.X_)
+        Hs, gates = cache
+        self.dW_zr_ = np.zeros_like(W_zr)
+        self.dW_h_ = np.zeros_like(W_h)
+        self.dU_zr_ = np.zeros_like(U_zr)
+        self.dU_h_ = np.zeros_like(U_h)
+        self.db_zr_ = np.zeros_like(b_zr)
+        self.db_h_ = np.zeros_like(b_h)
+        dX = np.zeros_like(X)
         dh = np.zeros((N, u))
         if grad.ndim == 2:
             dh = grad
@@ -238,17 +265,17 @@ class GRU(BaseLayer):
             z, r, h_tilde = gates[t]
             dh_tilde = dh * z * (1.0 - h_tilde ** 2)
             dz = dh * (h_tilde - h_prev) * z * (1.0 - z)
-            dr = (dh_tilde @ self.U_h_.T) * h_prev * r * (1.0 - r)
+            dr = (dh_tilde @ U_h.T) * h_prev * r * (1.0 - r)
 
             dg_zr = np.column_stack([dz, dr])
-            self.dW_zr_ += self.X_[:, t, :].T @ dg_zr
+            self.dW_zr_ += X[:, t, :].T @ dg_zr
             self.dU_zr_ += h_prev.T @ dg_zr
             self.db_zr_ += np.sum(dg_zr, axis=0)
-            self.dW_h_ += self.X_[:, t, :].T @ dh_tilde
+            self.dW_h_ += X[:, t, :].T @ dh_tilde
             self.dU_h_ += (r * h_prev).T @ dh_tilde
             self.db_h_ += np.sum(dh_tilde, axis=0)
-            dX[:, t, :] = dg_zr @ self.W_zr_.T + dh_tilde @ self.W_h_.T
-            dh = dh * (1.0 - z) + dg_zr @ self.U_zr_.T + dh_tilde @ self.U_h_.T * r
+            dX[:, t, :] = dg_zr @ W_zr.T + dh_tilde @ W_h.T
+            dh = dh * (1.0 - z) + dg_zr @ U_zr.T + dh_tilde @ U_h.T * r
         return dX
 
     def step(self, lr=None, optimizer=None, key_prefix="gru"):

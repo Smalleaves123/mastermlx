@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numbers
+from typing import Any
 
 import numpy as np
 
@@ -74,9 +75,9 @@ def _resolve(cols, names, n_cols):
     if cols is None or (isinstance(cols, str) and cols == "auto"):
         return []
     if isinstance(cols, slice):
-        result = np.arange(n_cols)[cols].tolist()
+        result: list[int] = np.arange(n_cols)[cols].tolist()
     else:
-        values = [cols] if isinstance(cols, (str, numbers.Integral)) else list(cols)
+        values: list[Any] = [cols] if isinstance(cols, (str, numbers.Integral)) else list(cols)
         result = []
         for value in values:
             if isinstance(value, str):
@@ -117,11 +118,11 @@ class AutoPreprocessor(BaseTransformer):
         self.remainder = remainder
         self.scale = scale
         self.handle_unknown = handle_unknown
-        self.transformer_ = None
-        self.numeric_cols_ = None
-        self.categorical_cols_ = None
-        self.feature_names_in_ = None
-        self.feature_names_out_ = None
+        self.transformer_: ColumnTransformer | None = None
+        self.numeric_cols_: np.ndarray | None = None
+        self.categorical_cols_: np.ndarray | None = None
+        self.feature_names_in_: np.ndarray | None = None
+        self.feature_names_out_: np.ndarray | None = None
 
     def _select(self, X):
         arr, names = _table(X)
@@ -155,7 +156,7 @@ class AutoPreprocessor(BaseTransformer):
             raise ValueError("handle_unknown must be 'error' or 'ignore'")
         transformers = []
         if num:
-            num_steps = [("impute", SimpleImputer(strategy="median"))]
+            num_steps: list[tuple[str, BaseTransformer]] = [("impute", SimpleImputer(strategy="median"))]
             if self.scale:
                 num_steps.append(("scale", StandardScaler()))
             numeric = num_steps[0][1] if len(num_steps) == 1 else Pipeline(num_steps)
@@ -179,16 +180,23 @@ class AutoPreprocessor(BaseTransformer):
 
     def transform(self, X):
         self._check_fitted(["transformer_", "feature_names_in_"])
+        transformer = self.transformer_
+        feature_names = self.feature_names_in_
+        if transformer is None or feature_names is None:
+            raise RuntimeError("AutoPreprocessor has not been fit yet")
         incoming = getattr(X, "columns", None)
-        if incoming is not None and list(incoming) != self.feature_names_in_.tolist():
+        if incoming is not None and list(incoming) != feature_names.tolist():
             raise ValueError("X columns do not match the fitted schema")
-        return self.transformer_.transform(X)
+        return transformer.transform(X)
 
     def get_feature_names_out(self, input_features=None):
         self._check_fitted("transformer_")
+        transformer = self.transformer_
+        if transformer is None:
+            raise RuntimeError("AutoPreprocessor has not been fit yet")
         if input_features is None:
             input_features = self.feature_names_in_
-        return self.transformer_.get_feature_names_out(input_features)
+        return transformer.get_feature_names_out(input_features)
 
     def fit_transform(self, X, y=None):
         return self.fit(X, y).transform(X)

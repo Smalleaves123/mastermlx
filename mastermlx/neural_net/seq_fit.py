@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+from typing import Any, Protocol
 
 from ..data.split import train_test_split
 from ..utils.array import one_hot
@@ -10,8 +11,39 @@ from .layers import Dense
 from .losses import BinaryCrossEntropyLoss, CrossEntropyLoss, MSELoss
 
 
+class _SequentialContext(Protocol):
+    callbacks: list[Any]
+    classes_: np.ndarray | None
+    best_epoch_: Any
+    best_val_loss_: Any
+    history_: Any
+    layers: list[Any]
+    lr_scheduler: Any
+    loss_: Any
+    optimizer_: Any
+    task: str
+    training_config_: Any
+    val_loss_: Any
+
+    def _backward_weighted(self, grad: Any, weight: float = ...) -> Any: ...
+    def _build_optimizer(self) -> Any: ...
+    def _check_input(self, X: Any) -> np.ndarray: ...
+    def _evaluate_loss(self, X: Any, y: Any, loss_fn: Any, classes: Any = ...) -> Any: ...
+    def _evaluate_metrics(self, X: Any, y: Any) -> Any: ...
+    def _flush_accumulation(self) -> Any: ...
+    def _forward(self, X: Any) -> Any: ...
+    def _on_epoch_end(self, epoch: int, logs: Any) -> Any: ...
+    def _reset_grad_accumulation(self) -> Any: ...
+    def _resolve_lr_scheduler(self) -> Any: ...
+    def _restore_state(self, snapshot: Any) -> Any: ...
+    def _snapshot_state(self) -> Any: ...
+    def train(self, mode: bool = ...) -> Any: ...
+
+
 class _SequentialFit:
-    def fit(self, X, y=None, resume=False):
+    classes_: np.ndarray | None
+
+    def fit(self: _SequentialContext, X, y=None, resume=False):
         X = self._check_input(X)
         resume = bool(resume)
         if resume and self.optimizer_ is None:
@@ -36,7 +68,7 @@ class _SequentialFit:
                 raise ValueError("Sequential classification requires at least two classes")
             self.classes_ = classes
             y_idx = np.searchsorted(classes, y)
-            loss_fn = CrossEntropyLoss(from_logits=True)
+            loss_fn: Any = CrossEntropyLoss(from_logits=True)
             if cfg.validation_split and cfg.validation_split > 0.0:
                 X_train, X_val, y_train, y_val = train_test_split(
                     X,
@@ -54,7 +86,11 @@ class _SequentialFit:
                 target = one_hot(yb, classes.size)
                 loss = loss_fn(target, logits)
                 if cfg.l2:
-                    loss += 0.5 * cfg.l2 * sum(np.sum(layer.W_ ** 2) for layer in self.layers if isinstance(layer, Dense))
+                    loss += 0.5 * float(cfg.l2) * sum(
+                        np.sum(layer.W_**2)
+                        for layer in self.layers
+                        if isinstance(layer, Dense) and layer.W_ is not None
+                    )
                 grad = loss_fn.grad(target, logits)
                 self._backward_weighted(grad, weight=xb.shape[0])
 

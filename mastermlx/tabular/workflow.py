@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+from typing import Any
 
 from ..data.search import GridSearchCV, RandomizedSearchCV
 from ..data.cv import KFold
@@ -70,7 +71,7 @@ class TabularExperiment:
         self.task = task
         self.pipeline_ = None
         self.searcher_ = None
-        self.best_estimator_ = None
+        self.best_estimator_: Any | None = None
         self.best_params_ = None
         self.best_score_ = None
         self.cv_results_ = None
@@ -130,20 +131,21 @@ class TabularExperiment:
     def _require_fitted(self):
         if self.best_estimator_ is None:
             raise RuntimeError("TabularExperiment has not been fit yet")
+        return self.best_estimator_
 
     def predict(self, X):
-        self._require_fitted()
-        return self.best_estimator_.predict(X)
+        best = self._require_fitted()
+        return best.predict(X)
 
     def predict_proba(self, X):
-        self._require_fitted()
-        if not hasattr(self.best_estimator_, "predict_proba"):
+        best = self._require_fitted()
+        if not hasattr(best, "predict_proba"):
             raise AttributeError("Best estimator does not define predict_proba")
-        return self.best_estimator_.predict_proba(X)
+        return best.predict_proba(X)
 
     def score(self, X, y):
-        self._require_fitted()
-        return self.best_estimator_.score(X, y)
+        best = self._require_fitted()
+        return best.score(X, y)
 
     def cv_score(self, X, y, groups=None):
         """Return cross-validated scores for the configured workflow."""

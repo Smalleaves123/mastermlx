@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+from typing import Any
 
 from ..base import BaseEstimator
 from ..data.cv import KFold
@@ -41,7 +42,12 @@ class StackingClassifier(BaseEstimator):
         self.use_proba = use_proba
         self.random_state = random_state
         self.estimators_ = []
-        self.final_estimator_ = None
+        self.final_estimator_: Any | None = None
+
+    def _require_final(self):
+        if self.final_estimator_ is None:
+            raise RuntimeError("Model has not been fit yet")
+        return self.final_estimator_
 
     def fit(self, X, y=None):
         X = check_2d_array(X)
@@ -74,14 +80,15 @@ class StackingClassifier(BaseEstimator):
 
     def predict(self, X):
         feats = self._feat(X)
-        pred = self.final_estimator_.predict(feats)
+        pred = self._require_final().predict(feats)
         return pred[0] if np.asarray(pred).shape[0] == 1 else pred
 
     def predict_proba(self, X):
         feats = self._feat(X)
-        if not hasattr(self.final_estimator_, "predict_proba"):
+        final = self._require_final()
+        if not hasattr(final, "predict_proba"):
             raise AttributeError("final_estimator does not define predict_proba")
-        proba = self.final_estimator_.predict_proba(feats)
+        proba = final.predict_proba(feats)
         return proba[0] if proba.shape[0] == 1 else proba
 
     def score(self, X, y):
@@ -96,7 +103,12 @@ class StackingRegressor(BaseEstimator):
         self.random_state = random_state
         self.use_pred = use_pred
         self.estimators_ = []
-        self.final_estimator_ = None
+        self.final_estimator_: Any | None = None
+
+    def _require_final(self):
+        if self.final_estimator_ is None:
+            raise RuntimeError("Model has not been fit yet")
+        return self.final_estimator_
 
     def fit(self, X, y=None):
         X = check_2d_array(X)
@@ -122,7 +134,7 @@ class StackingRegressor(BaseEstimator):
 
     def predict(self, X):
         feats = self._feat(X)
-        pred = self.final_estimator_.predict(feats)
+        pred = self._require_final().predict(feats)
         return float(pred[0]) if np.asarray(pred).shape[0] == 1 else pred
 
     def score(self, X, y):

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+from typing import cast
 
 from ..base import BaseEstimator
 from ..utils import as_2d, check_2d_array
@@ -85,7 +86,7 @@ class GMM(BaseEstimator):
             raise RuntimeError("Model has not been fit yet")
         X = as_2d(X)
         log_prob = np.column_stack([
-            np.log(self.weights_[j] + 1e-12) + self._log_gauss(X, self.means_[j], self.covariances_[j])
+            np.log(cast(np.ndarray, self.weights_)[j] + 1e-12) + self._log_gauss(X, cast(np.ndarray, self.means_)[j], cast(np.ndarray, self.covariances_)[j])
             for j in range(self.n_components)
         ])
         log_norm = log_sum_exp(log_prob, axis=1)
@@ -100,7 +101,7 @@ class GMM(BaseEstimator):
     def score(self, X, y=None):
         X = check_2d_array(X)
         log_prob = np.column_stack([
-            np.log(self.weights_[j] + 1e-12) + self._log_gauss(X, self.means_[j], self.covariances_[j])
+            np.log(cast(np.ndarray, self.weights_)[j] + 1e-12) + self._log_gauss(X, cast(np.ndarray, self.means_)[j], cast(np.ndarray, self.covariances_)[j])
             for j in range(self.n_components)
         ])
         return float(np.mean(log_sum_exp(log_prob, axis=1)))

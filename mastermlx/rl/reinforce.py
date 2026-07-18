@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import numpy as np
 
-from ..neural_net.layers import Dense
-from ..utils.array import batch_iterator
 
 
 class REINFORCEAgent:

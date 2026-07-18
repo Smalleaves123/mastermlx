@@ -31,7 +31,7 @@ class MeanShift(BaseEstimator):
         return np.mean(X[mask], axis=0)
 
     def _merge_centers(self, centers):
-        unique = []
+        unique: list[np.ndarray] = []
         for center in centers:
             if not unique:
                 unique.append(center)

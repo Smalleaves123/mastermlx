@@ -11,6 +11,8 @@ from .kde import KernelDensity
 from ..variational.linear_regression import VLinReg, VariationalLinearRegression
 from ..variational.utils import digamma, has_converged, log_gamma, log_sum_exp, normalize_log_probs
 
+DiscriminantLDA = LDA
+
 __all__ = [
     "BayesianLinearRegression",
     "BayesLinReg",
@@ -18,6 +20,7 @@ __all__ = [
     "BetaDistribution",
     "BaseDA",
     "DirichletDistribution",
+    "DiscriminantLDA",
     "ExponentialFamily",
     "GaussianNB",
     "GammaDistribution",

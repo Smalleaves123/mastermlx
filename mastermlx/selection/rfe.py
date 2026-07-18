@@ -44,7 +44,7 @@ class RFE(BaseTransformer):
             return np.asarray(est.feature_importances_, dtype=float)
         raise ValueError("estimator must expose coef_ or feature_importances_ after fit")
 
-    def fit(self, X, y):
+    def fit(self, X, y=None):
         X = check_2d_array(X).astype(float)
         y = check_1d_array(y, name="y")
         n_features = X.shape[1]

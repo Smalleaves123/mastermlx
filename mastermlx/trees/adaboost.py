@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+from typing import Any, cast
 
 from ..base import BaseEstimator
 from ..utils import accuracy, as_2d, check_1d_array, check_2d_array
@@ -59,7 +60,11 @@ class _WeightedDecisionStump:
 
     def predict(self, X):
         X = as_2d(X)
-        pred = np.where(X[:, self.feature_] <= self.threshold_, self.left_class_, self.right_class_)
+        feature = cast(int, self.feature_)
+        threshold = cast(float, self.threshold_)
+        left_class = cast(Any, self.left_class_)
+        right_class = cast(Any, self.right_class_)
+        pred = np.where(X[:, feature] <= threshold, left_class, right_class)
         return pred[0] if pred.shape[0] == 1 else pred
 
 
@@ -86,7 +91,8 @@ class AdaBoostClassifier(BaseEstimator):
 
         n_samples = X.shape[0]
         self.classes_ = np.unique(y)
-        n_classes = self.classes_.shape[0]
+        classes = cast(np.ndarray, self.classes_)
+        n_classes = classes.shape[0]
         if n_classes < 2:
             raise ValueError("AdaBoostClassifier requires at least 2 classes")
 
@@ -95,7 +101,7 @@ class AdaBoostClassifier(BaseEstimator):
         estimator_weights = []
 
         for _ in range(self.n_estimators):
-            stump = _WeightedDecisionStump().fit(X, y, sample_weight, self.classes_)
+            stump = _WeightedDecisionStump().fit(X, y, sample_weight, classes)
             pred = stump.predict(X)
             incorrect = pred != y
             error = float(np.sum(sample_weight[incorrect]))
@@ -127,10 +133,11 @@ class AdaBoostClassifier(BaseEstimator):
             raise RuntimeError("Model has not been fit yet")
 
         X = as_2d(X).astype(float)
-        scores = np.zeros((X.shape[0], self.classes_.shape[0]), dtype=float)
+        classes = cast(np.ndarray, self.classes_)
+        scores = np.zeros((X.shape[0], classes.shape[0]), dtype=float)
         for alpha, estimator in zip(self.estimator_weights_, self.estimators_):
-            pred = estimator.predict(X)
-            for idx, cls in enumerate(self.classes_):
+            pred = np.asarray(estimator.predict(X))
+            for idx, cls in enumerate(classes):
                 scores[:, idx] += alpha * (pred == cls)
         return scores
 
@@ -139,10 +146,11 @@ class AdaBoostClassifier(BaseEstimator):
             raise RuntimeError("Model has not been fit yet")
 
         X = as_2d(X).astype(float)
-        scores = np.zeros((X.shape[0], self.classes_.shape[0]), dtype=float)
+        classes = cast(np.ndarray, self.classes_)
+        scores = np.zeros((X.shape[0], classes.shape[0]), dtype=float)
         for alpha, estimator in zip(self.estimator_weights_, self.estimators_):
-            pred = estimator.predict(X)
-            for idx, cls in enumerate(self.classes_):
+            pred = np.asarray(estimator.predict(X))
+            for idx, cls in enumerate(classes):
                 scores[:, idx] += alpha * (pred == cls)
             yield scores[0].copy() if scores.shape[0] == 1 else scores.copy()
 
@@ -159,16 +167,17 @@ class AdaBoostClassifier(BaseEstimator):
                 yield exp / np.sum(exp, axis=1, keepdims=True)
 
     def staged_predict(self, X):
+        classes = cast(np.ndarray, self.classes_)
         for scores in self.staged_decision_function(X):
             scores = np.asarray(scores, dtype=float)
             if scores.ndim == 1:
-                yield self.classes_[int(np.argmax(scores))]
+                yield classes[int(np.argmax(scores))]
             else:
-                yield self.classes_[np.argmax(scores, axis=1)]
+                yield classes[np.argmax(scores, axis=1)]
 
     def predict(self, X):
         scores = self.decision_function(X)
-        pred = self.classes_[np.argmax(scores, axis=1)]
+        pred = cast(np.ndarray, self.classes_)[np.argmax(scores, axis=1)]
         return pred[0] if pred.shape[0] == 1 else pred
 
     def score(self, X, y):

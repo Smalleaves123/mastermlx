@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+from typing import cast
 
 from ..base import BaseEstimator
 from ..utils import as_2d, check_1d_array, check_2d_array, mean_squared_error
@@ -34,15 +35,16 @@ class RadiusNeighborsRegressor(BaseEstimator):
         if self.X_ is None:
             raise RuntimeError("Model has not been fit yet")
         X = as_2d(X)
-        dist = pairwise_neighbor_distance(X, self.X_, self.metric)
+        y_train = cast(np.ndarray, self.y_)
+        dist = pairwise_neighbor_distance(X, cast(np.ndarray, self.X_), self.metric)
         pred = np.zeros(X.shape[0], dtype=float)
         for i in range(X.shape[0]):
             mask = dist[i] <= self.radius
             if not np.any(mask):
                 nearest = int(np.argmin(dist[i]))
-                pred[i] = self.y_[nearest]
+                pred[i] = y_train[nearest]
                 continue
-            vals = self.y_[mask]
+            vals = y_train[mask]
             if self.weights == "uniform":
                 pred[i] = np.mean(vals)
             else:

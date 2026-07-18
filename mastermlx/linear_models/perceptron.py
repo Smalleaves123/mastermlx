@@ -46,10 +46,12 @@ class Perceptron(BaseEstimator):
 
     def predict(self, X):
         X = check_2d_array(X).astype(float)
-        if self.coef_ is None:
+        coef = self.coef_
+        classes = self.classes_
+        if coef is None or classes is None:
             raise RuntimeError("Model has not been fit yet")
-        scores = X @ self.coef_ + self.intercept_
-        return np.where(scores >= 0, self.classes_[1], self.classes_[0])
+        scores = X @ coef + self.intercept_
+        return np.where(scores >= 0, classes[1], classes[0])
 
     def decision_function(self, X):
         X = check_2d_array(X).astype(float)

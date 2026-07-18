@@ -116,7 +116,7 @@ class Sequential(_SequentialRuntime, _SequentialFit, Module, BaseEstimator):
         self.loss_ = []
         self.val_loss_ = []
         self.optimizer_ = None
-        self.classes_ = None
+        self.classes_: np.ndarray | None = None
         self.best_epoch_ = None
         self.best_val_loss_ = None
         self.history_ = []
@@ -144,7 +144,10 @@ class Sequential(_SequentialRuntime, _SequentialFit, Module, BaseEstimator):
             if self.task == "classification":
                 probs = _softmax(out)
                 idx = np.argmax(probs, axis=1)
-                pred = self.classes_[idx]
+                classes = self.classes_
+                if classes is None:
+                    raise RuntimeError("Model has not been fit yet")
+                pred = classes[idx]
                 return pred
             if self.task == "multilabel":
                 return (_sigmoid(out) >= 0.5).astype(int)

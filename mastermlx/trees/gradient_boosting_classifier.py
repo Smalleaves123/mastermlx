@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+from typing import cast
 
 from ..base import BaseEstimator
 from ..utils import accuracy, as_2d, check_1d_array, check_2d_array, check_same_rows
@@ -120,7 +121,7 @@ class GradientBoostingClassifier(BaseEstimator):
             if scores.ndim == 0:
                 p1 = 1.0 / (1.0 + np.exp(-scores))
                 yield np.array([1.0 - p1, p1])
-            elif scores.ndim == 1 and self.classes_.shape[0] == 2:
+            elif scores.ndim == 1 and cast(np.ndarray, self.classes_).shape[0] == 2:
                 p1 = 1.0 / (1.0 + np.exp(-scores))
                 yield np.column_stack([1.0 - p1, p1]) if p1.ndim > 0 else np.array([1.0 - p1, p1])
             else:
@@ -129,12 +130,13 @@ class GradientBoostingClassifier(BaseEstimator):
                 yield exp / np.sum(exp, axis=1, keepdims=True)
 
     def staged_predict(self, X):
+        classes = cast(np.ndarray, self.classes_)
         for proba in self.staged_predict_proba(X):
             proba = np.asarray(proba, dtype=float)
             if proba.ndim == 1:
-                yield self.classes_[int(np.argmax(proba))]
+                yield classes[int(np.argmax(proba))]
             else:
-                yield self.classes_[np.argmax(proba, axis=1)]
+                yield classes[np.argmax(proba, axis=1)]
 
     def predict_proba(self, X):
         if self.classes_ is None:
@@ -149,11 +151,12 @@ class GradientBoostingClassifier(BaseEstimator):
         return proba[0] if proba.shape[0] == 1 else proba
 
     def predict(self, X):
+        classes = cast(np.ndarray, self.classes_)
         proba = self.predict_proba(X)
         if proba.ndim == 1:
-            return self.classes_[int(np.argmax(proba))]
+            return classes[int(np.argmax(proba))]
         idx = np.argmax(proba, axis=1)
-        pred = self.classes_[idx]
+        pred = classes[idx]
         return pred[0] if pred.shape[0] == 1 else pred
 
     def score(self, X, y):

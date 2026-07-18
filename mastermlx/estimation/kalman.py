@@ -88,8 +88,8 @@ class KalmanFilter:
         S = H @ self.P_ @ H.T + R
         K = self.P_ @ H.T @ np.linalg.solve(S, np.eye(S.shape[0], dtype=float))
         self.x_ = self.x_ + K @ y
-        I = np.eye(self.P_.shape[0], dtype=float)
-        self.P_ = (I - K @ H) @ self.P_
+        identity = np.eye(self.P_.shape[0], dtype=float)
+        self.P_ = (identity - K @ H) @ self.P_
         self.x_post_ = self.x_.copy()
         self.P_post_ = self.P_.copy()
         return self.state, self.P_.copy()

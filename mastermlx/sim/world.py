@@ -26,7 +26,11 @@ class SimpleWorld:
     obstacles: list[CircleObstacle] = field(default_factory=list)
 
     def add_obstacle(self, center, radius):
-        self.obstacles.append(CircleObstacle(tuple(map(float, center)), float(radius)))
+        values = tuple(map(float, center))
+        if len(values) != 2:
+            raise ValueError("obstacle center must contain exactly two coordinates")
+        point = (values[0], values[1])
+        self.obstacles.append(CircleObstacle(point, float(radius)))
         return self.obstacles[-1]
 
     def link_positions(self, joint_values=None):

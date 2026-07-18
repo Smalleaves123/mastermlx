@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+from typing import Any, cast
 
 from ..base import BaseEstimator
 from ..utils import as_2d, check_2d_array
@@ -33,9 +34,9 @@ class AffinityPropagation(BaseEstimator):
 
         S = -_pairwise_sq_dists(X)
         if self.preference is None:
-            pref = np.median(S)
+            pref: Any = float(np.median(S))
         elif np.isscalar(self.preference):
-            pref = float(self.preference)
+            pref = float(cast(Any, self.preference))
         else:
             pref = np.asarray(self.preference, dtype=float)
             if pref.shape != (X.shape[0],):

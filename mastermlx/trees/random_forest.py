@@ -92,18 +92,18 @@ class RandomForestClassifier(BaseEstimator):
             raise RuntimeError("Model has not been fit yet")
 
         X = as_2d(X)
-        pred = []
+        pred_rows: list[np.ndarray] = []
         for tree, cols in zip(self.trees_, self.cols_):
-            pred.append(tree.predict(X[:, cols]))
-        pred = np.asarray(pred)
+            pred_rows.append(np.asarray(tree.predict(X[:, cols])))
+        pred = np.asarray(pred_rows)
 
-        out = []
+        out: list[object] = []
         for j in range(pred.shape[1]):
             vals, cnt = np.unique(pred[:, j], return_counts=True)
             out.append(vals[np.argmax(cnt)])
 
-        out = np.asarray(out)
-        return out[0] if out.shape[0] == 1 else out
+        result = np.asarray(out)
+        return result[0] if result.shape[0] == 1 else result
 
     def score(self, X, y):
         return accuracy(y, self.predict(X))
@@ -191,10 +191,10 @@ class RandomForestRegressor(BaseEstimator):
             raise RuntimeError("Model has not been fit yet")
 
         X = as_2d(X)
-        pred = []
+        pred_rows: list[np.ndarray] = []
         for tree, cols in zip(self.trees_, self.cols_):
-            pred.append(tree.predict(X[:, cols]))
-        pred = np.asarray(pred, dtype=float)
+            pred_rows.append(np.asarray(tree.predict(X[:, cols])))
+        pred = np.asarray(pred_rows, dtype=float)
         out = np.mean(pred, axis=0)
         return float(out[0]) if out.shape[0] == 1 else out
 

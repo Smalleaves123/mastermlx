@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+from typing import cast
 
 from ..base import BaseEstimator
 from ..utils import as_2d, check_1d_array, check_2d_array, mean_squared_error
@@ -41,18 +42,20 @@ class KNNRegressor(BaseEstimator):
             raise RuntimeError("Model has not been fit yet")
 
         X = as_2d(X)
-        if X.shape[1] != self.X_.shape[1]:
+        X_train = cast(np.ndarray, self.X_)
+        y_train = cast(np.ndarray, self.y_)
+        if X.shape[1] != X_train.shape[1]:
             raise ValueError("X has a different number of features than the fitted data")
 
         dist = self._dist(X)
         nn = np.argpartition(dist, self.k - 1, axis=1)[:, : self.k]
         if self.weights == "uniform":
-            pred = np.mean(self.y_[nn], axis=1)
+            pred = np.mean(y_train[nn], axis=1)
         else:
             pred = np.zeros(X.shape[0], dtype=float)
             for i, row in enumerate(nn):
                 w = distance_weights(dist[i, row])
-                pred[i] = np.sum(w * self.y_[row]) / np.sum(w)
+                pred[i] = np.sum(w * y_train[row]) / np.sum(w)
         return pred[0] if pred.shape[0] == 1 else pred
 
     def score(self, X, y):

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+from typing import cast
 
 from ..base import BaseEstimator
 from ..utils import accuracy, as_2d, check_1d_array, check_2d_array
@@ -37,21 +38,23 @@ class RadiusNeighborsClassifier(BaseEstimator):
             raise RuntimeError("Model has not been fit yet")
         X = as_2d(X)
         dist = pairwise_neighbor_distance(X, self.X_, self.metric)
+        y_codes = cast(np.ndarray, self.y_codes_)
+        classes = cast(np.ndarray, self.classes_)
         pred_codes = np.empty(X.shape[0], dtype=int)
         for i in range(X.shape[0]):
             mask = dist[i] <= self.radius
             if not np.any(mask):
                 nearest = int(np.argmin(dist[i]))
-                pred_codes[i] = int(self.y_codes_[nearest])
+                pred_codes[i] = int(y_codes[nearest])
                 continue
-            codes = self.y_codes_[mask]
+            codes = y_codes[mask]
             if self.weights == "uniform":
                 cnt = np.bincount(codes, minlength=self.n_classes_)
             else:
                 w = distance_weights(dist[i, mask])
                 cnt = np.bincount(codes, weights=w, minlength=self.n_classes_)
             pred_codes[i] = int(np.argmax(cnt))
-        pred = self.classes_[pred_codes]
+        pred = classes[pred_codes]
         return pred[0] if pred.shape[0] == 1 else pred
 
     def score(self, X, y):

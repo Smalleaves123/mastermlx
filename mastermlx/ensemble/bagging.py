@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import math
 import numpy as np
 
 from ..base import BaseEstimator
 from ..utils import accuracy, as_2d, check_1d_array, check_2d_array, clone, r2_score
-from ._base import _clone_list, _majority, _mean_pred
+from ._base import _majority
 
 
 class _BagBase(BaseEstimator):

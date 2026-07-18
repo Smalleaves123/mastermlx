@@ -33,10 +33,14 @@ class GridWorld:
 
     def step(self, action):
         r, c = self._pos
-        if action == 0:     r = max(0, r - 1)
-        elif action == 1:   c = min(self.cols - 1, c + 1)
-        elif action == 2:   r = min(self.rows - 1, r + 1)
-        elif action == 3:   c = max(0, c - 1)
+        if action == 0:
+            r = max(0, r - 1)
+        elif action == 1:
+            c = min(self.cols - 1, c + 1)
+        elif action == 2:
+            r = min(self.rows - 1, r + 1)
+        elif action == 3:
+            c = max(0, c - 1)
         if (r, c) in self.walls:
             r, c = self._pos
         self._pos = (r, c)

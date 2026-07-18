@@ -1,7 +1,7 @@
 import numpy as np
 
 from mastermlx.linear_models import LinearRegression
-from mastermlx.selection import RFE, SelectKBest, VarianceThreshold, f_classif, f_regression
+from mastermlx.selection import RFE, SelectKBest, VarianceThreshold, f_classif
 from mastermlx.semi_supervised import LabelPropagation, LabelSpreading
 
 

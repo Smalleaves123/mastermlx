@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import numpy as np
+from typing import cast
 
 from ..base import BaseEstimator
 from ..config import get_backend
-from ..utils import accuracy, as_2d, check_1d_array, check_2d_array, r2_score
+from ..utils import accuracy, check_1d_array, check_2d_array, r2_score
 
 try:
     from ._hist_cpp import fit_hist_tree as _fit_hist_cpp
@@ -158,23 +159,23 @@ class _HistTree:
         if self._compiled and _predict_hist_cpp is not None and get_backend() == "auto":
             return _predict_hist_cpp(X, *self._nodes)
         if self._compiled:
-            features, bins, left, right, values = self._nodes
+            features, bins, left, right, values = cast(tuple[np.ndarray, ...], self._nodes)
             pred = np.empty(X.shape[0], dtype=float)
             for i, row in enumerate(X):
-                node = 0
-                while features[node] >= 0:
-                    node = left[node] if row[features[node]] <= bins[node] else right[node]
-                pred[i] = values[node]
+                node_idx = 0
+                while features[node_idx] >= 0:
+                    node_idx = left[node_idx] if row[features[node_idx]] <= bins[node_idx] else right[node_idx]
+                pred[i] = values[node_idx]
             return pred
         n = X.shape[0]
         pred = np.zeros(n, dtype=float)
         for i in range(n):
-            node = self.root
+            node = cast(_HistNode, self.root)
             while node.left is not None and node.right is not None:
                 if X[i, node.feat] <= node.bin_idx:
-                    node = node.left
+                    node = cast(_HistNode, node.left)
                 else:
-                    node = node.right
+                    node = cast(_HistNode, node.right)
             pred[i] = node.value
         return pred
 
@@ -197,7 +198,7 @@ class _HistGBBase(BaseEstimator):
     def _grad_hess(self, y_true, raw_pred):
         raise NotImplementedError
 
-    def fit(self, X, y):
+    def fit(self, X, y=None):
         X = check_2d_array(X)
         y = check_1d_array(y)
         if X.shape[0] != y.shape[0]:
@@ -219,7 +220,7 @@ class _HistGBBase(BaseEstimator):
     def predict_raw(self, X):
         X = check_2d_array(X)
         X_binned = np.zeros((X.shape[0], X.shape[1]), dtype=np.int32)
-        for j, edges in enumerate(self._edges):
+        for j, edges in enumerate(cast(list[np.ndarray], self._edges)):
             if edges is not None:
                 X_binned[:, j] = np.digitize(X[:, j], edges[:-1]) - 1
                 X_binned[:, j] = np.clip(X_binned[:, j], 0, self.max_bins - 1)
@@ -248,7 +249,7 @@ class HistGradientBoostingClassifier(_HistGBBase):
         h = np.maximum(h, 1e-12)
         return g, h
 
-    def fit(self, X, y):
+    def fit(self, X, y=None):
         X = check_2d_array(X)
         y = check_1d_array(y)
         self.classes_ = np.unique(y)
@@ -265,7 +266,7 @@ class HistGradientBoostingClassifier(_HistGBBase):
     def predict(self, X):
         proba = self.predict_proba(X)
         idx = np.argmax(proba, axis=1)
-        return self.classes_[idx]
+        return cast(np.ndarray, self.classes_)[idx]
 
     def score(self, X, y):
         return accuracy(y, self.predict(X))
@@ -287,7 +288,7 @@ class HistGradientBoostingRegressor(_HistGBBase):
         h = np.ones_like(y_true)
         return g, h
 
-    def fit(self, X, y):
+    def fit(self, X, y=None):
         X = check_2d_array(X)
         y = check_1d_array(y).astype(float)
         self.init_ = float(np.mean(y))

@@ -295,7 +295,7 @@ def jaccard_score(y_true, y_pred, average="binary", pos_label=1):
     if average == "macro":
         return float(np.mean(scores))
     if average == "weighted":
-        weights = np.array([np.sum(y_true == l) for l in labels], dtype=float)
+        weights = np.array([np.sum(y_true == label) for label in labels], dtype=float)
         return float(np.sum(weights * np.array(scores)) / np.sum(weights))
     raise ValueError("average must be 'binary', 'macro', or 'weighted'")
 

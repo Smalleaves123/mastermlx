@@ -44,22 +44,27 @@ class Embedding(BaseLayer):
             raise ValueError("token ids must be in [0, n_tokens)")
 
         self.X_ = X
-        return self.W_[X]
+        W = self.W_
+        if W is None:
+            raise RuntimeError("Embedding parameters are not initialized")
+        return W[X]
 
     def backward(self, grad):
         grad = np.asarray(grad, dtype=float)
-        if self.X_ is None:
+        X = self.X_
+        W = self.W_
+        if X is None or W is None:
             raise RuntimeError("forward must be called before backward")
-        if grad.shape != (self.X_.shape[0], self.X_.shape[1], self.dim):
+        if grad.shape != (X.shape[0], X.shape[1], self.dim):
             raise ValueError("Gradient shape does not match embedding output shape")
 
-        self.dW_ = np.zeros_like(self.W_)
-        flat_idx = self.X_.ravel()
+        self.dW_ = np.zeros_like(W)
+        flat_idx = X.ravel()
         flat_grad = grad.reshape(-1, self.dim)
         np.add.at(self.dW_, flat_idx, flat_grad)
         if self.padding_idx is not None:
             self.dW_[self.padding_idx] = 0.0
-        return np.zeros_like(self.X_, dtype=float)
+        return np.zeros_like(X, dtype=float)
 
     def step(self, lr=None, l2=0.0, optimizer=None, key_prefix="embedding"):
         if self.dW_ is None:

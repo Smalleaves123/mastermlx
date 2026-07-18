@@ -159,7 +159,7 @@ def cwt(x, scales, sample_rate=1.0, wavelet="morlet", w0=6.0, pad_mode="reflect"
     if pad_mode not in {"reflect", "symmetric", "edge", "constant"}:
         raise ValueError("pad_mode must be reflect, symmetric, edge, or constant")
 
-    coefficients = []
+    coefficients: list[np.ndarray] = []
     for scale in scales:
         kernel = np.conj(_wavelet(scale, str(wavelet).lower(), w0)[::-1])
         half = (kernel.size - 1) // 2
@@ -168,9 +168,9 @@ def cwt(x, scales, sample_rate=1.0, wavelet="morlet", w0=6.0, pad_mode="reflect"
         else:
             padded = np.pad(x, (half, half), mode=pad_mode)
         coefficients.append(np.convolve(padded, kernel, mode="valid"))
-    coefficients = np.asarray(coefficients)
+    coefficient_array = np.asarray(coefficients)
     frequencies = w0 * sample_rate / (2.0 * np.pi * scales)
-    return scales, frequencies, coefficients
+    return scales, frequencies, coefficient_array
 
 
 continuous_wavelet_transform = cwt

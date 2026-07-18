@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+from typing import cast
 
 from ..utils.math import log_sum_exp
 
@@ -35,10 +36,13 @@ class HMM:
         return seq
 
     def _forward(self, seq):
+        start = cast(np.ndarray, self.start_)
+        trans = cast(np.ndarray, self.trans_)
+        emit = cast(np.ndarray, self.emit_)
         t = seq.size
-        log_start = np.log(self.start_ + 1e-12)
-        log_trans = np.log(self.trans_ + 1e-12)
-        log_emit = np.log(self.emit_ + 1e-12)
+        log_start = np.log(start + 1e-12)
+        log_trans = np.log(trans + 1e-12)
+        log_emit = np.log(emit + 1e-12)
 
         a = np.empty((t, self.n_states))
         a[0] = log_start + log_emit[:, seq[0]]
@@ -47,9 +51,11 @@ class HMM:
         return a
 
     def _backward(self, seq):
+        trans = cast(np.ndarray, self.trans_)
+        emit = cast(np.ndarray, self.emit_)
         t = seq.size
-        log_trans = np.log(self.trans_ + 1e-12)
-        log_emit = np.log(self.emit_ + 1e-12)
+        log_trans = np.log(trans + 1e-12)
+        log_emit = np.log(emit + 1e-12)
         b = np.empty((t, self.n_states))
         b[-1] = 0.0
         for i in range(t - 2, -1, -1):
@@ -78,13 +84,14 @@ class HMM:
 
                 gamma = np.exp(a + b - logp)
                 start += gamma[0]
-                np.add.at(emit, (slice(None), seq), gamma.T)
+                for state in range(self.n_states):
+                    np.add.at(emit[state], seq, gamma[:, state])
 
                 for t in range(seq.size - 1):
                     tmp = (
                         a[t][:, None]
-                        + np.log(self.trans_ + 1e-12)
-                        + np.log(self.emit_[:, seq[t + 1]] + 1e-12)[None, :]
+                        + np.log(cast(np.ndarray, self.trans_) + 1e-12)
+                        + np.log(cast(np.ndarray, self.emit_)[:, seq[t + 1]] + 1e-12)[None, :]
                         + b[t + 1][None, :]
                         - logp
                     )
@@ -108,9 +115,12 @@ class HMM:
 
     def predict(self, seq):
         seq = self._check_seq(seq)
-        log_start = np.log(self.start_ + 1e-12)
-        log_trans = np.log(self.trans_ + 1e-12)
-        log_emit = np.log(self.emit_ + 1e-12)
+        start = cast(np.ndarray, self.start_)
+        trans = cast(np.ndarray, self.trans_)
+        emit = cast(np.ndarray, self.emit_)
+        log_start = np.log(start + 1e-12)
+        log_trans = np.log(trans + 1e-12)
+        log_emit = np.log(emit + 1e-12)
 
         t = seq.size
         delta = np.empty((t, self.n_states))

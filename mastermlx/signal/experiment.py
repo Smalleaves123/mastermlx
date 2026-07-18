@@ -236,9 +236,9 @@ class SignalExperiment:
         self.return_train_score = return_train_score
         self.random_state = random_state
         self.task = task
-        self.pipeline_ = None
+        self.pipeline_: PreprocessingPipeline | None = None
         self.searcher_ = None
-        self.best_estimator_ = None
+        self.best_estimator_: PreprocessingPipeline | None = None
         self.best_params_ = None
         self.best_score_ = None
         self.cv_results_ = None
@@ -306,30 +306,31 @@ class SignalExperiment:
         self.cv_results_ = self.searcher_.cv_results_
         return self
 
-    def _require_fitted(self):
+    def _require_fitted(self) -> PreprocessingPipeline:
         if self.best_estimator_ is None:
             raise RuntimeError("SignalExperiment has not been fit yet")
+        return self.best_estimator_
 
     def transform_features(self, X):
-        self._require_fitted()
-        transformer = self.best_estimator_.named_steps.get("features")
+        pipe = self._require_fitted()
+        transformer = pipe.named_steps.get("features")
         if transformer is None:
             raise RuntimeError("SignalExperiment does not contain a features step")
         return transformer.transform(_prepare_signal_batch_input(X))
 
     def predict(self, X):
-        self._require_fitted()
-        return self.best_estimator_.predict(_prepare_signal_batch_input(X))
+        pipe = self._require_fitted()
+        return pipe.predict(_prepare_signal_batch_input(X))
 
     def predict_proba(self, X):
-        self._require_fitted()
-        if not hasattr(self.best_estimator_, "predict_proba"):
+        pipe = self._require_fitted()
+        if not hasattr(pipe, "predict_proba"):
             raise AttributeError("Best estimator does not define predict_proba")
-        return self.best_estimator_.predict_proba(_prepare_signal_batch_input(X))
+        return pipe.predict_proba(_prepare_signal_batch_input(X))
 
     def score(self, X, y):
-        self._require_fitted()
-        return self.best_estimator_.score(_prepare_signal_batch_input(X), y)
+        pipe = self._require_fitted()
+        return pipe.score(_prepare_signal_batch_input(X), y)
 
     def summary(self):
         self._require_fitted()

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+from typing import Any
 
 import numpy as np
 
@@ -13,11 +14,25 @@ from .metric_eval import evaluate_metrics
 
 
 class _SequentialRuntime:
+    callbacks: list[Any]
+    classes_: np.ndarray | None
+    layers: list[Any]
+    lr_scheduler: Any
+    optimizer: Any
+    optimizer_: Any
+    optimizer_config_: Any
+    task: str
+    training_config_: Any
+
     def _regularization_penalty(self):
-        l2 = self.training_config_.l2
+        l2 = float(self.training_config_.l2)
         if not l2:
             return 0.0
-        return 0.5 * l2 * sum(np.sum(layer.W_ ** 2) for layer in self.layers if isinstance(layer, Dense))
+        return 0.5 * l2 * sum(
+            np.sum(layer.W_**2)
+            for layer in self.layers
+            if isinstance(layer, Dense) and layer.W_ is not None
+        )
 
     def _current_mode(self):
         for layer in self.layers:

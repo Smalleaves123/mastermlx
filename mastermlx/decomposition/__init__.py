@@ -9,4 +9,17 @@ from .nmf import NMF
 from .pca import PCA, PC
 from .truncated_svd import TSVD, TruncatedSVD
 
-__all__ = ["FactorAnalysis", "FastICA", "ICA", "KPCA", "KernelPCA", "NMF", "PC", "PCA", "TSVD", "TruncatedSVD"]
+__all__ = [
+    "CCA",
+    "FactorAnalysis",
+    "FastICA",
+    "ICA",
+    "KPCA",
+    "KernelPCA",
+    "NCA",
+    "NMF",
+    "PC",
+    "PCA",
+    "TSVD",
+    "TruncatedSVD",
+]

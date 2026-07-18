@@ -3,6 +3,8 @@ import inspect
 import mastermlx
 from mastermlx.base import BaseEstimator, Module
 from mastermlx.neural_net import MLPClassifier, MLPRegressor, Sequential
+from mastermlx.nlp import LDA as NLP_LDA
+from mastermlx.probabilistic import DiscriminantLDA
 
 
 def test_core_public_api_remains_available():
@@ -22,3 +24,9 @@ def test_checkpoint_signatures_are_stable():
     assert "path" in inspect.signature(Module.save_checkpoint).parameters
     assert "path" in inspect.signature(Module.load_checkpoint).parameters
     assert "strict" in inspect.signature(Module.load).parameters
+
+
+def test_ambiguous_lda_models_have_explicit_namespaced_aliases():
+    assert NLP_LDA is not DiscriminantLDA
+    assert mastermlx.nlp.NLP_LDA is NLP_LDA
+    assert mastermlx.probabilistic.DiscriminantLDA is DiscriminantLDA

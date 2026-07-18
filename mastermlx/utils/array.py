@@ -32,22 +32,22 @@ def one_hot(y, n_classes=None, dtype=float):
 def shuffle_arrays(*arrays, random_state=None):
     if not arrays:
         raise ValueError("at least one array is required")
-    arrays = [np.asarray(arr) for arr in arrays]
-    n_samples = arrays[0].shape[0]
-    for arr in arrays[1:]:
+    array_list = [np.asarray(arr) for arr in arrays]
+    n_samples = array_list[0].shape[0]
+    for arr in array_list[1:]:
         if arr.shape[0] != n_samples:
             raise ValueError("all arrays must contain the same number of samples")
     rng = resolve_rng(random_state)
     idx = rng.permutation(n_samples)
-    return tuple(arr[idx] for arr in arrays)
+    return tuple(arr[idx] for arr in array_list)
 
 
 def batch_iterator(*arrays, batch_size, shuffle=True, drop_last=False, random_state=None):
     if not arrays:
         raise ValueError("at least one array is required")
-    arrays = [np.asarray(arr) for arr in arrays]
-    n_samples = arrays[0].shape[0]
-    for arr in arrays[1:]:
+    array_list = [np.asarray(arr) for arr in arrays]
+    n_samples = array_list[0].shape[0]
+    for arr in array_list[1:]:
         if arr.shape[0] != n_samples:
             raise ValueError("all arrays must contain the same number of samples")
 
@@ -65,4 +65,4 @@ def batch_iterator(*arrays, batch_size, shuffle=True, drop_last=False, random_st
         if stop > n_samples and drop_last:
             break
         batch_idx = indices[start:stop]
-        yield tuple(arr[batch_idx] for arr in arrays)
+        yield tuple(arr[batch_idx] for arr in array_list)

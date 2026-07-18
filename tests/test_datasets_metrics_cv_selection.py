@@ -9,7 +9,6 @@ from mastermlx.utils import avg_precision_score, fbeta_score, jaccard_score
 from mastermlx.data import LeaveOneOut, RepeatedKFold
 from mastermlx.selection import SelectFromModel
 from mastermlx.neural_net import CosineLR, ReduceLROnPlateau, StepLR, SGD
-from mastermlx.trees import RandomForestClassifier
 
 
 # --- Datasets ---

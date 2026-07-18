@@ -95,7 +95,6 @@ def urdf_to_dh_chain(xml_text, base_link=None, tip_link=None):
         a = float(xyz[0])
         d = float(xyz[2])
         theta = 0.0
-        offset = 0.0
         alpha = 0.0
         if np.isclose(xyz[1], 0.0):
             pass

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import numpy as np
 
 from ..base import BaseTransformer
 from ._core import all_pairs_shortest, center_dist, eig_embed, kgraph, pairwise_dist

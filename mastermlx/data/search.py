@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+from typing import Any
 
 from ..base import BaseEstimator
 from .search_core import (
@@ -24,13 +25,13 @@ class GridSearchCV(BaseEstimator):
         self.refit = refit
         self.return_train_score = return_train_score
         self.error_score = error_score
-        self.best_estimator_ = None
+        self.best_estimator_: Any | None = None
         self.best_params_ = None
         self.best_score_ = None
         self.best_index_ = None
         self.cv_results_ = None
 
-    def fit(self, X, y, groups=None):
+    def fit(self, X, y=None, groups=None):
         X = np.asarray(X)
         y = np.asarray(y)
         candidates = list(_param_grid_iter(self.param_grid))
@@ -52,26 +53,27 @@ class GridSearchCV(BaseEstimator):
     def _require_best(self):
         if self.best_estimator_ is None:
             raise RuntimeError("GridSearchCV has not been fit with refit=True")
+        return self.best_estimator_
 
     def predict(self, X):
-        self._require_best()
-        return self.best_estimator_.predict(X)
+        best = self._require_best()
+        return best.predict(X)
 
     def predict_proba(self, X):
-        self._require_best()
-        if not hasattr(self.best_estimator_, "predict_proba"):
+        best = self._require_best()
+        if not hasattr(best, "predict_proba"):
             raise AttributeError("Best estimator does not define predict_proba")
-        return self.best_estimator_.predict_proba(X)
+        return best.predict_proba(X)
 
     def decision_function(self, X):
-        self._require_best()
-        if not hasattr(self.best_estimator_, "decision_function"):
+        best = self._require_best()
+        if not hasattr(best, "decision_function"):
             raise AttributeError("Best estimator does not define decision_function")
-        return self.best_estimator_.decision_function(X)
+        return best.decision_function(X)
 
     def score(self, X, y):
-        self._require_best()
-        return self.best_estimator_.score(X, y)
+        best = self._require_best()
+        return best.score(X, y)
 
 
 class RandomizedSearchCV(BaseEstimator):
@@ -98,13 +100,13 @@ class RandomizedSearchCV(BaseEstimator):
         self.return_train_score = return_train_score
         self.random_state = random_state
         self.error_score = error_score
-        self.best_estimator_ = None
+        self.best_estimator_: Any | None = None
         self.best_params_ = None
         self.best_score_ = None
         self.best_index_ = None
         self.cv_results_ = None
 
-    def fit(self, X, y, groups=None):
+    def fit(self, X, y=None, groups=None):
         X = np.asarray(X)
         y = np.asarray(y)
         if self.n_iter < 1:
@@ -132,26 +134,27 @@ class RandomizedSearchCV(BaseEstimator):
     def _require_best(self):
         if self.best_estimator_ is None:
             raise RuntimeError("RandomizedSearchCV has not been fit with refit=True")
+        return self.best_estimator_
 
     def predict(self, X):
-        self._require_best()
-        return self.best_estimator_.predict(X)
+        best = self._require_best()
+        return best.predict(X)
 
     def predict_proba(self, X):
-        self._require_best()
-        if not hasattr(self.best_estimator_, "predict_proba"):
+        best = self._require_best()
+        if not hasattr(best, "predict_proba"):
             raise AttributeError("Best estimator does not define predict_proba")
-        return self.best_estimator_.predict_proba(X)
+        return best.predict_proba(X)
 
     def decision_function(self, X):
-        self._require_best()
-        if not hasattr(self.best_estimator_, "decision_function"):
+        best = self._require_best()
+        if not hasattr(best, "decision_function"):
             raise AttributeError("Best estimator does not define decision_function")
-        return self.best_estimator_.decision_function(X)
+        return best.decision_function(X)
 
     def score(self, X, y):
-        self._require_best()
-        return self.best_estimator_.score(X, y)
+        best = self._require_best()
+        return best.score(X, y)
 
 
 __all__ = ["GridSearchCV", "RandomizedSearchCV", "sample_params"]

@@ -1,15 +1,25 @@
 from __future__ import annotations
 
 import numpy as np
+from typing import cast
 
 from ..base import BaseEstimator
-from ..utils import accuracy, as_2d, check_1d_array, check_2d_array, check_same_rows
+from ..utils import accuracy, check_1d_array, check_2d_array, check_same_rows
 from ._kernels import pairwise_kernel, resolve_gamma
 
 
 class _BinaryNuSVC:
-    def __init__(self, nu=0.5, kernel="rbf", degree=3, gamma=None, coef0=0.0,
-                 tol=1e-3, max_iter=1000, random_state=None):
+    def __init__(
+        self,
+        nu=0.5,
+        kernel="rbf",
+        degree=3,
+        gamma=None,
+        coef0=0.0,
+        tol=1e-3,
+        max_iter=1000,
+        random_state=None,
+    ):
         self.nu = float(nu)
         self.kernel = kernel
         self.degree = int(degree)
@@ -37,8 +47,9 @@ class _BinaryNuSVC:
             changed = 0
             for i in range(n):
                 Ei = np.sum(alpha * y * K[:, i]) + self.b_ - y[i]
-                if (y[i] * Ei < -self.tol and alpha[i] < 1.0 / n) or \
-                   (y[i] * Ei > self.tol and alpha[i] > 0):
+                if (y[i] * Ei < -self.tol and alpha[i] < 1.0 / n) or (
+                    y[i] * Ei > self.tol and alpha[i] > 0
+                ):
                     j = int(rng.integers(0, n - 1))
                     if j >= i:
                         j += 1
@@ -64,11 +75,24 @@ class _BinaryNuSVC:
                     alpha[i] = ai_old + y[i] * y[j] * (aj_old - aj)
                     alpha[j] = aj
 
-                    b1 = self.b_ - Ei - y[i]*(alpha[i]-ai_old)*K[i,i] - y[j]*(alpha[j]-aj_old)*K[i,j]
-                    b2 = self.b_ - Ej - y[i]*(alpha[i]-ai_old)*K[i,j] - y[j]*(alpha[j]-aj_old)*K[j,j]
-                    if 0 < alpha[i] < 1.0/n: self.b_ = b1
-                    elif 0 < alpha[j] < 1.0/n: self.b_ = b2
-                    else: self.b_ = (b1 + b2) / 2.0
+                    b1 = (
+                        self.b_
+                        - Ei
+                        - y[i] * (alpha[i] - ai_old) * K[i, i]
+                        - y[j] * (alpha[j] - aj_old) * K[i, j]
+                    )
+                    b2 = (
+                        self.b_
+                        - Ej
+                        - y[i] * (alpha[i] - ai_old) * K[i, j]
+                        - y[j] * (alpha[j] - aj_old) * K[j, j]
+                    )
+                    if 0 < alpha[i] < 1.0 / n:
+                        self.b_ = b1
+                    elif 0 < alpha[j] < 1.0 / n:
+                        self.b_ = b2
+                    else:
+                        self.b_ = (b1 + b2) / 2.0
                     changed += 1
             if changed == 0:
                 break
@@ -80,8 +104,13 @@ class _BinaryNuSVC:
         return self
 
     def decision_function(self, X):
-        K = pairwise_kernel(X, self.X_[self.support_], self.kernel, self._gamma, self.coef0, self.degree)
-        return K @ (self.alphas_[self.support_] * self.y_[self.support_]) + self.b_
+        K = pairwise_kernel(
+            X, cast(np.ndarray, self.X_)[cast(np.ndarray, self.support_)], self.kernel, self._gamma, self.coef0, self.degree
+        )
+        alpha = cast(np.ndarray, self.alphas_)
+        y = cast(np.ndarray, self.y_)
+        support = cast(np.ndarray, self.support_)
+        return K @ (alpha[support] * y[support]) + self.b_
 
     def predict(self, X):
         return np.where(self.decision_function(X) >= 0, 1, -1)
@@ -90,8 +119,17 @@ class _BinaryNuSVC:
 class NuSVC(BaseEstimator):
     """ν-Support Vector Classification."""
 
-    def __init__(self, nu=0.5, kernel="rbf", degree=3, gamma=None, coef0=0.0,
-                 tol=1e-3, max_iter=1000, random_state=None):
+    def __init__(
+        self,
+        nu=0.5,
+        kernel="rbf",
+        degree=3,
+        gamma=None,
+        coef0=0.0,
+        tol=1e-3,
+        max_iter=1000,
+        random_state=None,
+    ):
         self.nu = nu
         self.kernel = kernel
         self.degree = degree
@@ -107,27 +145,42 @@ class NuSVC(BaseEstimator):
         self.classes_ = np.unique(y)
         if self.classes_.size == 2:
             y_bin = np.where(y == self.classes_[1], 1.0, -1.0)
-            self._binary = _BinaryNuSVC(nu=self.nu, kernel=self.kernel, degree=self.degree,
-                                         gamma=self.gamma, coef0=self.coef0, tol=self.tol,
-                                         max_iter=self.max_iter, random_state=self.random_state)
+            self._binary = _BinaryNuSVC(
+                nu=self.nu,
+                kernel=self.kernel,
+                degree=self.degree,
+                gamma=self.gamma,
+                coef0=self.coef0,
+                tol=self.tol,
+                max_iter=self.max_iter,
+                random_state=self.random_state,
+            )
             self._binary.fit(X, y_bin)
         else:
             self._binaries = []
             for c in self.classes_:
                 y_bin = np.where(y == c, 1.0, -1.0)
-                b = _BinaryNuSVC(nu=self.nu, kernel=self.kernel, degree=self.degree,
-                                  gamma=self.gamma, coef0=self.coef0, tol=self.tol,
-                                  max_iter=self.max_iter, random_state=self.random_state)
+                b = _BinaryNuSVC(
+                    nu=self.nu,
+                    kernel=self.kernel,
+                    degree=self.degree,
+                    gamma=self.gamma,
+                    coef0=self.coef0,
+                    tol=self.tol,
+                    max_iter=self.max_iter,
+                    random_state=self.random_state,
+                )
                 b.fit(X, y_bin)
                 self._binaries.append(b)
         return self
 
     def predict(self, X):
-        if self.classes_.size == 2:
+        classes = cast(np.ndarray, self.classes_)
+        if classes.size == 2:
             p = self._binary.predict(X)
-            return np.where(p > 0, self.classes_[1], self.classes_[0])
+            return np.where(p > 0, classes[1], classes[0])
         scores = np.column_stack([b.decision_function(X) for b in self._binaries])
-        return self.classes_[np.argmax(scores, axis=1)]
+        return classes[np.argmax(scores, axis=1)]
 
     def score(self, X, y):
         return accuracy(y, self.predict(X))

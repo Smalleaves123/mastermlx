@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+from typing import cast
 
 from ..base import BaseEstimator
 from ..utils import accuracy, as_2d, check_1d_array, check_2d_array
@@ -30,7 +31,7 @@ class NearestCentroid(BaseEstimator):
             raise RuntimeError("not fitted")
         dists = pairwise_distance(X, self.centroids_, metric=self.metric)
         idx = np.argmin(dists, axis=1)
-        return self.classes_[idx]
+        return cast(np.ndarray, self.classes_)[idx]
 
     def score(self, X, y):
         return accuracy(y, self.predict(X))

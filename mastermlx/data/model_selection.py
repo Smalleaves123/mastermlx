@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import time
+from typing import Any
 
 import numpy as np
 
@@ -125,12 +126,12 @@ def _run_cv(
     splitter = cv if cv is not None else KFold(n_splits=5, shuffle=True, random_state=0)
     scorers, multi = _resolve_scorers(scoring)
     error_value = _error_value(error_score)
-    test_scores = {}
-    train_scores = {}
+    test_scores: dict[str, list[float]] = {}
+    train_scores: dict[str, list[float]] = {}
     fit_times = []
     score_times = []
     estimators = []
-    errors = []
+    errors: list[str | None] = []
 
     for train_idx, test_idx in _split_cv(splitter, X, y, groups=groups):
         model = None
@@ -181,7 +182,7 @@ def _run_cv(
         if return_estimator:
             estimators.append(model)
 
-    out = {
+    out: dict[str, Any] = {
         "fit_time": np.asarray(fit_times, dtype=float),
         "score_time": np.asarray(score_times, dtype=float),
     }
@@ -289,7 +290,7 @@ def learning_curve(estimator, X, y, train_sizes=None, cv=None, scoring=None, shu
     if max_train < 1:
         raise ValueError("Cross-validator produced an empty training split")
 
-    sizes = []
+    sizes_list: list[int] = []
     for value in train_sizes:
         if value <= 0:
             raise ValueError("train_sizes must be positive")
@@ -297,8 +298,8 @@ def learning_curve(estimator, X, y, train_sizes=None, cv=None, scoring=None, shu
             size = max(1, int(np.ceil(value * max_train)))
         else:
             size = int(value)
-        sizes.append(min(size, max_train))
-    sizes = np.unique(np.asarray(sizes, dtype=int))
+        sizes_list.append(min(size, max_train))
+    sizes = np.unique(np.asarray(sizes_list, dtype=int))
 
     train_scores = np.zeros((sizes.shape[0], len(splits)), dtype=float)
     test_scores = np.zeros((sizes.shape[0], len(splits)), dtype=float)

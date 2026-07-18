@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+from typing import cast
 
 from ..base import BaseEstimator
 from ..utils import as_2d, check_2d_array
@@ -57,21 +58,28 @@ class VariationalGaussianMixture(BaseEstimator, VariationalEstimator):
         self._n_features = n_features
 
     def _expected_log_pi(self):
-        return digamma(self.alpha_) - digamma(np.sum(self.alpha_))
+        alpha = cast(np.ndarray, self.alpha_)
+        return digamma(alpha) - digamma(np.sum(alpha))
 
     def _expected_log_lambda(self):
-        return digamma(self.a_) - np.log(self.b_)
+        a = cast(np.ndarray, self.a_)
+        b = cast(np.ndarray, self.b_)
+        return digamma(a) - np.log(b)
 
     def _estimate_log_resp(self, X):
+        means = cast(np.ndarray, self.means_)
+        a = cast(np.ndarray, self.a_)
+        b = cast(np.ndarray, self.b_)
+        beta = cast(np.ndarray, self.beta_)
         n_samples = X.shape[0]
         log_resp = np.empty((n_samples, self.n_components), dtype=float)
         e_log_pi = self._expected_log_pi()
         e_log_lambda = self._expected_log_lambda()
 
         for k in range(self.n_components):
-            diff = X - self.means_[k]
+            diff = X - means[k]
             sq_norm = np.sum(diff * diff, axis=1)
-            expected_quad = (self.a_[k] / self.b_[k]) * sq_norm + (self._n_features / self.beta_[k])
+            expected_quad = (a[k] / b[k]) * sq_norm + (self._n_features / beta[k])
             log_resp[:, k] = (
                 e_log_pi[k]
                 + 0.5 * self._n_features * e_log_lambda[k]
@@ -145,11 +153,13 @@ class VariationalGaussianMixture(BaseEstimator, VariationalEstimator):
         return np.argmax(resp, axis=1)
 
     def _posterior_summary(self):
+        means = cast(np.ndarray, self.means_)
+        weights = cast(np.ndarray, self.weights_)
         return {
             "n_components": int(self.n_components),
-            "mean_dim": int(self.means_.shape[1]),
-            "min_weight": float(np.min(self.weights_)),
-            "max_weight": float(np.max(self.weights_)),
+            "mean_dim": int(means.shape[1]),
+            "min_weight": float(np.min(weights)),
+            "max_weight": float(np.max(weights)),
         }
 
     def score(self, X, y=None):
@@ -192,14 +202,15 @@ class BayesianGaussianMixture(VariationalGaussianMixture):
     def fit(self, X, y=None):
         super().fit(X, y=y)
         threshold = 1.0 / max(10.0 * self.n_components, 100.0)
-        self.active_components_ = self.weights_ > threshold
-        self.n_active_components_ = int(np.sum(self.active_components_))
+        weights = cast(np.ndarray, self.weights_)
+        self.active_components_ = weights > threshold
+        self.n_active_components_ = int(np.sum(cast(np.ndarray, self.active_components_)))
         return self
 
     def _posterior_summary(self):
         summary = super()._posterior_summary()
         summary.update({
-            "n_active_components": int(self.n_active_components_),
+            "n_active_components": int(cast(int, self.n_active_components_)),
             "weight_concentration_prior": float(self.weight_concentration_prior),
         })
         return summary

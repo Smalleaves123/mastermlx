@@ -41,7 +41,7 @@ class SequentialFeatureSelector(BaseTransformer):
             raise ValueError(f"n_features_to_select must be in [1, {d}]")
 
         if self.direction == "forward":
-            selected = []
+            selected: list[int] = []
             remaining = list(range(d))
             self.scores_ = []
             for _ in range(n_select):

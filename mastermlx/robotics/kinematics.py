@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 
@@ -16,7 +17,7 @@ except ImportError:  # pragma: no cover - fallback when Cython extensions are un
     _cy_geometric_jacobian_dh = None
 
 
-_PACKED_LINKS_CACHE = {}
+_PACKED_LINKS_CACHE: dict[tuple[Any, ...], Any] = {}
 
 
 @dataclass(frozen=True)

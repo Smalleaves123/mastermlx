@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import numpy as np
+from typing import cast
 
 from ..base import BaseEstimator
-from ..utils import accuracy, as_2d, check_1d_array, check_2d_array, clone, r2_score
+from ..utils import accuracy, as_2d, check_1d_array, check_2d_array, r2_score
 
 
 class VotingClassifier(BaseEstimator):
@@ -52,19 +53,18 @@ class VotingClassifier(BaseEstimator):
         if self.voting == "soft":
             proba = self.predict_proba(X)
             if proba.ndim == 1:
-                return self.classes_[int(np.argmax(proba))]
-            return self.classes_[np.argmax(proba, axis=1)]
+                return cast(np.ndarray, self.classes_)[int(np.argmax(proba))]
+            return cast(np.ndarray, self.classes_)[np.argmax(proba, axis=1)]
         if not self.estimators_:
             raise RuntimeError("Model has not been fit yet")
         X = as_2d(X)
-        ws = self._w()
         preds = np.asarray([est.predict(X) for est in self.estimators_])
-        out = []
+        out: list[object] = []
         for col in preds.T:
             vals, cnt = np.unique(col, return_counts=True)
             out.append(vals[np.argmax(cnt)])
-        out = np.asarray(out)
-        return out[0] if out.shape[0] == 1 else out
+        result = np.asarray(out)
+        return result[0] if result.shape[0] == 1 else result
 
     def score(self, X, y):
         return accuracy(y, self.predict(X))

@@ -39,7 +39,7 @@ def pearson_r(x, y):
         raise ValueError("x and y must have the same length")
     xc = x - np.mean(x)
     yc = y - np.mean(y)
-    den = np.sqrt(np.sum(xc ** 2) * np.sum(yc ** 2))
+    den = np.sqrt(np.sum(xc**2) * np.sum(yc**2))
     return float(np.dot(xc, yc) / den) if den > 0 else 0.0
 
 
@@ -59,19 +59,27 @@ def spearman_r(x, y):
 # Fast kendall_tau via merge-sort inversion counting (O(n log n))
 # ---------------------------------------------------------------------------
 
+
 def _merge_count(a, b, left, mid, right):
     i, j, k = left, mid, left
     inv = 0
     while i < mid and j < right:
         if a[i] <= a[j]:
-            b[k] = a[i]; i += 1
+            b[k] = a[i]
+            i += 1
         else:
-            b[k] = a[j]; j += 1; inv += mid - i
+            b[k] = a[j]
+            j += 1
+            inv += mid - i
         k += 1
     while i < mid:
-        b[k] = a[i]; i += 1; k += 1
+        b[k] = a[i]
+        i += 1
+        k += 1
     while j < right:
-        b[k] = a[j]; j += 1; k += 1
+        b[k] = a[j]
+        j += 1
+        k += 1
     for i in range(left, right):
         a[i] = b[i]
     return inv

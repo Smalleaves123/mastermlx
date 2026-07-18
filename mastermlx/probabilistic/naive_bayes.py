@@ -1,19 +1,20 @@
 from __future__ import annotations
 
 import numpy as np
+from typing import cast
 
 from ..base import BaseEstimator
 from ..utils import accuracy, as_2d, check_1d_array, check_2d_array
 
 
 class _BaseNB(BaseEstimator):
-    def _check_fitted(self):
-        if self.classes_ is None:
+    def _check_fitted(self, attributes=None):
+        if getattr(self, "classes_", None) is None:
             raise RuntimeError("Model has not been fit yet")
 
     def _predict_from_log_joint(self, logp):
         idx = np.argmax(logp, axis=1)
-        pred = self.classes_[idx]
+        pred = cast(np.ndarray, getattr(self, "classes_"))[idx]
         return pred[0] if pred.shape[0] == 1 else pred
 
     def _predict_proba_from_log_joint(self, logp):
@@ -56,21 +57,25 @@ class GaussianNB(_BaseNB):
         return self
 
     def _joint_log_prob(self, X):
+        classes = cast(np.ndarray, self.classes_)
+        mean = cast(np.ndarray, self.mean_)
+        var = cast(np.ndarray, self.var_)
+        prior = cast(np.ndarray, self.prior_)
         eps = 1e-12
         out = []
-        for i in range(self.classes_.shape[0]):
-            mean = self.mean_[i]
-            var = self.var_[i]
-            log_prior = np.log(self.prior_[i] + eps)
-            log_det = -0.5 * np.sum(np.log(2.0 * np.pi * var))
-            quad = -0.5 * np.sum(((X - mean) ** 2) / var, axis=1)
+        for i in range(classes.shape[0]):
+            mean_i = mean[i]
+            var_i = var[i]
+            log_prior = np.log(prior[i] + eps)
+            log_det = -0.5 * np.sum(np.log(2.0 * np.pi * var_i))
+            quad = -0.5 * np.sum(((X - mean_i) ** 2) / var_i, axis=1)
             out.append(log_prior + log_det + quad)
         return np.column_stack(out)
 
     def predict(self, X):
         self._check_fitted()
         X = as_2d(X)
-        if X.shape[1] != self.mean_.shape[1]:
+        if X.shape[1] != cast(np.ndarray, self.mean_).shape[1]:
             raise ValueError("X has a different number of features than the fitted data")
         logp = self._joint_log_prob(X)
         return self._predict_from_log_joint(logp)
@@ -134,12 +139,15 @@ class BernoulliNB(_BaseNB):
 
     def _joint_log_prob(self, X):
         X = self._bin(X)
-        if X.shape[1] != self.feature_log_prob_.shape[1]:
+        feature_log_prob = cast(np.ndarray, self.feature_log_prob_)
+        feature_log_prob_neg = cast(np.ndarray, self.feature_log_prob_neg_)
+        class_log_prior = cast(np.ndarray, self.class_log_prior_)
+        if X.shape[1] != feature_log_prob.shape[1]:
             raise ValueError("X has a different number of features than the fitted data")
         return (
-            self.class_log_prior_[None, :]
-            + X @ self.feature_log_prob_.T
-            + (1.0 - X) @ self.feature_log_prob_neg_.T
+            class_log_prior[None, :]
+            + X @ feature_log_prob.T
+            + (1.0 - X) @ feature_log_prob_neg.T
         )
 
     def predict(self, X):
@@ -194,11 +202,13 @@ class MultinomialNB(_BaseNB):
 
     def _joint_log_prob(self, X):
         X = as_2d(X).astype(float, copy=False)
-        if X.shape[1] != self.feature_log_prob_.shape[1]:
+        feature_log_prob = cast(np.ndarray, self.feature_log_prob_)
+        class_log_prior = cast(np.ndarray, self.class_log_prior_)
+        if X.shape[1] != feature_log_prob.shape[1]:
             raise ValueError("X has a different number of features than the fitted data")
         if np.any(X < 0):
             raise ValueError("MultinomialNB expects non-negative features")
-        return self.class_log_prior_[None, :] + X @ self.feature_log_prob_.T
+        return class_log_prior[None, :] + X @ feature_log_prob.T
 
     def predict(self, X):
         self._check_fitted()

@@ -94,8 +94,8 @@ class ExtendedKalmanFilter:
         S = H @ self.P_ @ H.T + R
         K = self.P_ @ H.T @ np.linalg.solve(S, np.eye(S.shape[0], dtype=float))
         self.x_ = self.x_ + K @ y
-        I = np.eye(self.P_.shape[0], dtype=float)
-        self.P_ = (I - K @ H) @ self.P_
+        identity = np.eye(self.P_.shape[0], dtype=float)
+        self.P_ = (identity - K @ H) @ self.P_
         self.x_post_ = self.x_.copy()
         self.P_post_ = self.P_.copy()
         return self.state, self.P_.copy()
@@ -103,3 +103,14 @@ class ExtendedKalmanFilter:
     def step(self, z, u=None, dt=None, h=None, H_jac=None, R=None):
         self.predict(u=u, dt=dt)
         return self.update(z, u=u, dt=dt, h=h, H_jac=H_jac, R=R)
+
+    def reset(self, x0=None, P0=None):
+        if x0 is not None:
+            self.x_ = np.asarray(x0, dtype=float).reshape(-1, 1)
+        if P0 is not None:
+            self.P_ = _as_2d_matrix(P0, "P0")
+        self.x_prior_ = self.x_.copy()
+        self.P_prior_ = self.P_.copy()
+        self.x_post_ = self.x_.copy()
+        self.P_post_ = self.P_.copy()
+        return self

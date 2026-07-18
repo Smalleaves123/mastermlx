@@ -15,7 +15,7 @@ from .estimation import *  # noqa: F401,F403
 from .neighbors import *  # noqa: F401,F403
 from .neural_net import *  # noqa: F401,F403
 from .nlp import *  # noqa: F401,F403
-from .probabilistic import *  # noqa: F401,F403
+from .probabilistic import *  # type: ignore  # noqa: F401,F403
 from .rl import *  # noqa: F401,F403
 from .selection import *  # noqa: F401,F403
 from .semi_supervised import *  # noqa: F401,F403

@@ -38,7 +38,8 @@ class PIDController:
         if dt <= 0:
             raise ValueError("dt must be positive")
 
-        if self.integral_.shape != error.shape:
+        integral = self.integral_
+        if integral is None or integral.shape != error.shape:
             self.integral_ = np.zeros_like(error, dtype=float)
 
         self.integral_ = self.integral_ + error * dt

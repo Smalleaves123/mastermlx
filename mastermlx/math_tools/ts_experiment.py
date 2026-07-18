@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+from typing import Any
 
 from ..base import BaseEstimator
 from ..utils.estimator import clone
@@ -19,9 +20,9 @@ def _grid(params):
         if not cur:
             raise ValueError(f"Parameter grid for '{key}' must be non-empty")
         vals.append(cur)
-    out = [{}]
+    out: list[dict[str, Any]] = [{}]
     for key, cur in zip(keys, vals):
-        nxt = []
+        nxt: list[dict[str, Any]] = []
         for base in out:
             for val in cur:
                 item = dict(base)
@@ -36,7 +37,7 @@ def _sample(params, n_iter, seed=None):
         raise ValueError("param_distributions must be a non-empty dict")
     rng = np.random.default_rng(seed)
     keys = list(params)
-    out = []
+    out: list[dict[str, Any]] = []
     for _ in range(int(n_iter)):
         item = {}
         for key in keys:
@@ -78,12 +79,12 @@ class TimeSeriesExperiment(BaseEstimator):
         self.scoring = scoring
         self.refit = bool(refit)
         self.random_state = random_state
-        self.pipeline_ = None
-        self.best_estimator_ = None
-        self.best_params_ = None
+        self.pipeline_: TimeSeriesPipeline | None = None
+        self.best_estimator_: TimeSeriesPipeline | None = None
+        self.best_params_: dict[str, Any] | None = None
         self.best_score_ = None
-        self.cv_results_ = None
-        self.history_ = None
+        self.cv_results_: list[dict[str, Any]] | None = None
+        self.history_: np.ndarray | None = None
 
     def _split(self, x):
         if self.cv is None:
@@ -144,8 +145,8 @@ class TimeSeriesExperiment(BaseEstimator):
         x = _as_1d_series(X)
         cand = self._cands()
         splits = self._split(x)
-        rows = []
-        best = None
+        rows: list[dict[str, Any]] = []
+        best: dict[str, Any] | None = None
         best_s = -np.inf
 
         for prm in cand:
@@ -174,33 +175,37 @@ class TimeSeriesExperiment(BaseEstimator):
         self.history_ = x
         return self
 
-    def _need(self):
+    def _need(self) -> TimeSeriesPipeline:
         if self.best_estimator_ is None:
             raise RuntimeError("TimeSeriesExperiment has not been fit yet")
+        return self.best_estimator_
 
     def forecast(self, steps=1, history=None):
-        self._need()
-        return self.best_estimator_.forecast(steps=steps, history=history)
+        pipe = self._need()
+        return pipe.forecast(steps=steps, history=history)
 
     def predict(self, X=None):
-        self._need()
+        pipe = self._need()
         if X is None:
             if self.history_ is None:
                 raise RuntimeError("No training history available")
             X = self.history_
-        return self.best_estimator_.predict(X)
+        return pipe.predict(X)
 
     def score(self, X, y=None):
-        self._need()
+        pipe = self._need()
         if y is None:
             if self.history_ is None:
                 raise RuntimeError("No training history available")
             hist = self.history_
             feat, tgt = lagged_matrix(hist, lags=self.lags, horizon=self.horizon)
-            Xt = self.best_estimator_._transform_preprocessing(feat)
-            if hasattr(self.best_estimator_.model_, "score"):
-                return float(self.best_estimator_.model_.score(Xt, tgt))
-            pred = self.best_estimator_.model_.predict(Xt)
+            Xt = pipe._transform_preprocessing(feat)
+            model = pipe.model_
+            if model is None:
+                raise RuntimeError("TimeSeriesPipeline has not been fit yet")
+            if hasattr(model, "score"):
+                return float(model.score(Xt, tgt))
+            pred = model.predict(Xt)
             return _score(tgt, pred, self.scoring)
         hist = _as_1d_series(X)
         tgt = np.asarray(y, dtype=float).ravel()
@@ -313,11 +318,11 @@ def backtest(model, X, lags=12, horizon=1, preprocessing=None, cv=None, scoring=
         true.append(y)
         pred.append(yh)
 
-    scores = np.asarray(scores, dtype=float)
+    score_array = np.asarray(scores, dtype=float)
     return {
-        "scores": scores,
-        "mean": float(np.mean(scores)),
-        "std": float(np.std(scores)),
+        "scores": score_array,
+        "mean": float(np.mean(score_array)),
+        "std": float(np.std(score_array)),
         "true": np.concatenate(true),
         "pred": np.concatenate(pred),
         "folds": rows,

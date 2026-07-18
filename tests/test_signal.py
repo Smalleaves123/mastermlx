@@ -1,6 +1,6 @@
 import numpy as np
 
-from mastermlx.math_tools import autocorrelation, autocorrelation_function
+from mastermlx.math_tools import autocorrelation_function
 from mastermlx.signal import (
     convolve1d,
     frame_signal,

@@ -170,22 +170,22 @@ def wilcoxon(x, y=None, alternative="two-sided"):
 
 def kruskal(*groups):
     """Kruskal-Wallis H test for independent samples."""
-    groups = [np.asarray(g, dtype=float).ravel() for g in groups]
-    groups = [g for g in groups if g.size > 0]
-    k = len(groups)
+    group_arrays = [np.asarray(g, dtype=float).ravel() for g in groups]
+    group_arrays = [g for g in group_arrays if g.size > 0]
+    k = len(group_arrays)
     if k < 2:
         raise ValueError("Need at least two non-empty groups")
 
-    all_data = np.concatenate(groups)
+    all_data = np.concatenate(group_arrays)
     ranks = _rank(all_data)
     n = all_data.size
     r_sums = []
     start = 0
-    for g in groups:
+    for g in group_arrays:
         r_sums.append(float(np.sum(ranks[start:start + g.size])))
         start += g.size
 
-    h = 12.0 / (n * (n + 1.0)) * sum(r ** 2 / g.size for r, g in zip(r_sums, groups)) - 3.0 * (n + 1.0)
+    h = 12.0 / (n * (n + 1.0)) * sum(r**2 / g.size for r, g in zip(r_sums, group_arrays)) - 3.0 * (n + 1.0)
 
     # Tie correction
     uniq, cnt = np.unique(all_data, return_counts=True)
@@ -214,17 +214,17 @@ def chi2_contingency(observed):
 
 def f_oneway(*groups):
     """One-way ANOVA F-test."""
-    groups = [np.asarray(g, dtype=float).ravel() for g in groups]
-    groups = [g for g in groups if g.size > 0]
-    k = len(groups)
+    group_arrays = [np.asarray(g, dtype=float).ravel() for g in groups]
+    group_arrays = [g for g in group_arrays if g.size > 0]
+    k = len(group_arrays)
     if k < 2:
         raise ValueError("Need at least two non-empty groups")
 
-    all_data = np.concatenate(groups)
+    all_data = np.concatenate(group_arrays)
     grand_mean = np.mean(all_data)
     ssb = 0.0
     ssw = 0.0
-    for g in groups:
+    for g in group_arrays:
         ssb += g.size * (np.mean(g) - grand_mean) ** 2
         ssw += np.sum((g - np.mean(g)) ** 2)
 

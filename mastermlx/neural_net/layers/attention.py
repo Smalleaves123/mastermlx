@@ -65,22 +65,29 @@ class AttentionPooling1D(BaseLayer):
         grad = np.asarray(grad, dtype=float)
         if self.X_ is None or self.H_ is None or self.alpha_ is None:
             raise RuntimeError("forward must be called before backward")
-        if grad.ndim != 2 or grad.shape != (self.X_.shape[0], self.X_.shape[2]):
+        X = self.X_
+        H = self.H_
+        alpha = self.alpha_
+        W = self.W_
+        u = self.u_
+        if X is None or H is None or alpha is None or W is None or u is None:
+            raise RuntimeError("attention parameters are not initialized")
+        if grad.ndim != 2 or grad.shape != (X.shape[0], X.shape[2]):
             raise ValueError("Gradient shape does not match pooled output shape")
 
-        direct = self.alpha_[..., None] * grad[:, None, :]
-        d_alpha = np.sum(grad[:, None, :] * self.X_, axis=2)
-        d_scores = self.alpha_ * (d_alpha - np.sum(d_alpha * self.alpha_, axis=1, keepdims=True))
+        direct = alpha[..., None] * grad[:, None, :]
+        d_alpha = np.sum(grad[:, None, :] * X, axis=2)
+        d_scores = alpha * (d_alpha - np.sum(d_alpha * alpha, axis=1, keepdims=True))
 
-        self.du_ = np.sum(self.H_ * d_scores[..., None], axis=(0, 1))
+        self.du_ = np.sum(H * d_scores[..., None], axis=(0, 1))
         self.dc_ = float(np.sum(d_scores))
 
-        d_hidden = d_scores[..., None] * self.u_[None, None, :]
-        d_pre = d_hidden * (1.0 - self.H_ ** 2)
-        self.dW_ = np.einsum("btd,bth->dh", self.X_, d_pre)
+        d_hidden = d_scores[..., None] * u[None, None, :]
+        d_pre = d_hidden * (1.0 - H**2)
+        self.dW_ = np.einsum("btd,bth->dh", X, d_pre)
         self.db_ = np.sum(d_pre, axis=(0, 1))
 
-        dX = direct + d_pre @ self.W_.T
+        dX = direct + d_pre @ W.T
         return dX
 
     def step(self, lr=None, optimizer=None, key_prefix="attn_pool"):
@@ -195,25 +202,35 @@ class MultiHeadAttention(BaseLayer):
         grad = np.asarray(grad, dtype=float)
         if self.X_ is None or self.A_ is None or self.H_ is None:
             raise RuntimeError("forward must be called before backward")
-        if grad.shape != (self.X_.shape[0], self.X_.shape[1], self.n_features):
+        X = self.X_
+        A = self.A_
+        H = self.H_
+        W_q, W_k, W_v, W_o = self.W_q_, self.W_k_, self.W_v_, self.W_o_
+        Q, K, V = self.Q_, self.K_, self.V_
+        if any(value is None for value in (X, A, H, W_q, W_k, W_v, W_o, Q, K, V)):
+            raise RuntimeError("attention parameters are not initialized")
+        assert X is not None and A is not None and H is not None
+        assert W_q is not None and W_k is not None and W_v is not None and W_o is not None
+        assert Q is not None and K is not None and V is not None
+        if grad.shape != (X.shape[0], X.shape[1], self.n_features):
             raise ValueError("Gradient shape does not match attention output shape")
 
-        out = self._merge_heads(self.H_)
+        out = self._merge_heads(H)
         self.dW_o_ = np.einsum("btd,bto->do", out, grad)
         self.db_o_ = np.sum(grad, axis=(0, 1))
 
-        d_out = grad @ self.W_o_.T
+        d_out = grad @ W_o.T
         dH = self._reshape_heads(d_out)
 
-        Vh = self._reshape_heads(self.V_)
-        Qh = self._reshape_heads(self.Q_)
-        Kh = self._reshape_heads(self.K_)
+        Vh = self._reshape_heads(V)
+        Qh = self._reshape_heads(Q)
+        Kh = self._reshape_heads(K)
 
         dA = np.einsum("bhid,bhjd->bhij", dH, Vh)
-        dVh = np.einsum("bhij,bhid->bhjd", self.A_, dH)
+        dVh = np.einsum("bhij,bhid->bhjd", A, dH)
 
-        dot = np.sum(dA * self.A_, axis=-1, keepdims=True)
-        dScores = self.A_ * (dA - dot)
+        dot = np.sum(dA * A, axis=-1, keepdims=True)
+        dScores = A * (dA - dot)
 
         scale = 1.0 / np.sqrt(self.head_dim_)
         dQh = np.einsum("bhij,bhjd->bhid", dScores, Kh) * scale
@@ -223,7 +240,7 @@ class MultiHeadAttention(BaseLayer):
         dK = self._merge_heads(dKh)
         dV = self._merge_heads(dVh)
 
-        X_flat = self.X_.reshape(-1, self.n_features)
+        X_flat = X.reshape(-1, self.n_features)
         dQ_flat = dQ.reshape(-1, self.n_features)
         dK_flat = dK.reshape(-1, self.n_features)
         dV_flat = dV.reshape(-1, self.n_features)
@@ -235,7 +252,7 @@ class MultiHeadAttention(BaseLayer):
         self.db_k_ = np.sum(dK_flat, axis=0)
         self.db_v_ = np.sum(dV_flat, axis=0)
 
-        dX = dQ @ self.W_q_.T + dK @ self.W_k_.T + dV @ self.W_v_.T
+        dX = dQ @ W_q.T + dK @ W_k.T + dV @ W_v.T
         return dX
 
     def step(self, lr=None, optimizer=None, key_prefix="mha"):

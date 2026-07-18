@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+from typing import Any, cast
 
 from ..base import BaseEstimator
 from ..utils.estimator import clone
@@ -106,6 +107,7 @@ class TimeSeriesPipeline(BaseEstimator):
         self.training_features_ = None
         self.training_target_ = None
         self.mode_ = None
+        self.scoring = "neg_mean_squared_error"
 
     def _resolve_preprocessing(self):
         return _normalize_steps(self.preprocessing, name="preprocessing")
@@ -169,16 +171,18 @@ class TimeSeriesPipeline(BaseEstimator):
 
     def predict(self, X=None):
         self._require_fitted()
+        model = cast(Any, self.model_)
         if X is None:
             if self.history_ is None:
                 raise ValueError("X must be provided when the pipeline was fit in supervised mode")
             X = self.history_
         features = self._features_from_input(X)
         Xt = self._transform_preprocessing(features)
-        return self.model_.predict(Xt)
+        return model.predict(Xt)
 
     def forecast(self, steps=1, history=None):
         self._require_fitted()
+        model = cast(Any, self.model_)
         if steps < 1:
             raise ValueError("steps must be at least 1")
         if history is None:
@@ -192,25 +196,26 @@ class TimeSeriesPipeline(BaseEstimator):
         for _ in range(int(steps)):
             window = np.asarray(values[-self.lags :], dtype=float).reshape(1, -1)
             Xt = self._transform_preprocessing(window)
-            pred = float(np.asarray(self.model_.predict(Xt)).ravel()[0])
+            pred = float(np.asarray(model.predict(Xt)).ravel()[0])
             outputs.append(pred)
             values.append(pred)
         return np.asarray(outputs, dtype=float)
 
     def score(self, X, y=None):
         self._require_fitted()
+        model = cast(Any, self.model_)
         if y is None:
             if self.training_features_ is None or self.training_target_ is None:
                 raise RuntimeError("No training history available")
-            if hasattr(self.model_, "score"):
-                return float(self.model_.score(self.training_features_, self.training_target_))
-            pred = self.model_.predict(self.training_features_)
+            if hasattr(model, "score"):
+                return float(model.score(self.training_features_, self.training_target_))
+            pred = model.predict(self.training_features_)
             return _score(self.training_target_, pred, self.scoring)
         features = self._features_from_input(X)
         Xt = self._transform_preprocessing(features)
-        if hasattr(self.model_, "score"):
-            return self.model_.score(Xt, y)
-        pred = self.model_.predict(Xt)
+        if hasattr(model, "score"):
+            return model.score(Xt, y)
+        pred = model.predict(Xt)
         return -mean_squared_error(y, pred)
 
 

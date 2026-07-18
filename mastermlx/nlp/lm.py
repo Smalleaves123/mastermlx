@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import math
 from collections import Counter, defaultdict
-
 import numpy as np
 
 from .tok import SimpleTokenizer, word_ngrams
@@ -16,7 +15,7 @@ class NGramLanguageModel:
         self.smoothing = float(smoothing)
         self.tokenizer = tokenizer or SimpleTokenizer()
         self.context_counts_ = defaultdict(Counter)
-        self.context_totals_ = Counter()
+        self.context_totals_: Counter = Counter()
         self.vocab_ = set()
         self.vocab_list_ = []
         self.vocab_size_ = 0

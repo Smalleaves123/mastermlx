@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+from typing import Any
 
 from ..base import BaseTransformer
 from ..utils.validation import check_2d_array
@@ -23,7 +24,7 @@ def _mask(X):
 
 
 def _count(values):
-    counts = []
+    counts: list[tuple[Any, int]] = []
     for value in values:
         found = False
         for idx, (item, count) in enumerate(counts):
@@ -46,8 +47,8 @@ class SimpleImputer(BaseTransformer):
     def __init__(self, strategy="mean", fill_value=None):
         self.strategy = strategy
         self.fill_value = fill_value
-        self.statistics_ = None
-        self._numeric = None
+        self.statistics_: np.ndarray | None = None
+        self._numeric: bool | None = None
 
     def fit(self, X, y=None):
         X = check_2d_array(X)
@@ -93,11 +94,15 @@ class SimpleImputer(BaseTransformer):
 
     def transform(self, X):
         self._check_fitted(["statistics_", "_numeric"])
+        statistics = self.statistics_
+        numeric = self._numeric
+        if statistics is None or numeric is None:
+            raise RuntimeError("Imputer has not been fit yet")
         X = check_2d_array(X)
-        X = X.astype(float if self._numeric else object)
+        X = X.astype(float if numeric else object)
         self._check_X(X)
         out = X.copy()
         mask = _mask(out)
         for j in range(out.shape[1]):
-            out[mask[:, j], j] = self.statistics_[j]
+            out[mask[:, j], j] = statistics[j]
         return out

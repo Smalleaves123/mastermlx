@@ -56,7 +56,7 @@ class StratifiedKFold:
 
         idx = np.arange(n_samples)
         rng = resolve_rng(self.random_state)
-        by_fold = [[] for _ in range(self.n_splits)]
+        by_fold: list[list[int]] = [[] for _ in range(self.n_splits)]
 
         for cls in np.unique(y):
             cls_idx = idx[y == cls].copy()

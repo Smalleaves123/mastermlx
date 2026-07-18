@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+from typing import cast
 
 from ..base import BaseEstimator
 from ..utils import accuracy, as_2d, check_1d_array, check_2d_array, check_same_rows
@@ -65,7 +66,7 @@ class _BinarySVC:
         iters = 0
 
         def decision_row(i):
-            return float(np.sum(self.alphas_ * self.y_ * self.kernel_matrix_[:, i]) + self.b_)
+            return float(np.sum(cast(np.ndarray, self.alphas_) * cast(np.ndarray, self.y_) * cast(np.ndarray, self.kernel_matrix_)[:, i]) + self.b_)
 
         while passes < self.max_passes and iters < self.max_iter:
             num_changed = 0
@@ -151,12 +152,13 @@ class _BinarySVC:
             raise RuntimeError("Model has not been fit yet")
         X = as_2d(X)
         K = self._kernel(X, self.support_vectors_)
-        scores = K @ self.dual_coef_.ravel() + self.b_
+        scores = K @ cast(np.ndarray, self.dual_coef_).ravel() + self.b_
         return float(scores[0]) if scores.shape[0] == 1 else scores
 
     def predict(self, X):
         scores = self.decision_function(X)
-        pred = np.where(scores >= 0.0, self.classes_[1], self.classes_[0])
+        classes = cast(np.ndarray, self.classes_)
+        pred = np.where(scores >= 0.0, classes[1], classes[0])
         return pred.item() if np.ndim(pred) == 0 else pred
 
 
@@ -245,11 +247,12 @@ class SVC(BaseEstimator):
         if not self.models_:
             raise RuntimeError("Model has not been fit yet")
         if self.multi_class_:
+            classes = cast(np.ndarray, self.classes_)
             scores = self.decision_function(X)
             if scores.ndim == 1:
-                return self.classes_[int(np.argmax(scores))]
+                return classes[int(np.argmax(scores))]
             idx = np.argmax(scores, axis=1)
-            pred = self.classes_[idx]
+            pred = classes[idx]
             return pred[0] if pred.shape[0] == 1 else pred
         pred = self.models_[0].predict(X)
         return pred

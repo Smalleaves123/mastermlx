@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+from typing import Any
 
 from ..base import BaseEstimator
 from ..utils.estimator import clone
@@ -12,7 +13,13 @@ class Pipeline(BaseEstimator):
 
     def __init__(self, steps):
         self.steps = list(steps)
-        self.steps_ = None
+        self.steps_: list[tuple[str, Any]] | None = None
+        self.n_features_in_: int | None = None
+
+    def _fitted_steps(self):
+        if self.steps_ is None:
+            raise RuntimeError("Pipeline has not been fit yet")
+        return self.steps_
 
     def _validate_steps(self):
         if not self.steps:
@@ -77,7 +84,7 @@ class Pipeline(BaseEstimator):
     def fit(self, X, y=None):
         steps = self._validate_steps()
         Xt = check_X(X)
-        self._set_n_features(Xt)
+        self.n_features_in_ = Xt.shape[1]
         self.steps_ = None
         fitted = []
 
@@ -99,15 +106,15 @@ class Pipeline(BaseEstimator):
 
     def fit_transform(self, X, y=None):
         self.fit(X, y)
-        last = self.steps_[-1][1]
+        last = self._fitted_steps()[-1][1]
         if hasattr(last, "transform"):
             return self.transform(X)
         return self._transform_input(X)
 
     def _transform_input(self, X):
-        self._check_fitted("steps_")
+        steps = self._fitted_steps()
         Xt = self._check_X(X)
-        for _, step in self.steps_[:-1]:
+        for _, step in steps[:-1]:
             Xt = step.transform(Xt)
         return Xt
 
@@ -115,11 +122,11 @@ class Pipeline(BaseEstimator):
     def named_steps(self):
         if self.steps_ is None:
             return {name: step for name, step in self.steps}
-        return {name: step for name, step in self.steps_}
+        return {name: step for name, step in self._fitted_steps()}
 
     def transform(self, X):
         Xt = self._transform_input(X)
-        last = self.steps_[-1][1]
+        last = self._fitted_steps()[-1][1]
         if hasattr(last, "transform"):
             return last.transform(Xt)
         return Xt
@@ -127,38 +134,39 @@ class Pipeline(BaseEstimator):
     def get_feature_names_out(self, input_features=None):
         """Return output names from the final transformer when available."""
 
-        self._check_fitted("steps_")
-        last = self.steps_[-1][1]
+        last = self._fitted_steps()[-1][1]
         if not hasattr(last, "get_feature_names_out"):
             if input_features is None:
+                if self.n_features_in_ is None:
+                    raise RuntimeError("Pipeline has not recorded its input feature count")
                 input_features = [f"x{idx}" for idx in range(self.n_features_in_)]
             return np.asarray(input_features, dtype=object)
         return last.get_feature_names_out(input_features)
 
     def predict(self, X):
         Xt = self._transform_input(X)
-        last = self.steps_[-1][1]
+        last = self._fitted_steps()[-1][1]
         if not hasattr(last, "predict"):
             raise AttributeError("Final step does not define predict")
         return last.predict(Xt)
 
     def predict_proba(self, X):
         Xt = self._transform_input(X)
-        last = self.steps_[-1][1]
+        last = self._fitted_steps()[-1][1]
         if not hasattr(last, "predict_proba"):
             raise AttributeError("Final step does not define predict_proba")
         return last.predict_proba(Xt)
 
     def decision_function(self, X):
         Xt = self._transform_input(X)
-        last = self.steps_[-1][1]
+        last = self._fitted_steps()[-1][1]
         if not hasattr(last, "decision_function"):
             raise AttributeError("Final step does not define decision_function")
         return last.decision_function(Xt)
 
     def score(self, X, y):
         Xt = self._transform_input(X)
-        last = self.steps_[-1][1]
+        last = self._fitted_steps()[-1][1]
         if hasattr(last, "score"):
             return last.score(Xt, y)
         pred = last.predict(Xt)

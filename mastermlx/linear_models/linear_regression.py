@@ -12,8 +12,8 @@ class LinearRegression(BaseEstimator):
 
     def __init__(self, fit_intercept: bool = True):
         self.fit_intercept = fit_intercept
-        self.coef_ = None
-        self.intercept_ = None
+        self.coef_: np.ndarray | None = None
+        self.intercept_: float | None = None
 
     def fit(self, X, y=None):
         X, y = check_X_y(X, y)

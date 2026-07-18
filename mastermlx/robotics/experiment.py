@@ -4,7 +4,6 @@ import numpy as np
 
 from .model import RobotModel
 from .trajectory import plan_joint_trajectory
-from .state_estimation import PlanarPoseEKF
 
 
 def _coerce_robot_model(robot):

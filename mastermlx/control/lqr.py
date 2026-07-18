@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+from typing import cast
 
 from ..config import get_backend
 
@@ -43,8 +44,6 @@ def finite_horizon_lqr(A, B, Q, R, horizon, Qf=None, reference=None):
     B = np.asarray(B, dtype=float)
     Q = np.asarray(Q, dtype=float)
     R = np.asarray(R, dtype=float)
-    n = A.shape[0]
-    m = B.shape[1]
     horizon = int(horizon)
     if horizon < 1:
         raise ValueError("horizon must be at least 1")
@@ -54,14 +53,16 @@ def finite_horizon_lqr(A, B, Q, R, horizon, Qf=None, reference=None):
     if get_backend() != "numpy" and _cy_finite_horizon_lqr is not None:
         return _cy_finite_horizon_lqr(A, B, Q, R, horizon, Qf=Qf, reference=ref)
 
-    P = [None] * (horizon + 1)
-    K = [None] * horizon
+    P: list[np.ndarray | None] = [None] * (horizon + 1)
+    K: list[np.ndarray | None] = [None] * horizon
     P[horizon] = Qf.copy()
 
     for t in range(horizon - 1, -1, -1):
-        S = R + B.T @ P[t + 1] @ B
-        K[t] = np.linalg.solve(S, B.T @ P[t + 1] @ A)
-        P[t] = Q + A.T @ P[t + 1] @ (A - B @ K[t])
+        p_next = cast(np.ndarray, P[t + 1])
+        S = R + B.T @ p_next @ B
+        gain = np.linalg.solve(S, B.T @ p_next @ A)
+        K[t] = gain
+        P[t] = Q + A.T @ p_next @ (A - B @ gain)
     return K, P, ref
 
 
@@ -92,5 +93,5 @@ class DiscreteLQR:
             x_ref = np.zeros_like(x)
         else:
             x_ref = np.asarray(x_ref, dtype=float).reshape(-1, 1)
-        u = -self.K_ @ (x - x_ref)
+        u = -cast(np.ndarray, self.K_) @ (x - x_ref)
         return u.ravel()

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+from typing import Any
 
 from ..base import BaseTransformer
 
@@ -9,7 +10,7 @@ def _unique(values):
     try:
         return np.unique(values)
     except TypeError:
-        result = []
+        result: list[Any] = []
         for value in values:
             if not any(_same(value, item) for item in result):
                 result.append(value)
@@ -34,7 +35,7 @@ class LabelEncoder:
     """Encode labels as contiguous integers."""
 
     def __init__(self):
-        self.classes_ = None
+        self.classes_: np.ndarray | None = None
 
     def fit(self, y):
         y = np.asarray(y)
@@ -47,7 +48,10 @@ class LabelEncoder:
         y = np.asarray(y)
         if self.classes_ is None:
             raise RuntimeError("Encoder has not been fit yet")
-        index = {label: idx for idx, label in enumerate(self.classes_)}
+        classes = self.classes_
+        if classes is None:
+            raise RuntimeError("Encoder has not been fit yet")
+        index = {label: idx for idx, label in enumerate(classes)}
         try:
             out = np.array([index[item] for item in y], dtype=int)
         except KeyError as exc:
@@ -58,7 +62,10 @@ class LabelEncoder:
         y = np.asarray(y, dtype=int)
         if self.classes_ is None:
             raise RuntimeError("Encoder has not been fit yet")
-        out = self.classes_[y]
+        classes = self.classes_
+        if classes is None:
+            raise RuntimeError("Encoder has not been fit yet")
+        out = classes[y]
         return out.item() if out.ndim == 0 else out
 
     def fit_transform(self, y):
@@ -71,7 +78,7 @@ class OneHotEncoder(BaseTransformer):
     def __init__(self, drop=None, handle_unknown="error"):
         self.drop = drop
         self.handle_unknown = handle_unknown
-        self.categories_ = None
+        self.categories_: list[np.ndarray] | None = None
 
     def fit(self, X, y=None):
         X = np.asarray(X, dtype=object)
@@ -95,11 +102,14 @@ class OneHotEncoder(BaseTransformer):
             raise RuntimeError("Encoder has not been fit yet")
         if X.ndim == 1:
             X = X.reshape(-1, 1)
-        if X.shape[1] != len(self.categories_):
+        categories = self.categories_
+        if categories is None:
+            raise RuntimeError("Encoder has not been fit yet")
+        if X.shape[1] != len(categories):
             raise ValueError("X has a different number of columns than the fitted data")
 
         parts = []
-        for j, cats in enumerate(self.categories_):
+        for j, cats in enumerate(categories):
             cur = X[:, j]
             known = np.asarray([_find(value, cats) is not None for value in cur])
             if not np.all(known) and self.handle_unknown == "error":
@@ -115,13 +125,16 @@ class OneHotEncoder(BaseTransformer):
 
     def get_feature_names_out(self, input_features=None):
         self._check_fitted("categories_")
+        categories = self.categories_
+        if categories is None:
+            raise RuntimeError("Encoder has not been fit yet")
         if input_features is None:
-            input_features = [f"x{idx}" for idx in range(len(self.categories_))]
+            input_features = [f"x{idx}" for idx in range(len(categories))]
         input_features = np.asarray(input_features, dtype=object).ravel()
-        if input_features.size != len(self.categories_):
+        if input_features.size != len(categories):
             raise ValueError("input_features must match the fitted number of columns")
-        names = []
-        for feature, cats in zip(input_features, self.categories_):
+        names: list[str] = []
+        for feature, cats in zip(input_features, categories):
             use_cats = cats[1:] if self.drop == "first" else cats
             names.extend(f"{feature}_{category}" for category in use_cats)
         return np.asarray(names, dtype=object)
@@ -136,7 +149,7 @@ class OrdinalEncoder(BaseTransformer):
     def __init__(self, handle_unknown="error", unknown_value=-1):
         self.handle_unknown = handle_unknown
         self.unknown_value = unknown_value
-        self.categories_ = None
+        self.categories_: list[np.ndarray] | None = None
 
     def fit(self, X, y=None):
         X = np.asarray(X, dtype=object)
@@ -158,11 +171,14 @@ class OrdinalEncoder(BaseTransformer):
             raise RuntimeError("Encoder has not been fit yet")
         if X.ndim == 1:
             X = X.reshape(-1, 1)
-        if X.shape[1] != len(self.categories_):
+        categories = self.categories_
+        if categories is None:
+            raise RuntimeError("Encoder has not been fit yet")
+        if X.shape[1] != len(categories):
             raise ValueError("X has a different number of columns than the fitted data")
 
         out = np.zeros(X.shape, dtype=float)
-        for j, cats in enumerate(self.categories_):
+        for j, cats in enumerate(categories):
             cur = X[:, j]
             if self.handle_unknown == "error" and any(_find(value, cats) is None for value in cur):
                 raise ValueError("X contains unseen categories")
@@ -174,12 +190,13 @@ class OrdinalEncoder(BaseTransformer):
 
     def inverse_transform(self, X):
         X = np.asarray(X)
-        if self.categories_ is None:
+        categories = self.categories_
+        if categories is None:
             raise RuntimeError("Encoder has not been fit yet")
         if X.ndim == 1:
             X = X.reshape(-1, 1)
         out = np.empty(X.shape, dtype=object)
-        for j, cats in enumerate(self.categories_):
+        for j, cats in enumerate(categories):
             idx = X[:, j].astype(int)
             if np.any(idx < 0) or np.any(idx >= len(cats)):
                 raise ValueError("X contains an invalid encoded value")
@@ -188,10 +205,13 @@ class OrdinalEncoder(BaseTransformer):
 
     def get_feature_names_out(self, input_features=None):
         self._check_fitted("categories_")
+        categories = self.categories_
+        if categories is None:
+            raise RuntimeError("Encoder has not been fit yet")
         if input_features is None:
-            input_features = [f"x{idx}" for idx in range(len(self.categories_))]
+            input_features = [f"x{idx}" for idx in range(len(categories))]
         input_features = np.asarray(input_features, dtype=object).ravel()
-        if input_features.size != len(self.categories_):
+        if input_features.size != len(categories):
             raise ValueError("input_features must match the fitted number of columns")
         return input_features.astype(object)
 

@@ -39,7 +39,6 @@ def silhouette(X, labels):
     for i in range(labels.size):
         li = labels[i]
         same = labels == li
-        other = labels != li
         if np.sum(same) <= 1:
             a_i = 0.0
         else:
@@ -49,7 +48,8 @@ def silhouette(X, labels):
             if c == li:
                 continue
             b_i = min(b_i, np.mean(dists[i, labels == c]))
-        scores[i] = (b_i - a_i) / max(a_i, b_i) if max(a_i, b_i) > 0 else 0.0
+        denom = max(float(a_i), float(b_i))
+        scores[i] = (b_i - a_i) / denom if denom > 0 else 0.0
 
     return float(np.mean(scores))
 
@@ -74,7 +74,7 @@ def davies_bouldin(X, labels):
             if i == j:
                 continue
             d_ij = np.linalg.norm(centroids[i] - centroids[j])
-            r = (scatter[i] + scatter[j]) / max(d_ij, 1e-12)
+            r = (scatter[i] + scatter[j]) / max(float(d_ij), 1e-12)
             ri = max(ri, r)
         score += ri
     return float(score / k)

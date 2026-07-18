@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 
 import numpy as np
+from typing import cast
 
 from ..base import BaseEstimator
 from ..utils import as_2d, check_1d_array, check_2d_array, check_same_rows, r2_score
@@ -96,7 +97,6 @@ class VariationalPoissonRegression(BaseEstimator, VariationalEstimator):
             clipped_var_grad = np.clip(grad_var * self.posterior_var_, -5.0, 5.0)
             current_log_var = np.log(np.maximum(self.posterior_var_, 1e-12))
             current_mean = self.posterior_mean_.copy()
-            current_var = self.posterior_var_.copy()
 
             for _ in range(20):
                 cand_mean = current_mean + step * clipped_mean_grad
@@ -136,8 +136,10 @@ class VariationalPoissonRegression(BaseEstimator, VariationalEstimator):
             raise RuntimeError("Model has not been fit yet")
 
         Xb = self._add_bias(X)
-        eta_mean = Xb @ self.posterior_mean_
-        eta_var = np.sum((Xb**2) * self.posterior_var_[None, :], axis=1)
+        posterior_mean = cast(np.ndarray, self.posterior_mean_)
+        posterior_var = cast(np.ndarray, self.posterior_var_)
+        eta_mean = Xb @ posterior_mean
+        eta_var = np.sum((Xb**2) * posterior_var[None, :], axis=1)
         mean = np.exp(np.clip(eta_mean + 0.5 * eta_var, -50.0, 50.0))
         if not return_std:
             return float(mean[0]) if mean.shape[0] == 1 else mean
@@ -149,10 +151,12 @@ class VariationalPoissonRegression(BaseEstimator, VariationalEstimator):
         return mean, std
 
     def _posterior_summary(self):
+        posterior_mean = cast(np.ndarray, self.posterior_mean_)
+        posterior_var = cast(np.ndarray, self.posterior_var_)
         return {
             "alpha": float(self.alpha),
-            "posterior_dim": int(self.posterior_mean_.shape[0]),
-            "avg_posterior_var": float(np.mean(self.posterior_var_)),
+            "posterior_dim": int(posterior_mean.shape[0]),
+            "avg_posterior_var": float(np.mean(posterior_var)),
         }
 
     def score(self, X, y):

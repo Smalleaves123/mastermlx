@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+from typing import Any
 
 from ..base import BaseTransformer
 from ..utils.estimator import clone
@@ -15,10 +16,10 @@ class ColumnTransformer(BaseTransformer):
         self.remainder = remainder
         self._columns = []
         self._names = []
-        self._remainder_idx = None
-        self.transformers_ = None
-        self.feature_names_in_ = None
-        self.output_dims_ = None
+        self._remainder_idx: list[int] | None = None
+        self.transformers_: list[tuple[str, Any, np.ndarray]] | None = None
+        self.feature_names_in_: np.ndarray | None = None
+        self.output_dims_: list[int] | None = None
 
     @staticmethod
     def _resolve_cols(X, cols, n_cols):
@@ -60,6 +61,7 @@ class ColumnTransformer(BaseTransformer):
         if n_cols == 0:
             raise ValueError("X must have at least one column")
         self._set_n_features(X)
+        self.n_features_in_ = n_cols
         names = getattr(raw, "columns", None)
         self.feature_names_in_ = None if names is None else np.asarray(list(names), dtype=object)
 
@@ -90,14 +92,19 @@ class ColumnTransformer(BaseTransformer):
 
     def transform(self, X):
         self._check_fitted("transformers_")
+        transformers = self.transformers_
+        remainder_idx = self._remainder_idx
+        if transformers is None or remainder_idx is None:
+            raise RuntimeError("ColumnTransformer has not been fit yet")
         incoming = getattr(X, "columns", None)
-        if self.feature_names_in_ is not None and incoming is not None:
-            if list(incoming) != self.feature_names_in_.tolist():
+        feature_names = self.feature_names_in_
+        if feature_names is not None and incoming is not None:
+            if list(incoming) != feature_names.tolist():
                 raise ValueError("X columns do not match the fitted schema")
         X = self._check_X(X)
-        parts = [self._as_block(trans.transform(X[:, cols]), X.shape[0]) for _, trans, cols in self.transformers_]
-        if self._remainder_idx:
-            parts.append(X[:, self._remainder_idx])
+        parts = [self._as_block(trans.transform(X[:, cols]), X.shape[0]) for _, trans, cols in transformers]
+        if remainder_idx:
+            parts.append(X[:, remainder_idx])
         if not parts:
             return np.zeros((X.shape[0], 0), dtype=float)
         return np.column_stack(parts) if len(parts) > 1 else parts[0]
@@ -106,16 +113,22 @@ class ColumnTransformer(BaseTransformer):
         """Return stable names for transformed columns."""
 
         self._check_fitted(["transformers_", "output_dims_"])
+        transformers = self.transformers_
+        output_dims = self.output_dims_
+        if transformers is None or output_dims is None:
+            raise RuntimeError("ColumnTransformer has not been fit yet")
         if input_features is None:
             input_features = self.feature_names_in_
         if input_features is None:
             input_features = np.asarray([f"x{idx}" for idx in range(self.n_features_in_)], dtype=object)
         input_features = np.asarray(input_features, dtype=object).ravel()
+        if self.n_features_in_ is None:
+            raise RuntimeError("ColumnTransformer has not recorded its input feature count")
         if input_features.size != self.n_features_in_:
             raise ValueError("input_features must match the fitted number of columns")
 
         names = []
-        for (name, trans, cols), width in zip(self.transformers_, self.output_dims_):
+        for (name, trans, cols), width in zip(transformers, output_dims):
             custom = None
             if hasattr(trans, "get_feature_names_out"):
                 try:

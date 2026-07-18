@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+from typing import cast
 
 from ..base import BaseEstimator
 from ..utils import accuracy, as_2d, check_1d_array, check_2d_array
@@ -17,6 +18,9 @@ class _BaseDiscriminantAnalysis(BaseEstimator):
         self.classes_ = None
         self.prior_ = None
         self.means_ = None
+
+    def _joint_log_likelihood(self, X):
+        raise NotImplementedError
 
     def _class_stats(self, X, y):
         classes = np.unique(y)
@@ -36,7 +40,8 @@ class _BaseDiscriminantAnalysis(BaseEstimator):
         if self.classes_ is None:
             raise RuntimeError("Model has not been fit yet")
         X = as_2d(X)
-        if X.shape[1] != self.means_.shape[1]:
+        means = cast(np.ndarray, self.means_)
+        if X.shape[1] != means.shape[1]:
             raise ValueError("X has a different number of features than the fitted data")
         scores = self._joint_log_likelihood(X)
         idx = np.argmax(scores, axis=1)
@@ -85,12 +90,17 @@ class LDA(_BaseDiscriminantAnalysis):
         return self
 
     def _joint_log_likelihood(self, X):
+        classes = cast(np.ndarray, self.classes_)
+        means = cast(np.ndarray, self.means_)
+        prior = cast(np.ndarray, self.prior_)
+        inv_covariance = cast(np.ndarray, self.inv_covariance_)
+        log_det_covariance = cast(float, self.log_det_covariance_)
         out = []
-        for i in range(self.classes_.size):
-            mean = self.means_[i]
-            prior = np.log(self.prior_[i] + 1e-12)
-            quad = np.sum((X - mean) @ self.inv_covariance_ * (X - mean), axis=1)
-            score = prior - 0.5 * (self.log_det_covariance_ + quad)
+        for i in range(classes.size):
+            mean = means[i]
+            log_prior = np.log(prior[i] + 1e-12)
+            quad = np.sum((X - mean) @ inv_covariance * (X - mean), axis=1)
+            score = log_prior - 0.5 * (log_det_covariance + quad)
             out.append(score)
         return np.column_stack(out)
 
@@ -134,14 +144,19 @@ class QDA(_BaseDiscriminantAnalysis):
         return self
 
     def _joint_log_likelihood(self, X):
+        classes = cast(np.ndarray, self.classes_)
+        means = cast(np.ndarray, self.means_)
+        prior = cast(np.ndarray, self.prior_)
+        inv_covariances = cast(np.ndarray, self.inv_covariances_)
+        log_det_covariances = cast(np.ndarray, self.log_det_covariances_)
         out = []
-        for i in range(self.classes_.size):
-            mean = self.means_[i]
-            inv_cov = self.inv_covariances_[i]
-            logdet = self.log_det_covariances_[i]
-            prior = np.log(self.prior_[i] + 1e-12)
+        for i in range(classes.size):
+            mean = means[i]
+            inv_cov = inv_covariances[i]
+            logdet = log_det_covariances[i]
+            log_prior = np.log(prior[i] + 1e-12)
             diff = X - mean
             quad = np.sum(diff @ inv_cov * diff, axis=1)
-            score = prior - 0.5 * (logdet + quad)
+            score = log_prior - 0.5 * (logdet + quad)
             out.append(score)
         return np.column_stack(out)

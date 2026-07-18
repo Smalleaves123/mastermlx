@@ -78,7 +78,7 @@ class CountVectorizer:
 
     def fit(self, texts, y=None):
         texts = list(texts)
-        counts = Counter()
+        counts: Counter = Counter()
         self.stop_words_ = self._prepare_stop_words()
         for text in texts:
             counts.update(self._feats(text, stop_words=self.stop_words_))
@@ -142,8 +142,8 @@ class TfidfVectorizer(CountVectorizer):
     def fit(self, texts, y=None):
         texts = list(texts)
         self.stop_words_ = self._prepare_stop_words()
-        counts = Counter()
-        doc_counts = Counter()
+        counts: Counter = Counter()
+        doc_counts: Counter = Counter()
         for text in texts:
             feats = self._feats(text, stop_words=self.stop_words_)
             counts.update(feats)

@@ -6,11 +6,14 @@ from .tok import CharTokenizer, SimpleTokenizer, normalize_text, split_sentences
 from .vec import CountVectorizer, HashingVectorizer, SparseCOO, TfidfVectorizer
 from .vocab import SeqPad, TextSeq, Vocab
 
+NLP_LDA = LDA
+
 __all__ = [
     "CountVectorizer",
     "CharTokenizer",
     "HashingVectorizer",
     "LDA",
+    "NLP_LDA",
     "NGramLM",
     "NGramLanguageModel",
     "SparseCOO",

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import weakref
+from typing import Any
 
 import numpy as np
 
@@ -20,7 +21,7 @@ except ImportError:  # pragma: no cover - fallback when Cython extensions are un
     _cy_sigmoid_kernel = None
 
 
-_PAIRWISE_KERNEL_CACHE = {}
+_PAIRWISE_KERNEL_CACHE: dict[tuple[Any, ...], Any] = {}
 
 
 def _validate_same_shape(X, Y):

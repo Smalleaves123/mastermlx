@@ -57,14 +57,20 @@ class BatchNorm(BaseLayer):
         if not self.training or self.X_ is None:
             return grad
 
-        n = self.X_.shape[0]
+        X = self.X_
+        centered = self.X_centered_
+        norm = self.X_norm_
+        std_inv = self.std_inv_
+        if X is None or centered is None or norm is None or std_inv is None:
+            raise RuntimeError("forward must be called before backward")
+        n = X.shape[0]
         self.dbeta_ = np.sum(grad, axis=0)
-        self.dgamma_ = np.sum(grad * self.X_norm_, axis=0)
+        self.dgamma_ = np.sum(grad * norm, axis=0)
 
         dx_norm = grad * self.gamma_
-        dvar = np.sum(dx_norm * self.X_centered_ * -0.5 * self.std_inv_**3, axis=0)
-        dmean = np.sum(dx_norm * -self.std_inv_, axis=0) + dvar * np.mean(-2.0 * self.X_centered_, axis=0)
-        dx = dx_norm * self.std_inv_ + dvar * 2.0 * self.X_centered_ / n + dmean / n
+        dvar = np.sum(dx_norm * centered * -0.5 * std_inv**3, axis=0)
+        dmean = np.sum(dx_norm * -std_inv, axis=0) + dvar * np.mean(-2.0 * centered, axis=0)
+        dx = dx_norm * std_inv + dvar * 2.0 * centered / n + dmean / n
         return dx
 
     def step(self, lr=None, optimizer=None, key_prefix="batchnorm"):

@@ -89,7 +89,6 @@ class KernelSVR(BaseEstimator):
 
             diff = self.alpha_ - self.alpha_star_
             pred = K @ diff
-            err = pred - y
             loss = 0.5 * diff @ pred + self.epsilon * np.sum(self.alpha_ + self.alpha_star_) - y @ diff
             self.loss_.append(float(loss))
             if prev is not None and abs(prev - loss) < self.tol:

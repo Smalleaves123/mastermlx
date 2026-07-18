@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+from typing import cast
 
 from ..base import BaseTransformer
 from ..utils import as_2d, check_2d_array
@@ -47,12 +48,12 @@ class PCA(BaseTransformer):
     def transform(self, X):
         self._check_fitted(["components_", "mean_"])
         X = self._check_X(X)
-        return (X - self.mean_) @ self.components_.T
+        return (X - cast(np.ndarray, self.mean_)) @ cast(np.ndarray, self.components_).T
 
     def inverse_transform(self, X):
         self._check_fitted(["components_", "mean_"])
         X = as_2d(X)
-        return X @ self.components_ + self.mean_
+        return X @ cast(np.ndarray, self.components_) + cast(np.ndarray, self.mean_)
 
 
 PC = PCA

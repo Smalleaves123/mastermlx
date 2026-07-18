@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -57,7 +58,7 @@ def save_signal_bundle(path, signal, sample_rate=None, metadata=None):
 def load_signal_bundle(path):
     path = Path(path)
     with np.load(path, allow_pickle=False) as data:
-        bundle = {
+        bundle: dict[str, Any] = {
             "signal": np.asarray(data["signal"], dtype=float),
             "sample_rate": None,
             "metadata": None,

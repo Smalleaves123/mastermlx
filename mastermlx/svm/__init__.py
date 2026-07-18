@@ -6,4 +6,4 @@ from .nusvc import NuSVC
 from .svc import SVC
 from .svr import LinearSVR
 
-__all__ = ["KernelSVR", "LinearSVR", "OneClassSVM", "SVC"]
+__all__ = ["KernelSVR", "LinearSVR", "NuSVC", "OneClassSVM", "SVC"]

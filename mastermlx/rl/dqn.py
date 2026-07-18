@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 from collections import deque
+from typing import Any
 
 
 class DQNAgent:
@@ -21,7 +22,7 @@ class DQNAgent:
         self.target_update = int(target_update)
         self.random_state = random_state
         self._rng = np.random.default_rng(random_state)
-        self.memory = deque(maxlen=int(memory_size))
+        self.memory: deque[Any] = deque(maxlen=int(memory_size))
         self._step_count = 0
 
         # Build network
@@ -56,16 +57,16 @@ class DQNAgent:
             return
         self._step_count += 1
         batch_idx = self._rng.choice(len(self.memory), size=self.batch_size, replace=False)
-        S, A, R, NS, D = [], [], [], [], []
+        S_list, A, R, NS_list, D = [], [], [], [], []
         for i in batch_idx:
             s, a, r, ns, d = self.memory[i]
-            S.append(np.asarray(s, dtype=float).ravel())
+            S_list.append(np.asarray(s, dtype=float).ravel())
             A.append(a)
             R.append(r)
-            NS.append(np.asarray(ns, dtype=float).ravel())
+            NS_list.append(np.asarray(ns, dtype=float).ravel())
             D.append(d)
-        S = np.array(S)
-        NS = np.array(NS)
+        S = np.asarray(S_list, dtype=float)
+        NS = np.asarray(NS_list, dtype=float)
 
         # Forward pass — current Q
         activations = [S]

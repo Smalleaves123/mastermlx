@@ -96,7 +96,7 @@ def cepstrum_peaks(
         if score[idx] >= score[idx - 1] and score[idx] > score[idx + 1]:
             candidates.append(idx)
     candidates.sort(key=lambda idx: score[idx], reverse=True)
-    selected = []
+    selected: list[int] = []
     for idx in candidates:
         if all(abs(idx - other) >= min_distance for other in selected):
             selected.append(idx)

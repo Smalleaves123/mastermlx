@@ -3,17 +3,18 @@ from __future__ import annotations
 import numpy as np
 
 from ..utils.metrics import *  # noqa: F401,F403
+from ..utils.metrics import confusion_matrix as _confusion_matrix
 
 
 def balanced_accuracy_score(y_true, y_pred):
-    cm = confusion_matrix(y_true, y_pred).astype(float)
+    cm = _confusion_matrix(y_true, y_pred).astype(float)
     row_sums = cm.sum(axis=1)
     recalls = np.divide(np.diag(cm), row_sums, out=np.zeros_like(row_sums), where=row_sums != 0)
     return float(np.mean(recalls))
 
 
 def matthews_corrcoef(y_true, y_pred):
-    cm = confusion_matrix(y_true, y_pred).astype(float)
+    cm = _confusion_matrix(y_true, y_pred).astype(float)
     t_sum = cm.sum(axis=1)
     p_sum = cm.sum(axis=0)
     c = np.trace(cm)
@@ -26,7 +27,7 @@ def matthews_corrcoef(y_true, y_pred):
 
 
 def cohen_kappa_score(y_true, y_pred):
-    cm = confusion_matrix(y_true, y_pred).astype(float)
+    cm = _confusion_matrix(y_true, y_pred).astype(float)
     n = cm.sum()
     if n == 0:
         return 0.0

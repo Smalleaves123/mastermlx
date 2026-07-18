@@ -37,7 +37,7 @@ class AdaBoostRegressor(BaseEstimator):
         self.init_ = float(np.average(y, weights=sample_weight))
         current = np.full(n_samples, self.init_, dtype=float)
         self.estimators_ = []
-        self.estimator_weights_ = []
+        estimator_weights: list[float] = []
 
         for _ in range(self.n_estimators):
             tree = DecisionTreeRegressor(
@@ -54,11 +54,11 @@ class AdaBoostRegressor(BaseEstimator):
             sample_weight /= np.sum(sample_weight)
 
             self.estimators_.append(tree)
-            self.estimator_weights_.append(self.learning_rate)
+            estimator_weights.append(self.learning_rate)
             if np.max(np.abs(update)) <= 1e-12:
                 break
 
-        self.estimator_weights_ = np.asarray(self.estimator_weights_, dtype=float)
+        self.estimator_weights_ = np.asarray(estimator_weights, dtype=float)
         return self
 
     def predict(self, X):
