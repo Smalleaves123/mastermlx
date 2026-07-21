@@ -67,6 +67,34 @@ def test_histgb_numpy_and_compiled_paths_match():
         set_backend(old)
 
 
+def test_histgb_feature_subsampling_is_reproducible_and_backend_parity_holds():
+    rng = np.random.default_rng(10)
+    X = rng.normal(size=(180, 6))
+    y = (X[:, 0] - X[:, 1] + 0.2 * X[:, 2] > 0).astype(int)
+    old = get_backend()
+    try:
+        set_backend("numpy")
+        numpy_model = HistGradientBoostingClassifier(
+            n_estimators=6, max_depth=3, min_samples_leaf=5, max_features=3, random_state=7
+        ).fit(X, y)
+        repeat_model = HistGradientBoostingClassifier(
+            n_estimators=6, max_depth=3, min_samples_leaf=5, max_features=3, random_state=7
+        ).fit(X, y)
+        assert all(tree.feature_indices_.size == 3 for tree in numpy_model.trees_)
+        assert np.allclose(numpy_model.predict_proba(X), repeat_model.predict_proba(X))
+        assert numpy_model.get_params()["max_features"] == 3
+
+        set_backend("auto")
+        compiled_model = HistGradientBoostingClassifier(
+            n_estimators=6, max_depth=3, min_samples_leaf=5, max_features=3, random_state=7
+        ).fit(X, y)
+        assert np.allclose(
+            numpy_model.predict_proba(X), compiled_model.predict_proba(X), atol=1e-10
+        )
+    finally:
+        set_backend(old)
+
+
 def test_compiled_hist_tree_preserves_valid_child_indices():
     if _fit_hist_cpp is None or _predict_hist_cpp is None:
         pytest.skip("compiled histogram tree extension is unavailable")

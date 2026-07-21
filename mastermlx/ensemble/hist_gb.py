@@ -58,12 +58,24 @@ class _HistTree:
         self.root = None
         self._compiled = False
         self._nodes = None
+        self.feature_indices_ = None
 
-    def fit(self, X, g, h):
+    def fit(self, X, g, h, feature_indices=None):
         """X: binned int32 (n, d). g, h: gradients and hessians (n,)."""
         X = np.asarray(X, dtype=np.int32)
         g = np.asarray(g, dtype=float)
         h = np.asarray(h, dtype=float)
+        if X.ndim != 2 or g.ndim != 1 or h.ndim != 1:
+            raise ValueError("X must be 2D and g/h must be 1D")
+        if X.shape[0] != g.size or g.size != h.size:
+            raise ValueError("X, g, and h must have the same number of rows")
+        if feature_indices is not None:
+            feature_indices = np.asarray(feature_indices, dtype=int).reshape(-1)
+            if feature_indices.size != X.shape[1] or np.any(feature_indices < 0):
+                raise ValueError("feature_indices must match the selected X columns")
+            self.feature_indices_ = feature_indices.copy()
+        else:
+            self.feature_indices_ = None
         n, d = X.shape
         self.n_bins = min(self.n_bins, n)
         self._compiled = False
@@ -156,6 +168,10 @@ class _HistTree:
         X = np.asarray(X, dtype=np.int32)
         if X.ndim != 2:
             raise ValueError("X must be a 2D binned matrix")
+        if self.feature_indices_ is not None and X.shape[1] != self.feature_indices_.size:
+            if np.any(self.feature_indices_ >= X.shape[1]):
+                raise ValueError("X does not contain all features used by this tree")
+            X = X[:, self.feature_indices_]
         if self._compiled and _predict_hist_cpp is not None and get_backend() == "auto":
             return _predict_hist_cpp(X, *self._nodes)
         if self._compiled:
@@ -182,7 +198,8 @@ class _HistTree:
 
 class _HistGBBase(BaseEstimator):
     def __init__(self, loss, n_estimators=100, learning_rate=0.1, max_depth=6,
-                 min_samples_leaf=20, l2_reg=0.0, max_bins=256, random_state=None):
+                 min_samples_leaf=20, l2_reg=0.0, max_bins=256, random_state=None,
+                 max_features=None):
         self.loss = loss
         self.n_estimators = int(n_estimators)
         self.learning_rate = float(learning_rate)
@@ -191,9 +208,29 @@ class _HistGBBase(BaseEstimator):
         self.l2_reg = float(l2_reg)
         self.max_bins = int(max_bins)
         self.random_state = random_state
+        self.max_features = max_features
         self.init_ = 0.0
         self.trees_ = []
         self._edges = None
+
+    def _feature_count(self, n_features):
+        value = self.max_features
+        if value is None:
+            return n_features
+        if isinstance(value, str):
+            if value == "sqrt":
+                return max(1, int(np.sqrt(n_features)))
+            if value == "log2":
+                return max(1, int(np.log2(n_features)))
+            raise ValueError("max_features must be None, an int, a float, 'sqrt', or 'log2'")
+        if isinstance(value, (int, np.integer)):
+            if value < 1 or value > n_features:
+                raise ValueError("integer max_features must be in [1, n_features]")
+            return int(value)
+        value = float(value)
+        if not np.isfinite(value) or value <= 0.0 or value > 1.0:
+            raise ValueError("float max_features must be in (0, 1]")
+        return max(1, int(np.ceil(value * n_features)))
 
     def _grad_hess(self, y_true, raw_pred):
         raise NotImplementedError
@@ -207,12 +244,20 @@ class _HistGBBase(BaseEstimator):
         X_binned, self._edges = _bin_data(X, self.max_bins)
         raw_pred = np.full(y.shape[0], self.init_, dtype=float)
         self.trees_ = []
+        rng = np.random.default_rng(self.random_state)
+        feature_count = self._feature_count(X.shape[1])
 
         for _ in range(self.n_estimators):
             g, h = self._grad_hess(y, raw_pred)
+            if feature_count == X.shape[1]:
+                feature_indices = np.arange(X.shape[1], dtype=int)
+            else:
+                feature_indices = np.sort(
+                    rng.choice(X.shape[1], size=feature_count, replace=False).astype(int)
+                )
             tree = _HistTree(self.max_depth, self.min_samples_leaf, self.l2_reg, self.max_bins)
-            tree.fit(X_binned, g, h)
-            update = tree.predict(X_binned)
+            tree.fit(X_binned[:, feature_indices], g, h, feature_indices=feature_indices)
+            update = tree.predict(X_binned[:, feature_indices])
             raw_pred += self.learning_rate * update
             self.trees_.append(tree)
         return self
@@ -234,11 +279,13 @@ class HistGradientBoostingClassifier(_HistGBBase):
     """Histogram-based gradient boosting for classification (binary log-loss)."""
 
     def __init__(self, n_estimators=100, learning_rate=0.1, max_depth=6,
-                 min_samples_leaf=20, l2_reg=0.0, max_bins=256, random_state=None):
+                 min_samples_leaf=20, l2_reg=0.0, max_bins=256, random_state=None,
+                 max_features=None):
         super().__init__(loss="log_loss", n_estimators=n_estimators,
                          learning_rate=learning_rate, max_depth=max_depth,
                          min_samples_leaf=min_samples_leaf, l2_reg=l2_reg,
-                         max_bins=max_bins, random_state=random_state)
+                         max_bins=max_bins, random_state=random_state,
+                         max_features=max_features)
         self.classes_ = None
 
     def _grad_hess(self, y_true, raw_pred):
@@ -276,11 +323,13 @@ class HistGradientBoostingRegressor(_HistGBBase):
     """Histogram-based gradient boosting for regression (squared error)."""
 
     def __init__(self, n_estimators=100, learning_rate=0.1, max_depth=6,
-                 min_samples_leaf=20, l2_reg=0.0, max_bins=256, random_state=None):
+                 min_samples_leaf=20, l2_reg=0.0, max_bins=256, random_state=None,
+                 max_features=None):
         super().__init__(loss="squared_error", n_estimators=n_estimators,
                          learning_rate=learning_rate, max_depth=max_depth,
                          min_samples_leaf=min_samples_leaf, l2_reg=l2_reg,
-                         max_bins=max_bins, random_state=random_state)
+                         max_bins=max_bins, random_state=random_state,
+                         max_features=max_features)
 
     def _grad_hess(self, y_true, raw_pred):
         y_true = np.asarray(y_true, dtype=float)
