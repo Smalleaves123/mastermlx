@@ -61,3 +61,22 @@ assert knowledge.path("alice", "carol", predicate="parent") == [
 The core package has no NetworkX or Graphviz runtime dependency. Use the DOT
 text returned by `to_dot` or `KnowledgeGraph.to_dot` with a local Graphviz
 installation when a visual artifact is needed.
+
+## CSR and C++ acceleration
+
+For large integer-indexed graphs, convert once to CSR storage. The original
+node labels are preserved by `CSRGraph`, while the optional C++ extension works
+on contiguous integer arrays internally.
+
+```python
+from mastermlx.graphs import CSRGraph, bfs_csr, topological_sort_csr
+
+csr = CSRGraph.from_graph(graph)
+visit_order = bfs_csr(csr, "extract")
+task_order = topological_sort_csr(csr)
+```
+
+The accelerated functions are `bfs_csr`, `connected_components_csr`, and
+`topological_sort_csr`. They fall back to the Python implementations when the
+extension is unavailable or the backend is set to `numpy`. Run
+`python benchmarks/bench_graphs.py` to compare both paths locally.

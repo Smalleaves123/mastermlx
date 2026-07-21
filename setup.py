@@ -61,6 +61,14 @@ cpp_exts = [
         language="c++",
     ),
     Extension(
+        "mastermlx.graphs._graph_cpp",
+        ["mastermlx/graphs/_graph_cpp.cpp"],
+        include_dirs=inc_dirs,
+        extra_compile_args=["-O3", *thread_flags],
+        extra_link_args=thread_flags,
+        language="c++",
+    ),
+    Extension(
         "mastermlx.ensemble._hist_cpp",
         ["mastermlx/ensemble/_hist_cpp.cpp"],
         include_dirs=inc_dirs,
