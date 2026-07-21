@@ -4,6 +4,7 @@ import numpy as np
 from typing import cast
 
 from ..config import get_backend
+from ._validation import validate_iteration_options, validate_lqr_matrices
 
 try:
     from ._lqr_ops import finite_horizon_lqr as _cy_finite_horizon_lqr
@@ -16,14 +17,12 @@ except ImportError:  # pragma: no cover - fallback when Cython extensions are un
 def solve_discrete_are(A, B, Q, R, *, max_iter=1000, tol=1e-9):
     """Solve the discrete algebraic Riccati equation by fixed-point iteration."""
 
-    A = np.asarray(A, dtype=float)
-    B = np.asarray(B, dtype=float)
-    Q = np.asarray(Q, dtype=float)
-    R = np.asarray(R, dtype=float)
+    A, B, Q, R = validate_lqr_matrices(A, B, Q, R)
+    max_iter, tol = validate_iteration_options(max_iter, tol)
     if get_backend() != "numpy" and _cy_solve_discrete_are is not None:
-        return _cy_solve_discrete_are(A, B, Q, R, int(max_iter), float(tol))
+        return _cy_solve_discrete_are(A, B, Q, R, max_iter, tol)
     P = Q.copy()
-    for _ in range(int(max_iter)):
+    for _ in range(max_iter):
         BtP = B.T @ P
         S = R + BtP @ B
         K = np.linalg.solve(S, BtP @ A)
@@ -40,15 +39,18 @@ def finite_horizon_lqr(A, B, Q, R, horizon, Qf=None, reference=None):
     Returns the feedback gains and the cost-to-go matrices.
     """
 
-    A = np.asarray(A, dtype=float)
-    B = np.asarray(B, dtype=float)
-    Q = np.asarray(Q, dtype=float)
-    R = np.asarray(R, dtype=float)
+    A, B, Q, R = validate_lqr_matrices(A, B, Q, R)
     horizon = int(horizon)
     if horizon < 1:
         raise ValueError("horizon must be at least 1")
     Qf = Q if Qf is None else np.asarray(Qf, dtype=float)
+    if Qf.shape != Q.shape or not np.all(np.isfinite(Qf)):
+        raise ValueError("Qf must be finite and have the same shape as Q")
+    if not np.allclose(Qf, Qf.T, atol=1e-10, rtol=1e-10):
+        raise ValueError("Qf must be symmetric")
     ref = None if reference is None else np.asarray(reference, dtype=float)
+    if ref is not None and (ref.shape[-1:] != (A.shape[0],) or not np.all(np.isfinite(ref))):
+        raise ValueError("reference must contain finite state vectors")
 
     if get_backend() != "numpy" and _cy_finite_horizon_lqr is not None:
         return _cy_finite_horizon_lqr(A, B, Q, R, horizon, Qf=Qf, reference=ref)
@@ -70,17 +72,15 @@ class DiscreteLQR:
     """Infinite-horizon discrete-time LQR controller."""
 
     def __init__(self, A, B, Q, R, *, max_iter=1000, tol=1e-9):
-        self.A_ = np.asarray(A, dtype=float)
-        self.B_ = np.asarray(B, dtype=float)
-        self.Q_ = np.asarray(Q, dtype=float)
-        self.R_ = np.asarray(R, dtype=float)
-        self.max_iter = int(max_iter)
-        self.tol = float(tol)
+        self.max_iter, self.tol = validate_iteration_options(max_iter, tol)
+        self.A_, self.B_, self.Q_, self.R_ = validate_lqr_matrices(A, B, Q, R)
         self.P_ = None
         self.K_ = None
 
     def fit(self):
-        self.P_ = solve_discrete_are(self.A_, self.B_, self.Q_, self.R_, max_iter=self.max_iter, tol=self.tol)
+        self.P_ = solve_discrete_are(
+            self.A_, self.B_, self.Q_, self.R_, max_iter=self.max_iter, tol=self.tol
+        )
         S = self.R_ + self.B_.T @ self.P_ @ self.B_
         self.K_ = np.linalg.solve(S, self.B_.T @ self.P_ @ self.A_)
         return self

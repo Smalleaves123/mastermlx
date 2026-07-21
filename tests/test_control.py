@@ -1,6 +1,17 @@
 import numpy as np
+import pytest
 
-from mastermlx.control import DiscreteLQR, LinearMPC, PIDController, finite_horizon_lqr, iLQR, rollout_dynamics
+from mastermlx import get_backend, set_backend
+from mastermlx.control import (
+    DiscreteLQR,
+    LinearMPC,
+    PIDController,
+    finite_horizon_lqr,
+    iLQR,
+    rollout_dynamics,
+    rollout_linear_dynamics,
+)
+from mastermlx.control.mpc import _load_cpp_control
 
 
 def test_pid_controller_basic_response():
@@ -74,3 +85,43 @@ def test_ilqr_reduces_quadratic_cost():
     assert X_opt.shape == (U0.shape[0] + 1, 1)
     assert cost_opt < base_cost
     assert abs(X_opt[-1, 0]) < abs(X_base[-1, 0])
+
+
+def test_linear_mpc_box_solver_respects_bounds_and_supports_references():
+    A = np.array([[1.0]])
+    B = np.array([[1.0]])
+    Q = np.array([[1.0]])
+    R = np.array([[0.1]])
+    mpc = LinearMPC(A, B, Q, R, horizon=4, u_bounds=(-0.25, 0.25))
+
+    control = mpc.control(np.array([2.0]), x_ref=np.zeros((5, 1)))
+
+    assert -0.25 <= control[0] <= 0.25
+    assert mpc.qp_converged_
+    assert mpc.last_qp_iterations_ > 0
+
+
+def test_control_validation_rejects_incompatible_lqr_matrices():
+    with pytest.raises(ValueError, match="positive definite"):
+        DiscreteLQR(np.eye(2), np.ones((2, 1)), np.eye(2), np.zeros((1, 1)))
+    with pytest.raises(ValueError, match="horizon"):
+        LinearMPC(np.eye(1), np.ones((1, 1)), np.eye(1), np.eye(1), horizon=0)
+
+
+def test_cpp_linear_rollout_matches_numpy_when_available():
+    cpp = _load_cpp_control("auto")
+    if cpp is None:
+        pytest.skip("C++ control extension is unavailable")
+    A = np.array([[1.0, 0.1], [0.0, 1.0]])
+    B = np.array([[0.0], [0.1]])
+    x0 = np.array([1.0, 0.2])
+    U = np.arange(12, dtype=float).reshape(6, 2)[:, :1] / 10.0
+    old = get_backend()
+    try:
+        set_backend("numpy")
+        reference = rollout_linear_dynamics(A, B, x0, U)
+        set_backend("auto")
+        accelerated = rollout_linear_dynamics(A, B, x0, U)
+        assert np.allclose(reference, accelerated, atol=1e-12)
+    finally:
+        set_backend(old)
