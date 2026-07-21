@@ -217,11 +217,29 @@ class _HistTree:
             pred[i] = node.value
         return pred
 
+    def split_features(self):
+        """Return local feature indices used by non-leaf nodes."""
+        if self._compiled:
+            features = cast(tuple[np.ndarray, ...], self._nodes)[0]
+            return np.asarray(features, dtype=int)[np.asarray(features) >= 0]
+        result = []
+
+        def visit(node):
+            if node is None or node.left is None or node.right is None:
+                return
+            result.append(node.feat)
+            visit(node.left)
+            visit(node.right)
+
+        visit(self.root)
+        return np.asarray(result, dtype=int)
+
 
 class _HistGBBase(BaseEstimator):
     def __init__(self, loss, n_estimators=100, learning_rate=0.1, max_depth=6,
                  min_samples_leaf=20, l2_reg=0.0, max_bins=256, random_state=None,
-                 max_features=None):
+                 max_features=None, early_stopping=False, validation_fraction=0.1,
+                 n_iter_no_change=10, tol=1e-7):
         self.loss = loss
         self.n_estimators = int(n_estimators)
         self.learning_rate = float(learning_rate)
@@ -231,10 +249,24 @@ class _HistGBBase(BaseEstimator):
         self.max_bins = int(max_bins)
         self.random_state = random_state
         self.max_features = max_features
+        self.early_stopping = bool(early_stopping)
+        self.validation_fraction = float(validation_fraction)
+        self.n_iter_no_change = int(n_iter_no_change)
+        self.tol = float(tol)
+        if not 0.0 < self.validation_fraction < 1.0:
+            raise ValueError("validation_fraction must be between 0 and 1")
+        if self.n_iter_no_change < 1:
+            raise ValueError("n_iter_no_change must be positive")
+        if not np.isfinite(self.tol) or self.tol < 0.0:
+            raise ValueError("tol must be finite and non-negative")
         self.init_ = 0.0
         self.trees_ = []
         self._edges = None
         self._missing_values_ = None
+        self.n_iter_ = 0
+        self.train_scores_ = []
+        self.validation_scores_ = []
+        self.feature_importances_ = None
 
     def _feature_count(self, n_features):
         value = self.max_features
@@ -258,6 +290,24 @@ class _HistGBBase(BaseEstimator):
     def _grad_hess(self, y_true, raw_pred):
         raise NotImplementedError
 
+    def _loss_value(self, y_true, raw_pred):
+        if self.loss == "log_loss":
+            return float(np.mean(np.logaddexp(0.0, raw_pred) - y_true * raw_pred))
+        return float(np.mean((raw_pred - y_true) ** 2))
+
+    def _compute_feature_importances(self):
+        counts = np.zeros(self.n_features_in_, dtype=float)
+        for tree in self.trees_:
+            local_features = tree.split_features()
+            if tree.feature_indices_ is None:
+                original_features = local_features
+            else:
+                original_features = tree.feature_indices_[local_features]
+            for feature in original_features:
+                counts[feature] += 1.0
+        total = float(np.sum(counts))
+        return counts / total if total > 0.0 else counts
+
     def fit(self, X, y=None):
         X = check_2d_array(X)
         y = check_1d_array(y)
@@ -266,13 +316,41 @@ class _HistGBBase(BaseEstimator):
 
         X = np.asarray(X, dtype=float)
         self.n_features_in_ = int(X.shape[1])
+        rng = np.random.default_rng(self.random_state)
+        validation_X = None
+        validation_y = None
+        if self.early_stopping:
+            n_validation = max(1, int(np.ceil(X.shape[0] * self.validation_fraction)))
+            if n_validation >= X.shape[0]:
+                raise ValueError("early stopping requires at least two training samples")
+            permutation = rng.permutation(X.shape[0])
+            validation_indices = permutation[:n_validation]
+            training_indices = permutation[n_validation:]
+            validation_X = X[validation_indices]
+            validation_y = y[validation_indices]
+            X = X[training_indices]
+            y = y[training_indices]
+
         self._missing_values_ = _missing_value_fills(X)
         X = _fill_missing_values(X, self._missing_values_)
         X_binned, self._edges = _bin_data(X, self.max_bins)
+        validation_binned = None
+        if validation_X is not None:
+            validation_X = _fill_missing_values(validation_X, self._missing_values_)
+            validation_binned, _ = _bin_data(validation_X, self.max_bins)
         raw_pred = np.full(y.shape[0], self.init_, dtype=float)
+        validation_raw = (
+            None
+            if validation_y is None
+            else np.full(validation_y.shape[0], self.init_, dtype=float)
+        )
         self.trees_ = []
-        rng = np.random.default_rng(self.random_state)
+        self.train_scores_ = []
+        self.validation_scores_ = []
         feature_count = self._feature_count(X.shape[1])
+        best_validation_loss = np.inf
+        best_iteration = 0
+        stale_iterations = 0
 
         for _ in range(self.n_estimators):
             g, h = self._grad_hess(y, raw_pred)
@@ -287,6 +365,26 @@ class _HistGBBase(BaseEstimator):
             update = tree.predict(X_binned[:, feature_indices])
             raw_pred += self.learning_rate * update
             self.trees_.append(tree)
+            self.train_scores_.append(self._loss_value(y, raw_pred))
+            if validation_binned is not None and validation_y is not None:
+                validation_raw = validation_raw + self.learning_rate * tree.predict(validation_binned)
+                validation_loss = self._loss_value(validation_y, validation_raw)
+                self.validation_scores_.append(validation_loss)
+                if validation_loss < best_validation_loss - self.tol:
+                    best_validation_loss = validation_loss
+                    best_iteration = len(self.trees_)
+                    stale_iterations = 0
+                else:
+                    stale_iterations += 1
+                    if stale_iterations >= self.n_iter_no_change:
+                        break
+
+        if validation_binned is not None and best_iteration < len(self.trees_):
+            self.trees_ = self.trees_[:best_iteration]
+            self.train_scores_ = self.train_scores_[:best_iteration]
+            self.validation_scores_ = self.validation_scores_[:best_iteration]
+        self.n_iter_ = len(self.trees_)
+        self.feature_importances_ = self._compute_feature_importances()
         return self
 
     def predict_raw(self, X):
@@ -312,12 +410,15 @@ class HistGradientBoostingClassifier(_HistGBBase):
 
     def __init__(self, n_estimators=100, learning_rate=0.1, max_depth=6,
                  min_samples_leaf=20, l2_reg=0.0, max_bins=256, random_state=None,
-                 max_features=None):
+                 max_features=None, early_stopping=False, validation_fraction=0.1,
+                 n_iter_no_change=10, tol=1e-7):
         super().__init__(loss="log_loss", n_estimators=n_estimators,
                          learning_rate=learning_rate, max_depth=max_depth,
                          min_samples_leaf=min_samples_leaf, l2_reg=l2_reg,
                          max_bins=max_bins, random_state=random_state,
-                         max_features=max_features)
+                         max_features=max_features, early_stopping=early_stopping,
+                         validation_fraction=validation_fraction,
+                         n_iter_no_change=n_iter_no_change, tol=tol)
         self.classes_ = None
 
     def _grad_hess(self, y_true, raw_pred):
@@ -356,12 +457,15 @@ class HistGradientBoostingRegressor(_HistGBBase):
 
     def __init__(self, n_estimators=100, learning_rate=0.1, max_depth=6,
                  min_samples_leaf=20, l2_reg=0.0, max_bins=256, random_state=None,
-                 max_features=None):
+                 max_features=None, early_stopping=False, validation_fraction=0.1,
+                 n_iter_no_change=10, tol=1e-7):
         super().__init__(loss="squared_error", n_estimators=n_estimators,
                          learning_rate=learning_rate, max_depth=max_depth,
                          min_samples_leaf=min_samples_leaf, l2_reg=l2_reg,
                          max_bins=max_bins, random_state=random_state,
-                         max_features=max_features)
+                         max_features=max_features, early_stopping=early_stopping,
+                         validation_fraction=validation_fraction,
+                         n_iter_no_change=n_iter_no_change, tol=tol)
 
     def _grad_hess(self, y_true, raw_pred):
         y_true = np.asarray(y_true, dtype=float)

@@ -122,6 +122,28 @@ def test_histgb_fills_missing_values_consistently_for_numpy_and_cpp():
         set_backend(old)
 
 
+def test_histgb_early_stopping_records_scores_and_importances():
+    rng = np.random.default_rng(12)
+    X = rng.normal(size=(140, 5))
+    y = (X[:, 0] + X[:, 1] > 0).astype(int)
+    model = HistGradientBoostingClassifier(
+        n_estimators=20,
+        max_depth=3,
+        min_samples_leaf=5,
+        early_stopping=True,
+        validation_fraction=0.25,
+        n_iter_no_change=1,
+        tol=1e9,
+        random_state=4,
+    ).fit(X, y)
+
+    assert model.n_iter_ == 1
+    assert len(model.trees_) == len(model.train_scores_) == len(model.validation_scores_)
+    assert model.feature_importances_.shape == (X.shape[1],)
+    assert np.isclose(model.feature_importances_.sum(), 1.0)
+    assert model.feature_importances_[0] + model.feature_importances_[1] > 0.0
+
+
 def test_compiled_hist_tree_preserves_valid_child_indices():
     if _fit_hist_cpp is None or _predict_hist_cpp is None:
         pytest.skip("compiled histogram tree extension is unavailable")
