@@ -91,8 +91,9 @@ def test_mann_whitney_different_groups():
 
 
 def test_mann_whitney_same_group():
-    x = np.random.randn(50)
-    y = np.random.randn(50)
+    rng = np.random.default_rng(0)
+    x = rng.normal(size=50)
+    y = rng.normal(size=50)
     _, p = mann_whitney(x, y)
     assert p > 0.01  # unlikely to be significant
 
