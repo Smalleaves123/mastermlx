@@ -95,6 +95,33 @@ def test_histgb_feature_subsampling_is_reproducible_and_backend_parity_holds():
         set_backend(old)
 
 
+def test_histgb_fills_missing_values_consistently_for_numpy_and_cpp():
+    rng = np.random.default_rng(11)
+    X = rng.normal(size=(160, 4))
+    y = (X[:, 0] - 0.5 * X[:, 1] > 0).astype(int)
+    X[::11, 0] = np.nan
+    X[::17, 2] = np.nan
+    X[:, 3] = np.nan
+    old = get_backend()
+    try:
+        set_backend("numpy")
+        numpy_model = HistGradientBoostingClassifier(
+            n_estimators=5, max_depth=3, min_samples_leaf=5, random_state=3
+        ).fit(X, y)
+        numpy_proba = numpy_model.predict_proba(X)
+        assert np.all(np.isfinite(numpy_proba))
+        assert np.all(np.isfinite(numpy_model._missing_values_))
+        assert numpy_model._missing_values_[3] == 0.0
+
+        set_backend("auto")
+        compiled_model = HistGradientBoostingClassifier(
+            n_estimators=5, max_depth=3, min_samples_leaf=5, random_state=3
+        ).fit(X, y)
+        assert np.allclose(numpy_proba, compiled_model.predict_proba(X), atol=1e-10)
+    finally:
+        set_backend(old)
+
+
 def test_compiled_hist_tree_preserves_valid_child_indices():
     if _fit_hist_cpp is None or _predict_hist_cpp is None:
         pytest.skip("compiled histogram tree extension is unavailable")

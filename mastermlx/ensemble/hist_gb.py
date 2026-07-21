@@ -41,6 +41,28 @@ def _bin_data(X, n_bins=256):
     return binned, edges
 
 
+def _missing_value_fills(X):
+    """Return finite per-column medians used to make histogram input dense."""
+    X = np.asarray(X, dtype=float)
+    if np.any(np.isinf(X)):
+        raise ValueError("X must not contain infinite values")
+    fills = np.zeros(X.shape[1], dtype=float)
+    for column in range(X.shape[1]):
+        values = X[~np.isnan(X[:, column]), column]
+        if values.size:
+            fills[column] = float(np.median(values))
+    return fills
+
+
+def _fill_missing_values(X, fills):
+    X = np.asarray(X, dtype=float)
+    if X.ndim != 2 or fills.shape != (X.shape[1],):
+        raise ValueError("X and missing-value fills have incompatible shapes")
+    if np.any(np.isinf(X)):
+        raise ValueError("X must not contain infinite values")
+    return np.where(np.isnan(X), fills[None, :], X)
+
+
 class _HistNode:
     def __init__(self):
         self.left = self.right = None
@@ -212,6 +234,7 @@ class _HistGBBase(BaseEstimator):
         self.init_ = 0.0
         self.trees_ = []
         self._edges = None
+        self._missing_values_ = None
 
     def _feature_count(self, n_features):
         value = self.max_features
@@ -241,6 +264,10 @@ class _HistGBBase(BaseEstimator):
         if X.shape[0] != y.shape[0]:
             raise ValueError("X and y must have same number of rows")
 
+        X = np.asarray(X, dtype=float)
+        self.n_features_in_ = int(X.shape[1])
+        self._missing_values_ = _missing_value_fills(X)
+        X = _fill_missing_values(X, self._missing_values_)
         X_binned, self._edges = _bin_data(X, self.max_bins)
         raw_pred = np.full(y.shape[0], self.init_, dtype=float)
         self.trees_ = []
@@ -263,7 +290,12 @@ class _HistGBBase(BaseEstimator):
         return self
 
     def predict_raw(self, X):
-        X = check_2d_array(X)
+        X = np.asarray(check_2d_array(X), dtype=float)
+        if self._edges is None or self._missing_values_ is None:
+            raise ValueError("HistGradientBoosting estimator is not fitted")
+        if X.shape[1] != self.n_features_in_:
+            raise ValueError("X has a different number of features than the fitted data")
+        X = _fill_missing_values(X, cast(np.ndarray, self._missing_values_))
         X_binned = np.zeros((X.shape[0], X.shape[1]), dtype=np.int32)
         for j, edges in enumerate(cast(list[np.ndarray], self._edges)):
             if edges is not None:
