@@ -24,6 +24,25 @@ def test_pid_controller_basic_response():
     assert np.allclose(u2, 3.0)
 
 
+def test_pid_integral_limits_and_derivative_on_measurement():
+    pid = PIDController(kp=0.0, ki=1.0, integral_limits=(-0.5, 0.5))
+    assert np.allclose(pid.update(0.0, dt=1.0, setpoint=1.0), 0.5)
+    assert np.allclose(pid.update(0.0, dt=1.0, setpoint=1.0), 0.5)
+
+    derivative_pid = PIDController(kp=0.0, kd=1.0, derivative_on_measurement=True)
+    derivative_pid.update(0.0, dt=1.0, setpoint=0.0)
+    assert np.allclose(derivative_pid.update(0.0, dt=1.0, setpoint=1.0), 0.0)
+
+
+def test_pid_validation_rejects_invalid_parameters():
+    with pytest.raises(ValueError, match="kp"):
+        PIDController(kp=np.inf)
+    with pytest.raises(ValueError, match="lower bound"):
+        PIDController(output_limits=(1.0, 0.0))
+    with pytest.raises(ValueError, match="dt"):
+        PIDController().update(0.0, dt=0.0)
+
+
 def test_discrete_lqr_gain_matches_scalar_solution():
     lqr = DiscreteLQR(
         A=np.array([[1.0]]),
@@ -85,6 +104,21 @@ def test_ilqr_reduces_quadratic_cost():
     assert X_opt.shape == (U0.shape[0] + 1, 1)
     assert cost_opt < base_cost
     assert abs(X_opt[-1, 0]) < abs(X_base[-1, 0])
+
+
+def test_ilqr_accepts_broadcast_references_and_validates_costs():
+    def dynamics(x, u):
+        return np.asarray(x, dtype=float) + np.asarray(u, dtype=float)
+
+    args = (dynamics, np.array([1.0]), np.zeros((3, 1)), np.eye(1), np.eye(1), np.eye(1))
+    U_opt, X_opt, cost = iLQR(*args, x_ref=np.zeros(1), u_ref=np.zeros(1), max_iter=3)
+    assert U_opt.shape == (3, 1)
+    assert X_opt.shape == (4, 1)
+    assert np.isfinite(cost)
+    with pytest.raises(ValueError, match="Q must have shape"):
+        iLQR(dynamics, np.array([1.0]), np.zeros((3, 1)), np.eye(2), np.eye(1), np.eye(1))
+    with pytest.raises(ValueError, match="line_search"):
+        iLQR(*args, line_search=())
 
 
 def test_linear_mpc_box_solver_respects_bounds_and_supports_references():

@@ -127,6 +127,17 @@ def _reference_sequence(reference, length, size, name):
     return value
 
 
+def _validate_ilqr_cost_matrix(matrix, shape, name):
+    value = np.asarray(matrix, dtype=float)
+    if value.shape != shape:
+        raise ValueError(f"{name} must have shape {shape}")
+    if not np.all(np.isfinite(value)):
+        raise ValueError(f"{name} must contain only finite values")
+    if not np.allclose(value, value.T, atol=1e-10, rtol=1e-10):
+        raise ValueError(f"{name} must be symmetric")
+    return value
+
+
 def _prediction_matrices(A, B, horizon):
     n, m = A.shape[0], B.shape[1]
     Sx = np.zeros((n * (horizon + 1), n), dtype=float)
@@ -306,6 +317,9 @@ def iLQR(
     tol=1e-6,
     line_search=(1.0, 0.5, 0.25, 0.1, 0.05),
     eps=1e-5,
+    regularization=1e-8,
+    regularization_factor=10.0,
+    max_regularization=1e8,
 ):
     """Iterative LQR for nonlinear discrete-time dynamics.
 
@@ -315,130 +329,134 @@ def iLQR(
 
     x0 = np.asarray(x0, dtype=float).reshape(-1)
     U = np.asarray(U0, dtype=float)
-    if U.ndim != 2:
-        raise ValueError("U0 must have shape (T, control_dim)")
+    if U.ndim != 2 or U.shape[0] < 1 or U.shape[1] < 1:
+        raise ValueError("U0 must have shape (T, control_dim) with T and control_dim >= 1")
+    if not np.all(np.isfinite(x0)) or not np.all(np.isfinite(U)):
+        raise ValueError("x0 and U0 must contain only finite values")
     T, m = U.shape
-    Q = np.asarray(Q, dtype=float)
-    R = np.asarray(R, dtype=float)
-    Qf = np.asarray(Qf, dtype=float)
+    n = x0.size
+    Q = _validate_ilqr_cost_matrix(Q, (n, n), "Q")
+    R = _validate_ilqr_cost_matrix(R, (m, m), "R")
+    Qf = _validate_ilqr_cost_matrix(Qf, (n, n), "Qf")
+    if np.min(np.linalg.eigvalsh(R)) <= 0.0:
+        raise ValueError("R must be positive definite")
+    max_iter, tol = validate_iteration_options(max_iter, tol)
+    eps = float(eps)
+    if not np.isfinite(eps) or eps <= 0.0:
+        raise ValueError("eps must be positive and finite")
+    regularization = float(regularization)
+    regularization_factor = float(regularization_factor)
+    max_regularization = float(max_regularization)
+    if not np.isfinite(regularization) or regularization < 0.0:
+        raise ValueError("regularization must be finite and non-negative")
+    if not np.isfinite(regularization_factor) or regularization_factor <= 1.0:
+        raise ValueError("regularization_factor must be finite and greater than 1")
+    if not np.isfinite(max_regularization) or max_regularization < regularization:
+        raise ValueError("max_regularization must be finite and at least regularization")
+    line_search = tuple(float(alpha) for alpha in line_search)
+    if not line_search or not all(np.isfinite(alpha) and alpha > 0.0 for alpha in line_search):
+        raise ValueError("line_search must contain positive finite step sizes")
+    x_ref_seq = _reference_sequence(x_ref, T + 1, n, "x_ref")
+    u_ref_seq = _reference_sequence(u_ref, T, m, "u_ref")
 
     def rollout(U_seq):
-        X = rollout_dynamics(dynamics, x0, U_seq)
-        cost = (
-            _cy_quadratic_trajectory_cost(X, U_seq, Q, R, Qf, x_ref=x_ref, u_ref=u_ref)
-            if get_backend() != "numpy" and _cy_quadratic_trajectory_cost is not None
-            else None
-        )
-        if cost is None:
+        X = np.asarray(rollout_dynamics(dynamics, x0, U_seq), dtype=float)
+        if X.shape != (T + 1, n) or not np.all(np.isfinite(X)):
+            raise ValueError("dynamics must return finite state vectors with shape (x0.size,)")
+        if get_backend() != "numpy" and _cy_quadratic_trajectory_cost is not None:
+            cost = _cy_quadratic_trajectory_cost(
+                X, U_seq, Q, R, Qf, x_ref=x_ref_seq, u_ref=u_ref_seq
+            )
+        else:
             cost = 0.0
-            x_ref_seq = None if x_ref is None else np.asarray(x_ref, dtype=float)
-            u_ref_seq = None if u_ref is None else np.asarray(u_ref, dtype=float)
             for t in range(T):
-                xr = np.zeros_like(X[t]) if x_ref_seq is None else x_ref_seq[t]
-                ur = np.zeros_like(U_seq[t]) if u_ref_seq is None else u_ref_seq[t]
-                dx = X[t] - xr
-                du = U_seq[t] - ur
+                dx = X[t] - x_ref_seq[t]
+                du = U_seq[t] - u_ref_seq[t]
                 cost += float(dx @ Q @ dx + du @ R @ du)
-            xr = np.zeros_like(X[T]) if x_ref_seq is None else x_ref_seq[T]
-            dx = X[T] - xr
+            dx = X[T] - x_ref_seq[T]
             cost += float(dx @ Qf @ dx)
-        return np.asarray(X), cost
-
-    def stage_cost_terms(x, u, t):
-        xr = np.zeros_like(x) if x_ref is None else np.asarray(x_ref, dtype=float)[t]
-        ur = np.zeros_like(u) if u_ref is None else np.asarray(u_ref, dtype=float)[t]
-        dx = x - xr
-        du = u - ur
-        return dx, du
+        return X, float(cost)
 
     X, cost = rollout(U)
-    for _ in range(int(max_iter)):
+    damping = regularization
+    for _ in range(max_iter):
         prev_cost = cost
         A_seq = []
         B_seq = []
         for t in range(T):
             A_t, B_t = _finite_difference_jacobian(dynamics, X[t], U[t], eps=eps)
+            if not np.all(np.isfinite(A_t)) or not np.all(np.isfinite(B_t)):
+                raise ValueError("dynamics Jacobian must contain only finite values")
             A_seq.append(A_t)
             B_seq.append(B_t)
 
-        V_x = (
-            2.0
-            * Qf
-            @ (X[T] - (np.zeros_like(X[T]) if x_ref is None else np.asarray(x_ref, dtype=float)[T]))
-        )
-        V_xx = 2.0 * Qf.copy()
-        k_seq: list[np.ndarray | None] = [None] * T
-        K_seq: list[np.ndarray | None] = [None] * T
-
-        for t in range(T - 1, -1, -1):
-            x = X[t]
-            u = U[t]
-            dx, du = stage_cost_terms(x, u, t)
-            l_x = 2.0 * Q @ dx
-            l_u = 2.0 * R @ du
-            l_xx = 2.0 * Q
-            l_uu = 2.0 * R
-            l_ux = np.zeros((m, x.size), dtype=float)
-
-            A_t = A_seq[t]
-            B_t = B_seq[t]
-
-            Q_x = l_x + A_t.T @ V_x
-            Q_u = l_u + B_t.T @ V_x
-            Q_xx = l_xx + A_t.T @ V_xx @ A_t
-            Q_ux = l_ux + B_t.T @ V_xx @ A_t
-            Q_uu = l_uu + B_t.T @ V_xx @ B_t
-            Q_uu = Q_uu + 1e-8 * np.eye(Q_uu.shape[0], dtype=float)
-
-            K_t = np.linalg.solve(Q_uu, Q_ux)
-            k_t = np.linalg.solve(Q_uu, Q_u)
-            K_seq[t] = K_t
-            k_seq[t] = k_t
-
-            V_x = Q_x - K_t.T @ Q_uu @ k_t
-            V_xx = Q_xx - K_t.T @ Q_uu @ K_t
-            V_xx = 0.5 * (V_xx + V_xx.T)
-
         improved = False
-        best_X, best_cost, best_U = X, cost, U
-        for alpha in line_search:
-            X_new_list = [x0.copy()]
-            U_new_list: list[np.ndarray] = []
-            for t in range(T):
-                du = -alpha * cast(np.ndarray, k_seq[t]) - cast(np.ndarray, K_seq[t]) @ (
-                    X_new_list[-1] - X[t]
-                )
-                u_new = U[t] + du
-                U_new_list.append(u_new)
-                X_new_list.append(
-                    np.asarray(dynamics(X_new_list[-1], u_new), dtype=float).reshape(-1)
-                )
-            X_new = np.asarray(X_new_list)
-            U_new = np.asarray(U_new_list)
-            new_cost = (
-                _cy_quadratic_trajectory_cost(X_new, U_new, Q, R, Qf, x_ref=x_ref, u_ref=u_ref)
-                if get_backend() != "numpy" and _cy_quadratic_trajectory_cost is not None
-                else 0.0
-            )
-            if get_backend() == "numpy" or _cy_quadratic_trajectory_cost is None:
-                x_ref_seq = None if x_ref is None else np.asarray(x_ref, dtype=float)
-                u_ref_seq = None if u_ref is None else np.asarray(u_ref, dtype=float)
+        for _ in range(12):
+            V_x = 2.0 * Qf @ (X[T] - x_ref_seq[T])
+            V_xx = 2.0 * Qf.copy()
+            k_seq: list[np.ndarray | None] = [None] * T
+            K_seq: list[np.ndarray | None] = [None] * T
+            try:
+                for t in range(T - 1, -1, -1):
+                    dx = X[t] - x_ref_seq[t]
+                    du = U[t] - u_ref_seq[t]
+                    l_x = 2.0 * Q @ dx
+                    l_u = 2.0 * R @ du
+                    l_xx = 2.0 * Q
+                    l_uu = 2.0 * R
+                    l_ux = np.zeros((m, n), dtype=float)
+
+                    A_t = A_seq[t]
+                    B_t = B_seq[t]
+                    Q_x = l_x + A_t.T @ V_x
+                    Q_u = l_u + B_t.T @ V_x
+                    Q_xx = l_xx + A_t.T @ V_xx @ A_t
+                    Q_ux = l_ux + B_t.T @ V_xx @ A_t
+                    Q_uu = l_uu + B_t.T @ V_xx @ B_t
+                    Q_uu = 0.5 * (Q_uu + Q_uu.T)
+                    Q_uu += damping * np.eye(m, dtype=float)
+                    K_t = np.linalg.solve(Q_uu, Q_ux)
+                    k_t = np.linalg.solve(Q_uu, Q_u)
+                    if not np.all(np.isfinite(K_t)) or not np.all(np.isfinite(k_t)):
+                        raise np.linalg.LinAlgError("non-finite iLQR backward pass")
+                    K_seq[t] = K_t
+                    k_seq[t] = k_t
+                    V_x = Q_x - K_t.T @ Q_uu @ k_t
+                    V_xx = Q_xx - K_t.T @ Q_uu @ K_t
+                    V_xx = 0.5 * (V_xx + V_xx.T)
+            except np.linalg.LinAlgError:
+                next_damping = min(max_regularization, max(damping * regularization_factor, 1e-12))
+                if next_damping == damping:
+                    break
+                damping = next_damping
+                continue
+
+            for alpha in line_search:
+                X_new_list = [x0.copy()]
+                U_new_list: list[np.ndarray] = []
                 for t in range(T):
-                    xr = np.zeros_like(X_new[t]) if x_ref_seq is None else x_ref_seq[t]
-                    ur = np.zeros_like(U_new[t]) if u_ref_seq is None else u_ref_seq[t]
-                    dx = X_new[t] - xr
-                    du = U_new[t] - ur
-                    new_cost += float(dx @ Q @ dx + du @ R @ du)
-                xr = np.zeros_like(X_new[T]) if x_ref_seq is None else x_ref_seq[T]
-                dx = X_new[T] - xr
-                new_cost += float(dx @ Qf @ dx)
+                    k_t = cast(np.ndarray, k_seq[t])
+                    K_t = cast(np.ndarray, K_seq[t])
+                    du = -alpha * k_t - K_t @ (X_new_list[-1] - X[t])
+                    u_new = U[t] + du
+                    U_new_list.append(u_new)
+                    X_new_list.append(
+                        np.asarray(dynamics(X_new_list[-1], u_new), dtype=float).reshape(-1)
+                    )
+                X_new, new_cost = rollout(np.asarray(U_new_list))
+                if new_cost < cost:
+                    X, cost, U = X_new, new_cost, np.asarray(U_new_list)
+                    improved = True
+                    damping = max(regularization, damping / regularization_factor)
+                    break
 
-            if new_cost < best_cost:
-                best_X, best_cost, best_U = X_new, new_cost, U_new
-                improved = True
+            if improved:
                 break
+            next_damping = min(max_regularization, max(damping * regularization_factor, 1e-12))
+            if next_damping == damping:
+                break
+            damping = next_damping
 
-        X, cost, U = best_X, best_cost, best_U
         if not improved or abs(prev_cost - cost) <= tol:
             break
 
