@@ -75,6 +75,40 @@ def test_iir_and_ridge_kernels_match_numpy_fallback():
         set_backend(old)
 
 
+def test_cpp_signal_kernels_match_numpy_when_available():
+    cpp = signal_ops._load_cpp_backend("auto")
+    if cpp is None:
+        pytest.skip("C++ signal extension is not built")
+
+    rng = np.random.default_rng(12)
+    x = rng.normal(size=37)
+    b = np.array([0.2, 0.1, -0.04])
+    a = np.array([1.0, -0.35, 0.08])
+    old = get_backend()
+    try:
+        set_backend("numpy")
+        frame_ref = signal_ops.frame_signal(x, 8, 3, True)
+        iir_ref = signal_ops.iir_filter_1d(x, b, a)
+        detector_ref = __import__("mastermlx.signal", fromlist=["OnlineCUSUMDetector"]).OnlineCUSUMDetector(
+            threshold=2.0, baseline_window=4, cooldown=2
+        )
+        events_ref = np.concatenate([detector_ref.update(x[:13]), detector_ref.update(x[13:])])
+
+        set_backend("auto")
+        frame = signal_ops.frame_signal(x, 8, 3, True)
+        iir = signal_ops.iir_filter_1d(x, b, a)
+        detector = __import__("mastermlx.signal", fromlist=["OnlineCUSUMDetector"]).OnlineCUSUMDetector(
+            threshold=2.0, baseline_window=4, cooldown=2
+        )
+        events = np.concatenate([detector.update(x[:13]), detector.update(x[13:])])
+
+        assert np.array_equal(frame_ref, frame)
+        assert np.allclose(iir_ref, iir, atol=1e-12)
+        assert np.array_equal(events_ref, events)
+    finally:
+        set_backend(old)
+
+
 def test_extract_ridge_preserves_path_score():
     score = np.array([[1.0, 1.0], [0.0, 2.0]])
     result = extract_ridge(score, [10.0, 20.0], smoothness=0.5, log_power=False)

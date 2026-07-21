@@ -67,6 +67,14 @@ cpp_exts = [
         extra_compile_args=["-O3"],
         language="c++",
     ),
+    Extension(
+        "mastermlx.accel._signal_cpp",
+        ["mastermlx/accel/_signal_cpp.cpp"],
+        include_dirs=inc_dirs,
+        extra_compile_args=["-O3", *thread_flags],
+        extra_link_args=thread_flags,
+        language="c++",
+    ),
 ]
 if pybind11 is None:
     warnings.warn(

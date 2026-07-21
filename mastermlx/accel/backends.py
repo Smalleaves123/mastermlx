@@ -122,6 +122,14 @@ def _import_cpp_kernels():
 
 
 @lru_cache(maxsize=1)
+def _import_cpp_signal():
+    try:
+        return importlib.import_module("mastermlx.accel._signal_cpp")
+    except ImportError:
+        return None
+
+
+@lru_cache(maxsize=1)
 def _import_cython_tree():
     try:
         return importlib.import_module("mastermlx.accel._tree_ops")
@@ -142,6 +150,11 @@ def _load_cython_backend():
 def _load_cpp_kernels():
     module = _import_cpp_kernels() if get_backend() == "auto" else None
     return module if _has_api(module, _KERNEL_API) else None
+
+
+def _load_cpp_signal():
+    module = _import_cpp_signal() if get_backend() == "auto" else None
+    return module if _has_api(module, ("frame_signal", "iir_filter_1d", "online_cusum")) else None
 
 
 def _load_cython_tree():
@@ -180,6 +193,7 @@ def backend_report():
         "cython": _load_cython_backend() is not None,
         "cpp_distance": _load_cpp_backend() is not None,
         "cpp_kernels": _load_cpp_kernels() is not None,
+        "cpp_signal": _load_cpp_signal() is not None,
         "cython_tree": _load_cython_tree() is not None,
         "cnn": _load_optional_module(
             "mastermlx.accel._cnn_ops",

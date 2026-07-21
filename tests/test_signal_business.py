@@ -8,6 +8,7 @@ from mastermlx.signal import (
     SignalExperiment,
     SignalMonitor,
     SignalPipeline,
+    OnlineCUSUMDetector,
     StreamingFeatureExtractor,
     compare_signal_models,
     make_signal_classification_dataset,
@@ -55,6 +56,19 @@ def test_cusum_detector_finds_mean_shift():
     assert events[0] >= 15
 
 
+def test_online_cusum_preserves_global_positions_across_chunks():
+    detector = OnlineCUSUMDetector(threshold=2.0, baseline_window=4, cooldown=2)
+    first = detector.update(np.array([0.0, 0.0, 0.0]))
+    second = detector.update(np.array([0.0, 3.0, 3.0, 3.0]))
+
+    assert first.size == 0
+    assert np.array_equal(second, np.array([4]))
+    assert detector.state()["baseline_ready"] is True
+
+    detector.reset()
+    assert detector.state()["samples_seen"] == 0
+
+
 def test_signal_monitor_tracks_global_event_positions():
     class IndexDetector:
         def transform(self, features):
@@ -79,6 +93,20 @@ def test_signal_monitor_tracks_global_event_positions():
 
     monitor.reset()
     assert monitor.state()["frames_seen"] == 0
+
+
+def test_signal_monitor_resets_stateful_detector():
+    extractor = StreamingFeatureExtractor(
+        lambda frame: np.array([rms_energy(frame)]),
+        frame_length=2,
+    )
+    detector = OnlineCUSUMDetector(threshold=1.0, baseline_window=2)
+    monitor = SignalMonitor(extractor, detector)
+
+    monitor.push(np.ones(4))
+    assert detector.state()["samples_seen"] == 2
+    monitor.reset()
+    assert detector.state()["samples_seen"] == 0
 
 
 def test_signal_experiment_runs_end_to_end():
@@ -127,3 +155,4 @@ def test_compare_signal_models_returns_leaderboard():
 
     assert result["leaderboard"]
     assert result["best_name"] in {"logreg_a", "logreg_b"}
+    assert all(scores.shape == (5,) for scores in result["cv_scores"].values())

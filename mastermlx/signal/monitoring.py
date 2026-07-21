@@ -28,6 +28,9 @@ class SignalMonitor:
         features = np.asarray(features, dtype=float)
         if features.size == 0 or self.detector is None:
             return np.empty(0, dtype=int)
+        if hasattr(self.detector, "update"):
+            events = np.asarray(self.detector.update(features))
+            return events
         events = np.asarray(self.detector.transform(features))
         if np.issubdtype(events.dtype, np.integer):
             events = events.astype(int, copy=False) + self.frames_seen_
@@ -59,6 +62,8 @@ class SignalMonitor:
         """Reset both the underlying stream and global feature positions."""
 
         self.feature_extractor.reset()
+        if self.detector is not None and hasattr(self.detector, "reset"):
+            self.detector.reset()
         self.frames_seen_ = 0
         return self
 

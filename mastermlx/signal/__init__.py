@@ -62,7 +62,7 @@ from .core import (
     overlap_add,
     stft,
 )
-from .detectors import CUSUMDetector, EnergyThresholdDetector, PeakDetector
+from .detectors import CUSUMDetector, EnergyThresholdDetector, OnlineCUSUMDetector, PeakDetector
 from .streaming import SignalChunkBuffer, SlidingWindowStream, StreamingFeatureExtractor
 from .monitoring import SignalMonitor
 from .datasets import make_chirp, make_impulse_train, make_multi_tone, make_signal_anomaly_series, make_signal_classification_dataset, make_sine_wave
@@ -152,6 +152,7 @@ __all__ = [
     "augmentation",
     "BandpassFilterTransformer",
     "CUSUMDetector",
+    "OnlineCUSUMDetector",
     "de_emph",
     "de_emphasis",
     "ensure_1d",

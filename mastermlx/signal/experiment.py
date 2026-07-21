@@ -3,6 +3,7 @@ from __future__ import annotations
 import numpy as np
 
 from ..data.search import GridSearchCV, RandomizedSearchCV
+from ..data.model_selection import cross_val_score
 from ..preprocessing import Pipeline as PreprocessingPipeline
 from ..utils.estimator import clone
 from .transforms import SignalPipeline
@@ -352,11 +353,17 @@ def compare_signal_models(
     signal_transform=None,
     feature_aggregator=None,
     flatten_output=True,
-    cv=None,
+    cv=5,
     scoring=None,
     task="classification",
+    groups=None,
 ):
-    """Fit several signal candidates and return a simple leaderboard."""
+    """Compare signal candidates with leakage-safe cross-validation.
+
+    Each candidate is refit on the full dataset for ``best_experiment`` after
+    its cross-validation score is computed. Pass ``cv=None`` to use the
+    repository default five-fold splitter, or pass a splitter/int explicitly.
+    """
 
     if not models:
         raise ValueError("models must be non-empty")
@@ -365,6 +372,7 @@ def compare_signal_models(
     best_name = None
     best_score = -np.inf
     best_experiment = None
+    cv_scores = {}
 
     for name, model in models:
         experiment = SignalExperiment(
@@ -378,10 +386,19 @@ def compare_signal_models(
             task=task,
         )
         experiment.fit(X, y)
-        score = experiment.score(X, y)
+        scores = cross_val_score(
+            experiment.pipeline_,
+            _prepare_signal_batch_input(X),
+            y,
+            cv=cv,
+            scoring=scoring,
+            groups=groups,
+        )
+        cv_scores[name] = scores
+        score = float(np.mean(scores))
         leaderboard.append((name, float(score)))
         if score > best_score:
-            best_score = float(score)
+            best_score = score
             best_name = name
             best_experiment = experiment
 
@@ -391,6 +408,7 @@ def compare_signal_models(
         "best_name": best_name,
         "best_score": best_score,
         "best_experiment": best_experiment,
+        "cv_scores": cv_scores,
     }
 
 

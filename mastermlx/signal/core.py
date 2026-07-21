@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
+from ..accel.signal_ops import frame_signal as _frame_signal
 
 def hamming_window(n):
     n = int(n)
@@ -70,23 +71,7 @@ def frame_signal(x, frame_length, hop_length, pad_end=False):
     if frame_length < 1 or hop_length < 1:
         raise ValueError("frame_length and hop_length must be at least 1")
 
-    if pad_end:
-        remainder = (x.size - frame_length) % hop_length
-        pad = 0 if remainder == 0 else hop_length - remainder
-        if x.size < frame_length:
-            pad = frame_length - x.size
-        if pad > 0:
-            x = np.pad(x, (0, pad))
-
-    if x.size < frame_length:
-        return np.empty((0, frame_length), dtype=float)
-
-    n_frames = 1 + (x.size - frame_length) // hop_length
-    frames = np.empty((n_frames, frame_length), dtype=float)
-    for i in range(n_frames):
-        start = i * hop_length
-        frames[i] = x[start : start + frame_length]
-    return frames
+    return _frame_signal(x, frame_length, hop_length, pad_end=pad_end)
 
 
 def stft(x, frame_length=256, hop_length=None, window="hann", n_fft=None, pad_end=True):
