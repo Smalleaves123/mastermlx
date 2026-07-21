@@ -109,8 +109,10 @@ public:
 
         nodes_[node_id].feature = best_feature;
         nodes_[node_id].bin = best_bin;
-        nodes_[node_id].left = grow(left_indices, depth + 1);
-        nodes_[node_id].right = grow(right_indices, depth + 1);
+        const int left_id = grow(left_indices, depth + 1);
+        const int right_id = grow(right_indices, depth + 1);
+        nodes_[node_id].left = left_id;
+        nodes_[node_id].right = right_id;
         return node_id;
     }
 
@@ -218,25 +220,45 @@ py::array_t<double> predict_hist_tree(
     const int n = static_cast<int>(Xb.shape[0]);
     const int d = static_cast<int>(Xb.shape[1]);
     const int n_nodes = static_cast<int>(fb.shape[0]);
+    for (int node = 0; node < n_nodes; ++node) {
+        const auto feature = f_ptr[node];
+        if (feature < -1 || feature >= d) {
+            throw std::invalid_argument("tree feature index is out of range");
+        }
+        if (feature >= 0) {
+            if (l_ptr[node] < 0 || l_ptr[node] >= n_nodes ||
+                r_ptr[node] < 0 || r_ptr[node] >= n_nodes) {
+                throw std::invalid_argument("tree child index is out of range");
+            }
+        } else if (l_ptr[node] != -1 || r_ptr[node] != -1) {
+            throw std::invalid_argument("leaf node must not have children");
+        }
+    }
     py::array_t<double> out(n);
     auto* out_ptr = static_cast<double*>(out.request().ptr);
+    bool invalid_topology = false;
 
     {
         py::gil_scoped_release release;
         for (int i = 0; i < n; ++i) {
             int node = 0;
+            int steps = 0;
             while (f_ptr[node] >= 0) {
-                if (f_ptr[node] >= d) {
-                    throw std::invalid_argument("tree feature index is out of range");
-                }
                 node = x_ptr[i * d + f_ptr[node]] <= b_ptr[node]
                     ? l_ptr[node] : r_ptr[node];
-                if (node < 0 || node >= n_nodes) {
-                    throw std::invalid_argument("tree child index is out of range");
+                if (++steps > n_nodes) {
+                    invalid_topology = true;
+                    break;
                 }
+            }
+            if (invalid_topology) {
+                break;
             }
             out_ptr[i] = v_ptr[node];
         }
+    }
+    if (invalid_topology) {
+        throw std::invalid_argument("histogram tree contains a cycle");
     }
     return out;
 }
