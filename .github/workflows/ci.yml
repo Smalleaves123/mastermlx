@@ -78,5 +78,6 @@ jobs:
           mastermlx/math_tools/ts_experiment.py mastermlx/signal/experiment.py
           mastermlx/neural_net
           --ignore-missing-imports
+          --python-version 3.12
       - name: Check public API compatibility
         run: pytest tests/test_api_compat.py -q
