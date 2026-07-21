@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -32,6 +33,22 @@ static py::buffer_info require_optional_vector(const Vector& value, const char* 
     }
     const auto* data = static_cast<const double*>(info.ptr);
     for (py::ssize_t i = 0; i < info.shape[0]; ++i) {
+        if (!std::isfinite(data[i])) {
+            throw std::invalid_argument(std::string(name) + " must contain only finite values");
+        }
+    }
+    return info;
+}
+
+using Matrix = py::array_t<double, py::array::c_style | py::array::forcecast>;
+
+static py::buffer_info require_matrix(const Matrix& value, const char* name) {
+    auto info = value.request();
+    if (info.ndim != 2 || info.shape[0] <= 0 || info.shape[1] <= 0) {
+        throw std::invalid_argument(std::string(name) + " must be a non-empty 2D array");
+    }
+    const auto* data = static_cast<const double*>(info.ptr);
+    for (py::ssize_t i = 0; i < info.shape[0] * info.shape[1]; ++i) {
         if (!std::isfinite(data[i])) {
             throw std::invalid_argument(std::string(name) + " must contain only finite values");
         }
@@ -110,6 +127,70 @@ py::array_t<double> iir_filter_1d(Vector x_, Vector b_, Vector a_) {
         }
     }
     return out;
+}
+
+py::array_t<py::ssize_t> ridge_path(Matrix score_, double smoothness, int max_jump) {
+    const auto score_info = require_matrix(score_, "score");
+    if (smoothness < 0.0 || !std::isfinite(smoothness)) {
+        throw std::invalid_argument("smoothness must be non-negative and finite");
+    }
+    if (max_jump < -1) {
+        throw std::invalid_argument("max_jump must be non-negative or -1");
+    }
+
+    const auto* score = static_cast<const double*>(score_info.ptr);
+    const py::ssize_t n_freqs = score_info.shape[0];
+    const py::ssize_t n_times = score_info.shape[1];
+    const py::ssize_t size = n_freqs * n_times;
+    py::array_t<double> dynamic(std::vector<py::ssize_t>{n_freqs, n_times});
+    py::array_t<py::ssize_t> back(std::vector<py::ssize_t>{n_freqs, n_times});
+    py::array_t<py::ssize_t> indices(n_times);
+    auto* values = static_cast<double*>(dynamic.request().ptr);
+    auto* previous = static_cast<py::ssize_t*>(back.request().ptr);
+    auto* output = static_cast<py::ssize_t*>(indices.request().ptr);
+    std::fill(values, values + size, -std::numeric_limits<double>::infinity());
+
+    {
+        py::gil_scoped_release release;
+        for (py::ssize_t current = 0; current < n_freqs; ++current) {
+            values[current * n_times] = score[current * n_times];
+        }
+        for (py::ssize_t t = 1; t < n_times; ++t) {
+            for (py::ssize_t current = 0; current < n_freqs; ++current) {
+                const py::ssize_t low = max_jump < 0 ? 0 : std::max<py::ssize_t>(0, current - max_jump);
+                const py::ssize_t high = max_jump < 0
+                    ? n_freqs
+                    : std::min<py::ssize_t>(n_freqs, current + max_jump + 1);
+                py::ssize_t best = low;
+                double best_value = -std::numeric_limits<double>::infinity();
+                for (py::ssize_t prior = low; prior < high; ++prior) {
+                    const double delta = static_cast<double>(prior - current);
+                    const double candidate = values[prior * n_times + t - 1] - smoothness * delta * delta;
+                    if (candidate > best_value) {
+                        best_value = candidate;
+                        best = prior;
+                    }
+                }
+                previous[current * n_times + t] = best;
+                values[current * n_times + t] = score[current * n_times + t] + best_value;
+            }
+        }
+
+        py::ssize_t best = 0;
+        double best_value = values[n_times - 1];
+        for (py::ssize_t current = 1; current < n_freqs; ++current) {
+            const double value = values[current * n_times + n_times - 1];
+            if (value > best_value) {
+                best_value = value;
+                best = current;
+            }
+        }
+        output[n_times - 1] = best;
+        for (py::ssize_t t = n_times - 1; t > 0; --t) {
+            output[t - 1] = previous[output[t] * n_times + t];
+        }
+    }
+    return indices;
 }
 
 py::tuple online_cusum(
@@ -195,4 +276,5 @@ PYBIND11_MODULE(_signal_cpp, m) {
     m.def("frame_signal", &frame_signal);
     m.def("iir_filter_1d", &iir_filter_1d);
     m.def("online_cusum", &online_cusum);
+    m.def("ridge_path", &ridge_path);
 }

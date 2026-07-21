@@ -16,6 +16,18 @@ def _load_backend(backend=None):
         backend = get_backend()
     if backend == "numpy":
         return None
+
+
+@lru_cache(maxsize=3)
+def _load_cpp_backend(backend=None):
+    if backend is None:
+        backend = get_backend()
+    if backend != "auto":
+        return None
+    try:
+        return importlib.import_module("mastermlx.accel._signal_cpp")
+    except ImportError:
+        return None
     try:
         return importlib.import_module("mastermlx.accel._signal_ops")
     except ImportError:
@@ -35,6 +47,9 @@ def ridge_path(score, smoothness, max_jump):
         max_jump = int(max_jump)
         if max_jump < 0:
             raise ValueError("max_jump must be non-negative")
+    cpp = _load_cpp_backend(get_backend())
+    if cpp is not None and callable(getattr(cpp, "ridge_path", None)):
+        return cpp.ridge_path(score, smoothness, -1 if max_jump is None else max_jump)
     mod = _load_backend(get_backend())
     if mod is not None and callable(getattr(mod, "ridge_path", None)):
         return mod.ridge_path(score, smoothness, -1 if max_jump is None else max_jump)

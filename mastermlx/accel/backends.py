@@ -154,7 +154,7 @@ def _load_cpp_kernels():
 
 def _load_cpp_signal():
     module = _import_cpp_signal() if get_backend() == "auto" else None
-    return module if _has_api(module, ("frame_signal", "iir_filter_1d", "online_cusum")) else None
+    return module if _has_api(module, ("frame_signal", "iir_filter_1d", "online_cusum", "ridge_path")) else None
 
 
 def _load_cython_tree():

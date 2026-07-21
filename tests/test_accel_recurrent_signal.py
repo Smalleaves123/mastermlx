@@ -89,6 +89,8 @@ def test_cpp_signal_kernels_match_numpy_when_available():
         set_backend("numpy")
         frame_ref = signal_ops.frame_signal(x, 8, 3, True)
         iir_ref = signal_ops.iir_filter_1d(x, b, a)
+        score = rng.normal(size=(12, 24))
+        ridge_ref = timefreq_ops.ridge_path(score, 0.25, 3)
         detector_ref = __import__("mastermlx.signal", fromlist=["OnlineCUSUMDetector"]).OnlineCUSUMDetector(
             threshold=2.0, baseline_window=4, cooldown=2
         )
@@ -97,6 +99,7 @@ def test_cpp_signal_kernels_match_numpy_when_available():
         set_backend("auto")
         frame = signal_ops.frame_signal(x, 8, 3, True)
         iir = signal_ops.iir_filter_1d(x, b, a)
+        ridge = timefreq_ops.ridge_path(score, 0.25, 3)
         detector = __import__("mastermlx.signal", fromlist=["OnlineCUSUMDetector"]).OnlineCUSUMDetector(
             threshold=2.0, baseline_window=4, cooldown=2
         )
@@ -104,6 +107,7 @@ def test_cpp_signal_kernels_match_numpy_when_available():
 
         assert np.array_equal(frame_ref, frame)
         assert np.allclose(iir_ref, iir, atol=1e-12)
+        assert np.array_equal(ridge_ref, ridge)
         assert np.array_equal(events_ref, events)
     finally:
         set_backend(old)
