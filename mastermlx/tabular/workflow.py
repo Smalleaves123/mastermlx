@@ -8,6 +8,7 @@ import numpy as np
 from typing import Any
 
 from ..data.contract import DataContract
+from ..data.evaluation import EvaluationReport
 from ..data.search import GridSearchCV, RandomizedSearchCV
 from ..data.cv import KFold
 from ..data.drift import drift_report
@@ -186,6 +187,45 @@ class TabularExperiment:
         scores = cross_val_score(pipe, X, y, cv=cv, scoring=self.scoring, groups=groups)
         self.cv_scores_ = np.asarray(scores, dtype=float)
         return self.cv_scores_
+
+    def evaluation_report(
+        self,
+        X=None,
+        y=None,
+        *,
+        cv=None,
+        groups=None,
+        n_bootstrap=1000,
+        confidence_level=0.95,
+        train_sizes=None,
+        include_learning_curve=True,
+    ):
+        """Build an OOF, CV, uncertainty, and learning-curve report."""
+
+        best = self._require_fitted()
+        if X is None:
+            X = self.reference_input_ if self.reference_input_ is not None else self.reference_X_
+        if y is None and (X is self.reference_X_ or X is self.reference_input_):
+            y = self.reference_y_
+        if X is None or y is None:
+            raise ValueError("X and y are required for an evaluation report")
+        self._validate_input(X)
+        evaluator = EvaluationReport(
+            clone(best),
+            task=self.task,
+            scoring=self.scoring,
+            random_state=self.random_state,
+        )
+        return evaluator.run(
+            X,
+            y,
+            cv=self.cv if cv is None else cv,
+            groups=groups,
+            n_bootstrap=n_bootstrap,
+            confidence_level=confidence_level,
+            train_sizes=train_sizes,
+            include_learning_curve=include_learning_curve,
+        )
 
     def _feature_importance_report(self):
         pipeline = self._require_fitted()

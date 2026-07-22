@@ -43,7 +43,7 @@ from mastermlx import entropy, pairwise_distance, silhouette
 ### Tabular data checks
 
 ```python
-from mastermlx import AutoPreprocessor, DataContract, quality_report
+from mastermlx import AutoPreprocessor, DataContract, EvaluationReport, quality_report
 
 report = quality_report(X)
 prep = AutoPreprocessor().fit(X)
@@ -54,6 +54,10 @@ contract = DataContract(
     rules={"age": {"kind": "numeric", "min": 0, "max": 120}},
 ).fit(X)
 validation = contract.validate(X)
+
+evaluation = EvaluationReport(model, task="classification", random_state=0).run(
+    X, y, cv="stratified", n_bootstrap=200,
+)
 ```
 
 `quality_report` summarizes missing values, duplicates, constant columns,
@@ -66,6 +70,9 @@ by default.
 schema checks for training and inference boundaries. `TabularExperiment` can
 accept it through `data_contract=` and includes the validation result in its
 report.
+`EvaluationReport` adds OOF predictions, fold scores, bootstrap confidence
+intervals, learning curves, and convenient stratified, grouped, or time-series
+CV selection.
 
 ### Mathematical signal analysis
 

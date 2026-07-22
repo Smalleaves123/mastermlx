@@ -9,6 +9,7 @@ It gives you a broad set of classic ML algorithms, math utilities, and optional 
 - 80+ algorithms for classification, regression, clustering, decomposition, NLP, RL, and bandits
 - 110+ math tools for metrics, kernels, statistics, distance functions, and time series
 - Data quality, schema, drift, and explicit tabular data-contract checks
+- Unified OOF/CV evaluation reports with bootstrap uncertainty and learning curves
 - Optional C++ and Cython backends for speed-critical paths
 - Pure Python fallback when compiled extensions are not available
 - Robotics foundations for transforms, kinematics, trajectories, and Jacobians
