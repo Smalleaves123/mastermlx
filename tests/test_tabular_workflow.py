@@ -75,3 +75,19 @@ def test_tabular_cv_score_uses_fitted_pipeline_contract():
 
     assert scores.shape == (3,)
     assert np.all(scores > 0.99)
+
+
+def test_tabular_experiment_report_combines_quality_drift_and_calibration():
+    X = np.array([[0.0], [0.1], [0.2], [0.8], [0.9], [1.0]])
+    y = np.array([0, 0, 0, 1, 1, 1])
+    experiment = TabularExperiment(
+        model=LogisticRegression(lr=0.5, n_iter=800, random_state=0),
+        search=None,
+    ).fit(X, y)
+
+    report = experiment.report(X + 0.2, y)
+
+    assert report["quality"]["n_rows"] == X.shape[0]
+    assert report["drift"]["columns"][0]["mean_diff"] > 0.0
+    assert report["performance"]["accuracy"] >= 0.5
+    assert set(report["performance"]["calibration"]) == {"brier_score", "ece", "mce"}

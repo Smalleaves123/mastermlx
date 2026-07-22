@@ -66,6 +66,8 @@ class TimeSeriesExperiment(BaseEstimator):
         scoring="neg_mean_squared_error",
         refit=True,
         random_state=None,
+        gap=0,
+        max_train_size=None,
     ):
         self.model = model
         self.lags = int(lags)
@@ -79,6 +81,8 @@ class TimeSeriesExperiment(BaseEstimator):
         self.scoring = scoring
         self.refit = bool(refit)
         self.random_state = random_state
+        self.gap = int(gap)
+        self.max_train_size = max_train_size
         self.pipeline_: TimeSeriesPipeline | None = None
         self.best_estimator_: TimeSeriesPipeline | None = None
         self.best_params_: dict[str, Any] | None = None
@@ -102,11 +106,15 @@ class TimeSeriesExperiment(BaseEstimator):
                     "Not enough samples for time-series cross-validation with "
                     f"lags={self.lags} and horizon={self.horizon}"
                 )
-            cv = TimeSeriesSplit(n_splits=n_splits)
+            cv = TimeSeriesSplit(
+                n_splits=n_splits, gap=self.gap, max_train_size=self.max_train_size
+            )
         elif isinstance(self.cv, int):
             from ..data.cv import TimeSeriesSplit
 
-            cv = TimeSeriesSplit(n_splits=int(self.cv))
+            cv = TimeSeriesSplit(
+                n_splits=int(self.cv), gap=self.gap, max_train_size=self.max_train_size
+            )
         else:
             cv = self.cv
         try:
@@ -217,6 +225,8 @@ class TimeSeriesExperiment(BaseEstimator):
         return {
             "lags": self.lags,
             "horizon": self.horizon,
+            "gap": self.gap,
+            "max_train_size": self.max_train_size,
             "search": self.search,
             "best_params": self.best_params_,
             "best_score": self.best_score_,

@@ -176,6 +176,20 @@ def test_time_series_split_keeps_time_order():
     assert np.array_equal(folds[2][1], np.array([10, 11]))
 
 
+def test_time_series_split_gap_and_rolling_window_prevent_boundary_leakage():
+    X = np.arange(12).reshape(12, 1)
+    cv = TimeSeriesSplit(n_splits=3, test_size=2, gap=2, max_train_size=4)
+
+    folds = list(cv.split(X))
+
+    assert np.array_equal(folds[0][0], np.array([0, 1, 2, 3]))
+    assert np.array_equal(folds[0][1], np.array([6, 7]))
+    assert np.array_equal(folds[-1][0], np.array([4, 5, 6, 7]))
+    assert np.array_equal(folds[-1][1], np.array([10, 11]))
+    for train, test in folds:
+        assert train[-1] + cv.gap < test[0]
+
+
 def test_group_kfold_keeps_groups_separate():
     X = np.arange(16).reshape(8, 2)
     groups = np.array([0, 0, 1, 1, 2, 2, 3, 3])

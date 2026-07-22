@@ -7,9 +7,13 @@ from typing import Any
 
 from ..data.search import GridSearchCV, RandomizedSearchCV
 from ..data.cv import KFold
+from ..data.drift import drift_report
 from ..data.model_selection import cross_val_score
+from ..data.quality import quality_report
+from ..math_tools.calibration import brier_score, expected_calibration_error, maximum_calibration_error
 from ..preprocessing import AutoPreprocessor, Pipeline as PreprocessingPipeline
 from ..utils.estimator import clone
+from ..utils.metrics import accuracy, mean_absolute_error, r2_score, root_mean_squared_error
 
 
 def _normalize_steps(preprocessing):
@@ -76,6 +80,8 @@ class TabularExperiment:
         self.best_score_ = None
         self.cv_results_ = None
         self.cv_scores_ = None
+        self.reference_X_ = None
+        self.reference_y_ = None
 
     def _resolve_searcher(self, pipeline):
         if self.search is None:
@@ -109,6 +115,8 @@ class TabularExperiment:
     def fit(self, X, y, groups=None):
         X = np.asarray(X)
         y = np.asarray(y)
+        self.reference_X_ = np.array(X, copy=True)
+        self.reference_y_ = np.array(y, copy=True)
         pipeline = _build_pipeline(clone(self.model), self.preprocessing)
         self.pipeline_ = pipeline
         searcher = self._resolve_searcher(pipeline)
@@ -161,6 +169,97 @@ class TabularExperiment:
         scores = cross_val_score(pipe, X, y, cv=cv, scoring=self.scoring, groups=groups)
         self.cv_scores_ = np.asarray(scores, dtype=float)
         return self.cv_scores_
+
+    def _feature_importance_report(self):
+        pipeline = self._require_fitted()
+        named_steps = pipeline.named_steps
+        model = named_steps.get("model", pipeline)
+        if hasattr(model, "feature_importances_"):
+            values = np.asarray(model.feature_importances_, dtype=float).ravel()
+            kind = "split_frequency"
+        elif hasattr(model, "coef_"):
+            values = np.asarray(model.coef_, dtype=float)
+            values = np.abs(values).mean(axis=0) if values.ndim > 1 else np.abs(values).ravel()
+            kind = "absolute_coefficient"
+        else:
+            return None
+
+        names = np.asarray([f"x{idx}" for idx in range(pipeline.n_features_in_ or values.size)], dtype=object)
+        for name, step in list(named_steps.items())[:-1]:
+            if not hasattr(step, "get_feature_names_out"):
+                continue
+            try:
+                names = np.asarray(step.get_feature_names_out(names), dtype=object).ravel()
+            except (TypeError, ValueError, RuntimeError):
+                names = np.asarray(step.get_feature_names_out(), dtype=object).ravel()
+        if names.size != values.size:
+            names = np.asarray([f"feature_{idx}" for idx in range(values.size)], dtype=object)
+        order = np.argsort(-values, kind="stable")
+        return {
+            "kind": kind,
+            "items": [
+                {"feature": str(names[index]), "importance": float(values[index])}
+                for index in order
+            ],
+        }
+
+    def report(self, X=None, y=None, *, drift_reference=None, n_bins=10):
+        """Build a compact quality, drift, performance, and calibration report.
+
+        With no arguments, the report describes the training reference data.
+        Passing new ``X`` compares it against that reference for drift.
+        """
+
+        self._require_fitted()
+        if X is None:
+            X = self.reference_X_
+        if y is None and X is self.reference_X_:
+            y = self.reference_y_
+        if X is None:
+            raise RuntimeError("TabularExperiment has no reference data")
+        X = np.asarray(X)
+        y_array = None if y is None else np.asarray(y)
+        reference = self.reference_X_ if drift_reference is None else np.asarray(drift_reference)
+        result = {
+            "summary": self.summary(),
+            "quality": quality_report(X, y_array),
+            "drift": None if reference is None else drift_report(reference, X, bins=n_bins),
+            "feature_importance": self._feature_importance_report(),
+        }
+        if y_array is None:
+            result["performance"] = None
+            return result
+
+        prediction = self.predict(X)
+        performance: dict[str, Any] = {"score": float(self.score(X, y_array))}
+        if self.task == "classification":
+            performance["accuracy"] = float(accuracy(y_array, prediction))
+            try:
+                probabilities = self.predict_proba(X)
+            except AttributeError:
+                probabilities = None
+            if probabilities is not None:
+                probabilities = np.asarray(probabilities, dtype=float)
+                performance["confidence"] = {
+                    "mean": float(np.mean(np.max(probabilities, axis=1))),
+                    "min": float(np.min(np.max(probabilities, axis=1))),
+                    "max": float(np.max(np.max(probabilities, axis=1))),
+                }
+                calibration = {"brier_score": float(brier_score(y_array, probabilities))}
+                if np.unique(y_array).size == 2:
+                    calibration.update(
+                        ece=float(expected_calibration_error(y_array, probabilities, n_bins=n_bins)),
+                        mce=float(maximum_calibration_error(y_array, probabilities, n_bins=n_bins)),
+                    )
+                performance["calibration"] = calibration
+        else:
+            performance.update(
+                r2=float(r2_score(y_array, prediction)),
+                mae=float(mean_absolute_error(y_array, prediction)),
+                rmse=float(root_mean_squared_error(y_array, prediction)),
+            )
+        result["performance"] = performance
+        return result
 
     def summary(self):
         self._require_fitted()

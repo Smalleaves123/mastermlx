@@ -77,17 +77,29 @@ class StratifiedKFold:
 
 
 class TimeSeriesSplit:
-    """Time series cross-validator with expanding training windows."""
+    """Time-series cross-validator with chronological, optionally purged folds.
 
-    def __init__(self, n_splits=5, test_size=None):
+    ``gap`` removes observations immediately before each validation window from
+    the training fold. This embargo is useful when features or labels span a
+    temporal horizon. ``max_train_size`` changes the expanding window into a
+    rolling training window.
+    """
+
+    def __init__(self, n_splits=5, test_size=None, gap=0, max_train_size=None):
         self.n_splits = int(n_splits)
         self.test_size = test_size
+        self.gap = int(gap)
+        self.max_train_size = None if max_train_size is None else int(max_train_size)
 
     def split(self, X, y=None):
         X = np.asarray(X)
         n_samples = X.shape[0]
         if self.n_splits < 2:
             raise ValueError("n_splits must be at least 2")
+        if self.gap < 0:
+            raise ValueError("gap must be non-negative")
+        if self.max_train_size is not None and self.max_train_size < 1:
+            raise ValueError("max_train_size must be positive")
 
         if self.test_size is None:
             fold_size = n_samples // (self.n_splits + 1)
@@ -95,18 +107,25 @@ class TimeSeriesSplit:
             fold_size = int(self.test_size)
         if fold_size < 1:
             raise ValueError("test_size must be at least 1")
-        if fold_size * (self.n_splits + 1) > n_samples:
+        if fold_size * self.n_splits + self.gap >= n_samples:
             raise ValueError("Not enough samples for the requested number of splits")
 
         start = n_samples - self.n_splits * fold_size
         for split_idx in range(self.n_splits):
             test_start = start + split_idx * fold_size
             test_stop = test_start + fold_size
-            train_idx = np.arange(0, test_start, dtype=int)
+            train_stop = test_start - self.gap
+            train_start = 0
+            if self.max_train_size is not None:
+                train_start = max(0, train_stop - self.max_train_size)
+            train_idx = np.arange(train_start, train_stop, dtype=int)
             test_idx = np.arange(test_start, test_stop, dtype=int)
             if train_idx.size == 0:
                 raise ValueError("The first training fold would be empty")
             yield train_idx, test_idx
+
+    def get_n_splits(self, X=None, y=None, groups=None):
+        return self.n_splits
 
 
 class GroupKFold:

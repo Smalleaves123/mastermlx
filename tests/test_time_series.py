@@ -166,6 +166,27 @@ def test_time_series_experiment_searches_and_refits():
     assert exp.score(x[:10], x[10:]) > 0.99
 
 
+def test_time_series_experiment_supports_gap_and_rolling_training_window():
+    x = np.arange(1.0, 31.0)
+    exp = TimeSeriesExperiment(
+        model=LinearRegression(fit_intercept=True),
+        lags=2,
+        search=None,
+        cv=3,
+        scoring="r2",
+        gap=2,
+        max_train_size=8,
+    )
+
+    folds = exp._split(x)
+    exp.fit(x)
+
+    assert all(train.size <= 8 for train, _ in folds)
+    assert all(train[-1] + 2 < test[0] for train, test in folds)
+    assert exp.summary()["gap"] == 2
+    assert exp.summary()["max_train_size"] == 8
+
+
 def test_compare_time_series_models_returns_leaderboard():
     x = np.arange(1.0, 13.0)
 
