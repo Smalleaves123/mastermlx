@@ -85,6 +85,33 @@ class SimpleWorld:
 
         return bool(self.collision_report(joint_values))
 
+    def clearance(self, joint_values=None):
+        """Return the smallest planar clearance from robot links to obstacles.
+
+        A positive value means that every joint and link segment is separated
+        from every obstacle.  ``np.inf`` is returned when the world contains
+        no obstacles.
+        """
+
+        if not self.obstacles:
+            return float("inf")
+
+        points = self.link_positions(joint_values)
+        minimum = float("inf")
+        for point in points:
+            for obstacle in self.obstacles:
+                distance = float(np.linalg.norm(point[:2] - np.asarray(obstacle.center, dtype=float)))
+                minimum = min(minimum, distance - obstacle.radius)
+        for start, end in zip(points[:-1], points[1:]):
+            for obstacle in self.obstacles:
+                distance = self._seg_dist(
+                    np.asarray(obstacle.center, dtype=float),
+                    np.asarray(start[:2], dtype=float),
+                    np.asarray(end[:2], dtype=float),
+                )
+                minimum = min(minimum, distance - obstacle.radius)
+        return minimum
+
     def plan_path(self, q_start, q_goal, bounds, **kwargs):
         """Plan a collision-free path in joint space."""
 

@@ -30,6 +30,7 @@ from .trajectory import (
 )
 from .model import RobotModel
 from .experiment import RobotExperiment, compare_robot_models
+from .workcell import RobotWorkcell
 from .state_estimation import PlanarPoseEKF, wrap_angle
 from .urdf_parser import URDFJoint, URDFLink, parse_urdf, urdf_to_dh_chain
 from .visualizer import plot_chain
@@ -60,6 +61,7 @@ __all__ = [
     "parse_urdf",
     "RobotModel",
     "RobotExperiment",
+    "RobotWorkcell",
     "PlanarPoseEKF",
     "rpy_to_matrix",
     "rot_x",

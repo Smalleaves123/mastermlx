@@ -287,6 +287,7 @@ be inspected directly.
 - `plan_joint_path`
 - `smooth_joint_path`
 - `plan_joint_trajectory`
+- `RobotWorkcell` for TCP task planning, velocity/acceleration/jerk-constrained retiming, virtual tracking, and safety exports
 - `PlanarPoseEKF`
 - state-estimation helpers for odometry, position, and heading fusion
 
