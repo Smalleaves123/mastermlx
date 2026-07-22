@@ -2,12 +2,13 @@ import csv
 import json
 
 import numpy as np
+import pytest
 
 from mastermlx.robotics import RobotModel, RobotWorkcell
 from mastermlx.sim import SimpleWorld
 
 
-def _workcell(with_obstacle=False):
+def _workcell(with_obstacle=False, joint_limits=None):
     robot = RobotModel.from_dh(
         [
             {"a": 1.0, "alpha": 0.0, "d": 0.0, "theta": 0.0},
@@ -18,7 +19,7 @@ def _workcell(with_obstacle=False):
     world = SimpleWorld(robot)
     if with_obstacle:
         world.add_obstacle((0.0, 1.3), 0.1)
-    return RobotWorkcell(robot, world)
+    return RobotWorkcell(robot, world, joint_limits=joint_limits)
 
 
 def _targets(robot, configurations):
@@ -61,6 +62,35 @@ def test_workcell_uses_rrt_when_direct_path_is_blocked():
     assert np.allclose(path[0], q_start)
     assert np.allclose(path[-1], q_goal)
     assert workcell._collision_free_path(path)
+
+
+def test_workcell_enforces_joint_limits_and_reports_tracking_violations():
+    limits = np.array([[-0.6, 0.6], [-0.5, 0.5]])
+    workcell = _workcell(joint_limits=limits)
+    path = workcell.plan_joint_path(np.array([-0.4, 0.0]), np.array([0.4, 0.2]))
+    trajectory = workcell.retime_joint_path(path, velocity_limits=0.5)
+
+    assert np.all(trajectory["position"] >= limits[:, 0])
+    assert np.all(trajectory["position"] <= limits[:, 1])
+    with pytest.raises(ValueError, match="joint_limits"):
+        workcell.plan_joint_path(np.array([-0.4, 0.0]), np.array([0.7, 0.0]))
+    with pytest.raises(ValueError, match="joint_limits"):
+        workcell.retime_joint_path(np.array([[0.0, 0.0], [0.7, 0.0]]), velocity_limits=0.5)
+    target_outside_limits = workcell.robot.fk(np.array([0.7, 0.0]))[:3, 3]
+    with pytest.raises(ValueError, match="joint_limits"):
+        workcell.solve_tcp_path([target_outside_limits], np.array([0.4, 0.0]), ik_kwargs={"max_iter": 300})
+
+    report = workcell.safety_report(
+        trajectory,
+        tracking={
+            "joint_error": np.zeros((2, 2)),
+            "actual": np.array([[0.0, 0.0], [0.7, 0.0]]),
+        },
+    )
+
+    assert report["joint_limit_violation"]
+    assert report["maximum_joint_limit_violation"] == pytest.approx(0.1)
+    assert report["joint_limits"] == limits.tolist()
 
 
 def test_workcell_retimes_tracks_reports_and_exports(tmp_path):

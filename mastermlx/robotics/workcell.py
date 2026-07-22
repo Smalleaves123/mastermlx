@@ -40,6 +40,17 @@ def _limits(values, n_joints, name):
     return values
 
 
+def _joint_limits(values, n_joints):
+    if values is None:
+        return None
+    values = np.asarray(values, dtype=float)
+    if values.shape != (n_joints, 2):
+        raise ValueError("joint_limits must have shape (n_joints, 2)")
+    if not np.all(np.isfinite(values)) or np.any(values[:, 0] >= values[:, 1]):
+        raise ValueError("joint_limits must contain finite lower < upper bounds")
+    return values.copy()
+
+
 def _orientation_error(actual, target):
     rotation = target[:3, :3] @ actual[:3, :3].T
     cosine = np.clip((np.trace(rotation) - 1.0) / 2.0, -1.0, 1.0)
@@ -54,7 +65,7 @@ class RobotWorkcell:
     robot model and simulator instead of maintaining a second implementation.
     """
 
-    def __init__(self, robot, world=None, name=None):
+    def __init__(self, robot, world=None, name=None, joint_limits=None):
         from ..sim.world import SimpleWorld
 
         if not isinstance(robot, RobotModel):
@@ -68,10 +79,48 @@ class RobotWorkcell:
         self.robot = robot
         self.world = world
         self.name = robot.name if name is None else str(name)
+        self.joint_limits = _joint_limits(joint_limits, len(robot.links))
 
     @property
     def n_joints(self):
         return len(self.robot.links)
+
+    def _check_joint_limits(self, values, name):
+        values = np.asarray(values, dtype=float)
+        if values.shape[-1:] != (self.n_joints,):
+            raise ValueError(f"{name} must end with {self.n_joints} joint values")
+        if self.joint_limits is None:
+            return
+        if np.any(values < self.joint_limits[:, 0]) or np.any(values > self.joint_limits[:, 1]):
+            raise ValueError(f"{name} exceeds configured joint_limits")
+
+    def _resolve_bounds(self, bounds):
+        if bounds is None:
+            if self.joint_limits is None:
+                raise ValueError("bounds are required when joint_limits are not configured")
+            return self.joint_limits.copy()
+        bounds = np.asarray(bounds, dtype=float)
+        if bounds.shape != (self.n_joints, 2) or np.any(bounds[:, 0] >= bounds[:, 1]):
+            raise ValueError("bounds must have shape (n_joints, 2) with lower < upper")
+        if self.joint_limits is None:
+            return bounds
+        clipped = np.column_stack(
+            [
+                np.maximum(bounds[:, 0], self.joint_limits[:, 0]),
+                np.minimum(bounds[:, 1], self.joint_limits[:, 1]),
+            ]
+        )
+        if np.any(clipped[:, 0] >= clipped[:, 1]):
+            raise ValueError("bounds do not overlap configured joint_limits")
+        return clipped
+
+    def _joint_limit_violation(self, values):
+        values = np.asarray(values, dtype=float)
+        if self.joint_limits is None:
+            return np.zeros(values.shape[:-1], dtype=float)
+        lower = np.maximum(self.joint_limits[:, 0] - values, 0.0)
+        upper = np.maximum(values - self.joint_limits[:, 1], 0.0)
+        return np.max(np.maximum(lower, upper), axis=-1)
 
     def _collision_free_path(self, path, collision_step=0.05):
         path = np.asarray(path, dtype=float)
@@ -100,6 +149,7 @@ class RobotWorkcell:
         """Solve ordered TCP targets with each IK solution seeding the next one."""
 
         q_current = _joint_vector(q_start, self.n_joints, "q_start")
+        self._check_joint_limits(q_current, "q_start")
         targets = list(targets)
         if not targets:
             raise ValueError("targets must be non-empty")
@@ -122,6 +172,7 @@ class RobotWorkcell:
                 self.n_joints,
                 f"IK solution for target {index}",
             )
+            self._check_joint_limits(q_current, f"IK solution for target {index}")
             actual = self.robot.fk(q_current)
             position_error = float(np.linalg.norm(actual[:3, 3] - target[:3] if target.shape == (3,) else actual[:3, 3] - target[:3, 3]))
             orientation_error = 0.0 if target.shape == (3,) else _orientation_error(actual, target)
@@ -148,7 +199,7 @@ class RobotWorkcell:
         self,
         q_start,
         q_goal,
-        bounds,
+        bounds=None,
         *,
         smooth_path=True,
         shortcut_attempts=100,
@@ -159,9 +210,9 @@ class RobotWorkcell:
 
         q_start = _joint_vector(q_start, self.n_joints, "q_start")
         q_goal = _joint_vector(q_goal, self.n_joints, "q_goal")
-        bounds = np.asarray(bounds, dtype=float)
-        if bounds.shape != (self.n_joints, 2) or np.any(bounds[:, 0] >= bounds[:, 1]):
-            raise ValueError("bounds must have shape (n_joints, 2) with lower < upper")
+        self._check_joint_limits(q_start, "q_start")
+        self._check_joint_limits(q_goal, "q_goal")
+        bounds = self._resolve_bounds(bounds)
         if np.any(q_start < bounds[:, 0]) or np.any(q_start > bounds[:, 1]):
             raise ValueError("q_start must be inside bounds")
         if np.any(q_goal < bounds[:, 0]) or np.any(q_goal > bounds[:, 1]):
@@ -187,7 +238,7 @@ class RobotWorkcell:
             raise RuntimeError("planner returned a path that does not satisfy collision checks")
         return path
 
-    def plan_tcp_task(self, targets, q_start, bounds, *, ik_kwargs=None, **planning_kwargs):
+    def plan_tcp_task(self, targets, q_start, bounds=None, *, ik_kwargs=None, **planning_kwargs):
         """Plan a complete TCP task from continuous IK through collision-free motion."""
 
         ik_result = self.solve_tcp_path(targets, q_start, ik_kwargs=ik_kwargs)
@@ -217,6 +268,7 @@ class RobotWorkcell:
             raise ValueError("joint_path must have shape (n_points, n_joints) with at least two points")
         if not np.all(np.isfinite(path)):
             raise ValueError("joint_path must contain only finite values")
+        self._check_joint_limits(path, "joint_path")
         samples = int(num_samples_per_segment)
         minimum_duration = float(minimum_duration)
         if samples < 2 or minimum_duration <= 0.0:
@@ -277,6 +329,7 @@ class RobotWorkcell:
             raise ValueError("trajectory positions must have shape (n_steps, n_joints)")
         if not np.all(np.isfinite(reference)):
             raise ValueError("trajectory positions must contain only finite values")
+        self._check_joint_limits(reference, "trajectory positions")
 
         if dt is None:
             if reference_time is None or reference_time.size < 2:
@@ -336,18 +389,46 @@ class RobotWorkcell:
         if position.ndim != 2 or position.shape[0] < 1 or position.shape[1] != self.n_joints:
             raise ValueError("trajectory positions must have shape (n_steps, n_joints)")
 
-        clearances = np.asarray([self.world.clearance(q) for q in position], dtype=float)
+        reference_clearances = np.asarray([self.world.clearance(q) for q in position], dtype=float)
         deltas = np.diff(position, axis=0)
         joint_path_length = float(np.sum(np.linalg.norm(deltas, axis=1))) if deltas.size else 0.0
-        finite_clearances = clearances[np.isfinite(clearances)]
+        reference_limit_violation = self._joint_limit_violation(position)
+        tracking_clearances = None
+        tracking_limit_violation = None
+        actual = None
+        if tracking is not None and "actual" in tracking:
+            actual = np.asarray(tracking["actual"], dtype=float)
+            if actual.ndim != 2 or actual.shape[1] != self.n_joints or not np.all(np.isfinite(actual)):
+                raise ValueError("tracking actual must have shape (n_steps, n_joints) with finite values")
+            tracking_clearances = np.asarray([self.world.clearance(q) for q in actual], dtype=float)
+            tracking_limit_violation = self._joint_limit_violation(actual)
+
+        all_clearances = reference_clearances if tracking_clearances is None else np.concatenate([reference_clearances, tracking_clearances])
+        finite_clearances = all_clearances[np.isfinite(all_clearances)]
+        limit_violation = reference_limit_violation
+        if tracking_limit_violation is not None:
+            limit_violation = np.concatenate([limit_violation, tracking_limit_violation])
         report = {
             "workcell": self.name,
             "n_joints": self.n_joints,
             "n_samples": int(position.shape[0]),
             "duration": None if time is None else float(time[-1] - time[0]),
             "joint_path_length": joint_path_length,
-            "collision": bool(np.any(clearances <= 0.0)),
+            "collision": bool(np.any(all_clearances <= 0.0)),
+            "reference_collision": bool(np.any(reference_clearances <= 0.0)),
+            "tracking_collision": None if tracking_clearances is None else bool(np.any(tracking_clearances <= 0.0)),
             "minimum_clearance": None if finite_clearances.size == 0 else float(np.min(finite_clearances)),
+            "reference_minimum_clearance": None
+            if not np.any(np.isfinite(reference_clearances))
+            else float(np.min(reference_clearances[np.isfinite(reference_clearances)])),
+            "tracking_minimum_clearance": None
+            if tracking_clearances is None or not np.any(np.isfinite(tracking_clearances))
+            else float(np.min(tracking_clearances[np.isfinite(tracking_clearances)])),
+            "joint_limits": None if self.joint_limits is None else self.joint_limits.tolist(),
+            "joint_limit_violation": bool(np.any(limit_violation > 0.0)),
+            "maximum_joint_limit_violation": None
+            if self.joint_limits is None
+            else float(np.max(limit_violation)),
             "max_velocity": None if velocity is None else float(np.max(np.abs(velocity))),
             "max_acceleration": None if acceleration is None else float(np.max(np.abs(acceleration))),
             "max_jerk": None if jerk is None else float(np.max(np.abs(jerk))),

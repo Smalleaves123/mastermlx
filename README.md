@@ -11,7 +11,7 @@ It gives you a broad set of classic ML algorithms, math utilities, and optional 
 - Optional C++ and Cython backends for speed-critical paths
 - Pure Python fallback when compiled extensions are not available
 - Robotics foundations for transforms, kinematics, trajectories, and Jacobians
-- Planar workcell workflow for continuous TCP IK, collision-free paths, constrained retiming, virtual tracking, and CSV/JSON exports
+- Planar workcell workflow with configurable joint limits, continuous TCP IK, collision-free paths, constrained retiming, virtual tracking, and CSV/JSON exports
 - Control foundations for PID, LQR, MPC, and iLQR optimization control
 - Optional Cython acceleration for control, robotics, estimation, distance, kernels, particle filters, and time-series hot paths
 
