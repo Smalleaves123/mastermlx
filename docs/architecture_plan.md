@@ -41,6 +41,7 @@ names. Workflow and reporting logic belongs in focused implementation modules:
 - `mastermlx.data.quality` contains row/column quality summaries.
 - `mastermlx.data.schema` contains train/test schema checks.
 - `mastermlx.data.drift` contains distribution drift checks.
+- `mastermlx.data.contract` contains explicit training/inference data contracts.
 
 This keeps compatibility imports stable while making individual areas easier
 to test, profile, and extend.

@@ -43,12 +43,17 @@ from mastermlx import entropy, pairwise_distance, silhouette
 ### Tabular data checks
 
 ```python
-from mastermlx import AutoPreprocessor, quality_report
+from mastermlx import AutoPreprocessor, DataContract, quality_report
 
 report = quality_report(X)
 prep = AutoPreprocessor().fit(X)
 X_ready = prep.transform(X)
 feature_names = prep.get_feature_names_out()
+
+contract = DataContract(
+    rules={"age": {"kind": "numeric", "min": 0, "max": 120}},
+).fit(X)
+validation = contract.validate(X)
 ```
 
 `quality_report` summarizes missing values, duplicates, constant columns,
@@ -57,6 +62,10 @@ categorical frequencies, numeric outliers, and target quality. Use
 detects numeric and categorical columns, imputes missing values, scales numeric
 features, one-hot encodes categorical features, and ignores unseen categories
 by default.
+`DataContract` adds explicit range, category, missing-rate, uniqueness, and
+schema checks for training and inference boundaries. `TabularExperiment` can
+accept it through `data_contract=` and includes the validation result in its
+report.
 
 ### Mathematical signal analysis
 

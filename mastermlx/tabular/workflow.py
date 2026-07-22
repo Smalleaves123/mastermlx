@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
+
 import numpy as np
 from typing import Any
 
+from ..data.contract import DataContract
 from ..data.search import GridSearchCV, RandomizedSearchCV
 from ..data.cv import KFold
 from ..data.drift import drift_report
@@ -60,6 +63,7 @@ class TabularExperiment:
         return_train_score=False,
         random_state=None,
         task="classification",
+        data_contract=None,
     ):
         self.model = model
         self.preprocessing = preprocessing
@@ -73,6 +77,7 @@ class TabularExperiment:
         self.return_train_score = return_train_score
         self.random_state = random_state
         self.task = task
+        self.data_contract = data_contract
         self.pipeline_ = None
         self.searcher_ = None
         self.best_estimator_: Any | None = None
@@ -82,6 +87,7 @@ class TabularExperiment:
         self.cv_scores_ = None
         self.reference_X_ = None
         self.reference_y_ = None
+        self.reference_input_ = None
 
     def _resolve_searcher(self, pipeline):
         if self.search is None:
@@ -113,6 +119,11 @@ class TabularExperiment:
         raise ValueError("search must be one of: None, 'grid', 'random'")
 
     def fit(self, X, y, groups=None):
+        if self.data_contract is not None:
+            if not isinstance(self.data_contract, DataContract):
+                raise TypeError("data_contract must be a DataContract")
+            self.data_contract.fit(X, y)
+        self.reference_input_ = deepcopy(X)
         X = np.asarray(X)
         y = np.asarray(y)
         self.reference_X_ = np.array(X, copy=True)
@@ -141,24 +152,30 @@ class TabularExperiment:
             raise RuntimeError("TabularExperiment has not been fit yet")
         return self.best_estimator_
 
+    def _validate_input(self, X):
+        if self.data_contract is not None:
+            self.data_contract.check(X, raise_on_error=True)
+        return X
+
     def predict(self, X):
         best = self._require_fitted()
-        return best.predict(X)
+        return best.predict(self._validate_input(X))
 
     def predict_proba(self, X):
         best = self._require_fitted()
         if not hasattr(best, "predict_proba"):
             raise AttributeError("Best estimator does not define predict_proba")
-        return best.predict_proba(X)
+        return best.predict_proba(self._validate_input(X))
 
     def score(self, X, y):
         best = self._require_fitted()
-        return best.score(X, y)
+        return best.score(self._validate_input(X), y)
 
     def cv_score(self, X, y, groups=None):
         """Return cross-validated scores for the configured workflow."""
 
         self._require_fitted()
+        self._validate_input(X)
         cv = self.cv
         if cv is None:
             n_splits = min(5, np.asarray(X).shape[0])
@@ -212,19 +229,20 @@ class TabularExperiment:
 
         self._require_fitted()
         if X is None:
-            X = self.reference_X_
-        if y is None and X is self.reference_X_:
+            X = self.reference_input_ if self.reference_input_ is not None else self.reference_X_
+        if y is None and (X is self.reference_X_ or X is self.reference_input_):
             y = self.reference_y_
         if X is None:
             raise RuntimeError("TabularExperiment has no reference data")
-        X = np.asarray(X)
+        self._validate_input(X)
         y_array = None if y is None else np.asarray(y)
-        reference = self.reference_X_ if drift_reference is None else np.asarray(drift_reference)
+        reference = self.reference_input_ if drift_reference is None else drift_reference
         result = {
             "summary": self.summary(),
             "quality": quality_report(X, y_array),
             "drift": None if reference is None else drift_report(reference, X, bins=n_bins),
             "feature_importance": self._feature_importance_report(),
+            "contract": None if self.data_contract is None else self.data_contract.validate(X),
         }
         if y_array is None:
             result["performance"] = None
@@ -270,6 +288,7 @@ class TabularExperiment:
             "best_score": self.best_score_,
             "model": self.model.__class__.__name__,
             "has_preprocessing": self.preprocessing is not None,
+            "has_data_contract": self.data_contract is not None,
         }
 
 

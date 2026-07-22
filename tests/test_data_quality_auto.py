@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from mastermlx.data import compare_schema, drift_report, quality_report
+from mastermlx.data import DataContract, compare_schema, drift_report, quality_report
 from mastermlx.data.drift import drift_report as direct_drift_report
 from mastermlx.data.schema import compare_schema as direct_compare_schema
 from mastermlx.preprocessing import AutoPreprocessor, OneHotEncoder, SimpleImputer
@@ -46,6 +46,26 @@ def test_schema_and_drift_report_named_columns():
     assert drift["columns"][1]["tvd"] > 0.0
 
 
+def test_data_contract_checks_schema_missing_ranges_and_categories():
+    train = Frame([[20, "bj"], [30, "sh"], [40, "bj"]])
+    contract = DataContract(
+        rules={
+            "age": {"kind": "numeric", "min": 0, "max": 120, "max_missing_rate": 0.1},
+            "city": {"kind": "categorical", "allowed_values": ["bj", "sh"]},
+        }
+    ).fit(train)
+
+    valid = contract.validate(Frame([[25, "bj"], [35, "sh"]]))
+    invalid = contract.validate(Frame([[140, "new"], [None, "bj"]]))
+
+    assert valid["valid"]
+    assert not invalid["valid"]
+    assert {item["code"] for item in invalid["errors"]} == {"range_max", "allowed_values", "missing_rate"}
+    assert contract.summary()["required_columns"] == ["age", "city"]
+    with pytest.raises(ValueError, match="data contract violation"):
+        contract.check(Frame([[140, "bj"], [30, "bj"]]), raise_on_error=True)
+
+
 def test_auto_preprocessor_detects_types_names_outputs_and_unknowns():
     train = Frame([[20, "bj"], [30, "sh"], [40, "bj"], [None, "gz"]])
     test = Frame([[25, "new"], [None, "bj"]])
@@ -84,3 +104,20 @@ def test_tabular_experiment_accepts_auto_preprocessing():
     ).fit(X, y)
 
     assert experiment.predict(X).shape == y.shape
+
+
+def test_tabular_experiment_enforces_contract_and_reports_it():
+    X = np.array([[0.0], [0.2], [0.8], [1.0]])
+    y = np.array([0, 0, 1, 1])
+    contract = DataContract(rules={"x0": {"kind": "numeric", "min": 0.0, "max": 1.0}})
+    experiment = TabularExperiment(
+        LogisticRegression(n_iter=300, random_state=0),
+        search=None,
+        data_contract=contract,
+    ).fit(X, y)
+
+    report = experiment.report()
+    assert report["contract"]["valid"]
+    assert report["summary"]["has_data_contract"]
+    with pytest.raises(ValueError, match="data contract violation"):
+        experiment.predict(np.array([[1.5]]))
