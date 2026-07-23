@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 from typing import Any
+from numpy.typing import ArrayLike
 
 from ..base import BaseEstimator
 from ..utils.estimator import clone
@@ -65,7 +66,7 @@ class Pipeline(BaseEstimator):
                 elif key in name_to_idx:
                     steps[name_to_idx[key]] = (key, value)
                 else:
-                    setattr(self, key, value)
+                    raise ValueError(f"Invalid parameter '{key}' for Pipeline")
                 continue
 
             name, subkey = key.split("__", 1)
@@ -74,14 +75,16 @@ class Pipeline(BaseEstimator):
             step_name, step = steps[name_to_idx[name]]
             if hasattr(step, "set_params"):
                 step.set_params(**{subkey: value})
-            else:
+            elif hasattr(step, subkey):
                 setattr(step, subkey, value)
+            else:
+                raise ValueError(f"Invalid parameter '{subkey}' for step '{name}'")
             steps[name_to_idx[name]] = (step_name, step)
 
         self.steps = steps
         return self
 
-    def fit(self, X, y=None):
+    def fit(self, X: ArrayLike, y: ArrayLike | None = None) -> "Pipeline":
         steps = self._validate_steps()
         Xt = check_X(X)
         self.n_features_in_ = Xt.shape[1]
@@ -104,7 +107,7 @@ class Pipeline(BaseEstimator):
         self.steps_ = fitted
         return self
 
-    def fit_transform(self, X, y=None):
+    def fit_transform(self, X: ArrayLike, y: ArrayLike | None = None) -> np.ndarray:
         self.fit(X, y)
         last = self._fitted_steps()[-1][1]
         if hasattr(last, "transform"):
@@ -124,7 +127,7 @@ class Pipeline(BaseEstimator):
             return {name: step for name, step in self.steps}
         return {name: step for name, step in self._fitted_steps()}
 
-    def transform(self, X):
+    def transform(self, X: ArrayLike) -> np.ndarray:
         Xt = self._transform_input(X)
         last = self._fitted_steps()[-1][1]
         if hasattr(last, "transform"):
@@ -143,28 +146,28 @@ class Pipeline(BaseEstimator):
             return np.asarray(input_features, dtype=object)
         return last.get_feature_names_out(input_features)
 
-    def predict(self, X):
+    def predict(self, X: ArrayLike) -> Any:
         Xt = self._transform_input(X)
         last = self._fitted_steps()[-1][1]
         if not hasattr(last, "predict"):
             raise AttributeError("Final step does not define predict")
         return last.predict(Xt)
 
-    def predict_proba(self, X):
+    def predict_proba(self, X: ArrayLike) -> np.ndarray:
         Xt = self._transform_input(X)
         last = self._fitted_steps()[-1][1]
         if not hasattr(last, "predict_proba"):
             raise AttributeError("Final step does not define predict_proba")
         return last.predict_proba(Xt)
 
-    def decision_function(self, X):
+    def decision_function(self, X: ArrayLike) -> np.ndarray:
         Xt = self._transform_input(X)
         last = self._fitted_steps()[-1][1]
         if not hasattr(last, "decision_function"):
             raise AttributeError("Final step does not define decision_function")
         return last.decision_function(Xt)
 
-    def score(self, X, y):
+    def score(self, X: ArrayLike, y: ArrayLike) -> float:
         Xt = self._transform_input(X)
         last = self._fitted_steps()[-1][1]
         if hasattr(last, "score"):

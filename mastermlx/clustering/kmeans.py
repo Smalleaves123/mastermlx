@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+from numpy.typing import ArrayLike
 
 from ..accel import pairwise_squared_euclidean
 from ..base import BaseEstimator
@@ -65,7 +66,7 @@ class KMeans(BaseEstimator):
                 centers[j] = X[int(rng.integers(0, X.shape[0]))]
         return centers
 
-    def fit(self, X, y=None):
+    def fit(self, X: ArrayLike, y: ArrayLike | None = None) -> "KMeans":
         X = check_2d_array(X)
 
         best_inertia = np.inf
@@ -105,7 +106,7 @@ class KMeans(BaseEstimator):
         self.n_iter_ = best_iter
         return self
 
-    def predict(self, X):
+    def predict(self, X: ArrayLike) -> np.ndarray | np.generic:
         if self.cluster_centers_ is None:
             raise RuntimeError("Model has not been fit yet")
         X = as_2d(X)
@@ -114,7 +115,7 @@ class KMeans(BaseEstimator):
         labels, _ = self._assign_labels(X, self.cluster_centers_)
         return labels[0] if labels.shape[0] == 1 else labels
 
-    def transform(self, X):
+    def transform(self, X: ArrayLike) -> np.ndarray:
         if self.cluster_centers_ is None:
             raise RuntimeError("Model has not been fit yet")
         X = as_2d(X)
@@ -122,5 +123,8 @@ class KMeans(BaseEstimator):
             raise ValueError("X has a different number of features than the fitted data")
         return np.sqrt(_squared_euclidean_distances(X, self.cluster_centers_))
 
-    def fit_predict(self, X, y=None):
-        return self.fit(X, y).labels_
+    def fit_predict(self, X: ArrayLike, y: ArrayLike | None = None) -> np.ndarray:
+        labels = self.fit(X, y).labels_
+        if labels is None:
+            raise RuntimeError("Model did not produce cluster labels")
+        return labels

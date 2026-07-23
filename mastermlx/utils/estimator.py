@@ -1,14 +1,18 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from typing import Any, TypeVar
 
 
-def clone(obj):
+EstimatorT = TypeVar("EstimatorT")
+
+
+def clone(obj: EstimatorT) -> EstimatorT:
     return deepcopy(obj)
 
 
-def get_params(obj, deep=True):
-    params = {}
+def get_params(obj: Any, deep: bool = True) -> dict[str, Any]:
+    params: dict[str, Any] = {}
     for name, value in vars(obj).items():
         if name.endswith("_") or name.startswith("_"):
             continue
@@ -22,12 +26,17 @@ def get_params(obj, deep=True):
     return params
 
 
-def set_params(obj, **params):
+def set_params(obj: EstimatorT, **params: Any) -> EstimatorT:
     if not params:
         return obj
 
+    valid_params = get_params(obj, deep=False)
     for key, value in params.items():
         if "__" not in key:
+            if key not in valid_params:
+                raise ValueError(
+                    f"Invalid parameter '{key}' for estimator {type(obj).__name__}"
+                )
             setattr(obj, key, value)
             continue
         name, subkey = key.split("__", 1)

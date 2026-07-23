@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+from numpy.typing import ArrayLike
 
 from ..base import BaseEstimator
 from ..utils.array import batch_iterator
@@ -30,7 +31,7 @@ class LogisticRegression(BaseEstimator):
             return np.column_stack([np.ones(X.shape[0]), X])
         return X
 
-    def fit(self, X, y=None):
+    def fit(self, X: ArrayLike, y: ArrayLike | None = None) -> "LogisticRegression":
         X = check_2d_array(X)
         y = check_1d_array(y)
         X, y = check_same_rows(X, y)
@@ -119,7 +120,7 @@ class LogisticRegression(BaseEstimator):
 
         return self
 
-    def predict_proba(self, X):
+    def predict_proba(self, X: ArrayLike) -> np.ndarray:
         X = check_2d_array(X)
         if self.coef_ is None:
             raise RuntimeError("Model has not been fit yet")
@@ -134,7 +135,7 @@ class LogisticRegression(BaseEstimator):
         p0 = 1.0 - p1
         return np.column_stack([p0, p1])
 
-    def predict(self, X):
+    def predict(self, X: ArrayLike) -> np.ndarray:
         proba = self.predict_proba(X)
         if self.multi_class_:
             idx = np.argmax(proba, axis=1)
@@ -143,5 +144,5 @@ class LogisticRegression(BaseEstimator):
         idx = (proba[:, 1] >= 0.5).astype(int)
         return self.classes_[idx]
 
-    def score(self, X, y):
+    def score(self, X: ArrayLike, y: ArrayLike) -> float:
         return accuracy(y, self.predict(X))

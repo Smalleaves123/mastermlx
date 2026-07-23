@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
+from numpy.typing import ArrayLike
 
 
 class NotFittedError(RuntimeError, AttributeError):
     """Raised when an estimator or transformer is used before fitting."""
 
 
-def check_2d_array(X):
+def check_2d_array(X: ArrayLike) -> np.ndarray:
     X = np.asarray(X)
     if X.size == 0:
         raise ValueError("Expected a non-empty array")
@@ -16,7 +19,9 @@ def check_2d_array(X):
     return X
 
 
-def check_1d_array(y, name="y"):
+def check_1d_array(y: ArrayLike | None, name: str = "y") -> np.ndarray:
+    if y is None:
+        raise ValueError(f"Expected {name} to be non-empty")
     y = np.asarray(y)
     if y.size == 0:
         raise ValueError(f"Expected {name} to be non-empty")
@@ -25,13 +30,13 @@ def check_1d_array(y, name="y"):
     return y
 
 
-def check_same_rows(X, y):
+def check_same_rows(X: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     if X.shape[0] != y.shape[0]:
         raise ValueError("X and y must contain the same number of samples")
     return X, y
 
 
-def as_2d(X):
+def as_2d(X: ArrayLike) -> np.ndarray:
     X = np.asarray(X)
     if X.size == 0:
         raise ValueError("Expected a non-empty array")
@@ -42,14 +47,25 @@ def as_2d(X):
     return X
 
 
-def check_X(X, *, dtype=None, allow_1d=False):
+def check_X(
+    X: ArrayLike,
+    *,
+    dtype: Any | None = None,
+    allow_1d: bool = False,
+) -> np.ndarray:
     """Validate a feature matrix and optionally coerce its dtype."""
 
     X = as_2d(X) if allow_1d else check_2d_array(X)
     return X.astype(dtype) if dtype is not None else X
 
 
-def check_X_y(X, y, *, dtype=None, y_dtype=None):
+def check_X_y(
+    X: ArrayLike,
+    y: ArrayLike,
+    *,
+    dtype: Any | None = None,
+    y_dtype: Any | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
     """Validate a feature matrix and target vector together."""
 
     X = check_X(X, dtype=dtype)
@@ -59,16 +75,17 @@ def check_X_y(X, y, *, dtype=None, y_dtype=None):
     return check_same_rows(X, y)
 
 
-def set_n_features(estimator, X):
+def set_n_features(estimator: Any, X: ArrayLike) -> Any:
     """Record the number of input features seen during fitting."""
 
-    if np.asarray(X).ndim != 2:
+    X_array = np.asarray(X)
+    if X_array.ndim != 2:
         raise ValueError("X must be 2D when recording feature count")
-    estimator.n_features_in_ = int(X.shape[1])
+    estimator.n_features_in_ = int(X_array.shape[1])
     return estimator
 
 
-def check_feature_count(X, n_features):
+def check_feature_count(X: np.ndarray, n_features: int) -> np.ndarray:
     """Ensure a feature matrix matches a fitted estimator's feature count."""
 
     if int(X.shape[1]) != int(n_features):
@@ -79,7 +96,10 @@ def check_feature_count(X, n_features):
     return X
 
 
-def check_is_fitted(estimator, attributes=None):
+def check_is_fitted(
+    estimator: Any,
+    attributes: str | list[str] | None = None,
+) -> Any:
     """Check that fitted attributes exist and are not ``None``."""
 
     if attributes is None:

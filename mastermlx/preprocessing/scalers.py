@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+from numpy.typing import ArrayLike
 
 from ..base import BaseTransformer
 from ..utils.validation import check_X
@@ -13,7 +14,7 @@ class StandardScaler(BaseTransformer):
         self.mean_ = None
         self.scale_ = None
 
-    def fit(self, X, y=None):
+    def fit(self, X: ArrayLike, y: ArrayLike | None = None) -> "StandardScaler":
         X = check_X(X, dtype=float)
         self._set_n_features(X)
         self.mean_ = np.mean(X, axis=0)
@@ -21,12 +22,12 @@ class StandardScaler(BaseTransformer):
         self.scale_ = np.where(self.scale_ == 0.0, 1.0, self.scale_)
         return self
 
-    def transform(self, X):
+    def transform(self, X: ArrayLike) -> np.ndarray:
         self._check_fitted(["mean_", "scale_"])
         X = self._check_X(X, dtype=float)
         return (X - self.mean_) / self.scale_
 
-    def inverse_transform(self, X):
+    def inverse_transform(self, X: ArrayLike) -> np.ndarray:
         self._check_fitted(["mean_", "scale_"])
         X = self._check_X(X, dtype=float)
         return X * self.scale_ + self.mean_
