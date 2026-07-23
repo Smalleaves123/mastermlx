@@ -43,6 +43,7 @@ names. Workflow and reporting logic belongs in focused implementation modules:
 - `mastermlx.data.drift` contains distribution drift checks.
 - `mastermlx.data.contract` contains explicit training/inference data contracts.
 - `mastermlx.data.evaluation` contains OOF, cross-validation, uncertainty, and model comparison reports.
+- `mastermlx.data.online` contains incremental, sliding-window, drift, and delayed-label workflows.
 
 This keeps compatibility imports stable while making individual areas easier
 to test, profile, and extend.

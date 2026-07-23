@@ -111,6 +111,7 @@ class _BaseSGD(BaseEstimator):
         self.coef_ = None
         self.intercept_ = None
         self.loss_curve_ = []
+        self._t_ = 0
 
     def _init_weights(self, n_features):
         rng = np.random.default_rng(self.random_state)
@@ -147,6 +148,7 @@ class _BaseSGD(BaseEstimator):
         n, d = X.shape
 
         self._init_weights(d)
+        self._t_ = 0
         bs = min(self.batch_size or n, n)
         rng = np.random.default_rng(self.random_state)
         self.loss_curve_ = []
@@ -183,6 +185,44 @@ class _BaseSGD(BaseEstimator):
             self.coef_ = avg_coef
             self.intercept_ = avg_intercept
         return self
+
+    def _partial_update(self, X, y):
+        """Perform one incremental pass over a validated batch."""
+
+        n, d = X.shape
+        if self.coef_ is None:
+            self._init_weights(d)
+        elif cast(np.ndarray, self.coef_).shape != (d,):
+            raise ValueError(f"Expected {cast(np.ndarray, self.coef_).shape[0]} features, got {d}")
+
+        bs = min(self.batch_size or n, n)
+        rng_seed = None if self.random_state is None else int(self.random_state) + int(self._t_)
+        for xb, yb in batch_iterator(
+            X,
+            y,
+            batch_size=bs,
+            shuffle=self.shuffle,
+            random_state=rng_seed,
+        ):
+            self._t_ += 1
+            lr = self._lrate(self._t_)
+            decision = xb @ cast(np.ndarray, self.coef_) + cast(float, self.intercept_)
+            grad_loss = self._loss_grad(decision, yb)
+            self.coef_ -= lr * (xb.T @ grad_loss / xb.shape[0])
+            self._apply_l1_l2(lr, self.alpha)
+            self.intercept_ = cast(float, self.intercept_) - lr * np.mean(grad_loss)
+
+        decision = X @ cast(np.ndarray, self.coef_) + cast(float, self.intercept_)
+        self.loss_curve_.append(float(self._loss(decision, y) + self._reg_penalty()))
+        return self
+
+    def partial_fit(self, X, y=None):
+        """Incrementally update a regression model with one batch."""
+
+        X = check_2d_array(X).astype(float)
+        y = check_1d_array(y).astype(float)
+        X, y = check_same_rows(X, y)
+        return self._partial_update(X, y)
 
     def _reg_penalty(self):
         if self.penalty not in {"l1", "l2", "elasticnet"} or self.alpha == 0:
@@ -235,6 +275,7 @@ class SGDClassifier(_BaseSGD):
             # Multiclass: one-vs-rest stored as list
             self._coefs_: list[np.ndarray] = []
             self._intercepts_: list[float] = []
+            self._binary_estimators_: list[_BinarySGDClassifier] = []
             for c in classes:
                 y_bin_c = np.where(y == c, 1.0, -1.0)
                 est = _BinarySGDClassifier(
@@ -248,11 +289,72 @@ class SGDClassifier(_BaseSGD):
                 est.fit(X, y_bin_c)
                 self._coefs_.append(cast(np.ndarray, est.coef_))
                 self._intercepts_.append(cast(float, est.intercept_))
+                self._binary_estimators_.append(est)
             self.coef_ = np.column_stack(self._coefs_)
             self.intercept_ = np.array(self._intercepts_)
             return self
 
         super().fit(X, y_bin)
+        return self
+
+    def partial_fit(self, X, y=None, classes=None):
+        """Incrementally update a binary or multiclass classifier.
+
+        ``classes`` is required on the first call when the first batch does
+        not contain every class.
+        """
+
+        y = check_1d_array(y).astype(float)
+        X = check_2d_array(X).astype(float)
+        X, y = check_same_rows(X, y)
+        observed = np.unique(y)
+        if self.classes_ is None:
+            resolved = observed if classes is None else check_1d_array(classes).astype(float)
+            if resolved.size < 2:
+                raise ValueError("classes must contain at least two labels")
+            if np.unique(resolved).size != resolved.size:
+                raise ValueError("classes must contain unique labels")
+            self.classes_ = np.asarray(resolved)
+        elif classes is not None and not np.array_equal(np.asarray(classes), self.classes_):
+            raise ValueError("classes must match the classes from the first partial_fit call")
+
+        classes_array = cast(np.ndarray, self.classes_)
+        if not np.all(np.isin(observed, classes_array)):
+            raise ValueError("y contains labels not declared in classes")
+
+        if classes_array.size == 2:
+            self.__dict__.pop("_coefs_", None)
+            y_bin = np.where(y == classes_array[1], 1.0, -1.0)
+            return self._partial_update(X, y_bin)
+
+        estimators = getattr(self, "_binary_estimators_", None)
+        if estimators is None:
+            estimators = [
+                _BinarySGDClassifier(
+                    loss=self.loss,
+                    penalty=self.penalty,
+                    alpha=self.alpha,
+                    l1_ratio=self.l1_ratio,
+                    max_iter=self.max_iter,
+                    tol=self.tol,
+                    learning_rate=self.learning_rate,
+                    eta0=self.eta0,
+                    batch_size=self.batch_size,
+                    shuffle=self.shuffle,
+                    random_state=None if self.random_state is None else int(self.random_state) + index,
+                    warm_start=True,
+                    average=self.average,
+                )
+                for index, _ in enumerate(classes_array)
+            ]
+            self._binary_estimators_ = estimators
+        for index, label in enumerate(classes_array):
+            y_bin = np.where(y == label, 1.0, -1.0)
+            estimators[index]._partial_update(X, y_bin)
+        self._coefs_ = [cast(np.ndarray, estimator.coef_) for estimator in estimators]
+        self._intercepts_ = [cast(float, estimator.intercept_) for estimator in estimators]
+        self.coef_ = np.column_stack(self._coefs_)
+        self.intercept_ = np.asarray(self._intercepts_)
         return self
 
     def decision_function(self, X):

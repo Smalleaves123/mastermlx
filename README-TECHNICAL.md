@@ -74,6 +74,9 @@ report.
 intervals, learning curves, and convenient stratified, grouped, or time-series
 CV selection.
 
+`OnlineTabularExperiment` supports incremental `partial_fit`, bounded sliding
+windows, prequential batch metrics, drift alerts, and delayed-label updates.
+
 ### Mathematical signal analysis
 
 ```python
