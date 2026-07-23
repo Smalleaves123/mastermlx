@@ -307,7 +307,9 @@ be inspected directly.
 - `smooth_joint_path`
 - `plan_joint_trajectory`
 - `RobotWorkcell` for joint-limited TCP and continuous Cartesian task planning, clearance-aware paths, velocity/acceleration/jerk-constrained retiming, singularity diagnostics, virtual tracking, and safety exports
+- `RobotModel` exposes both concise (`fk`, `ik`, `jacobian`) and canonical long-form names, plus batch FK/Jacobian evaluation
 - `RobotModel.kinematic_metrics` for Jacobian rank, condition number, and manipulability diagnostics
+- `RobotResult` and `JointTrajectory` for mapping-compatible, attribute-accessible workflow results
 - `PlanarPoseEKF`
 - state-estimation helpers for odometry, position, and heading fusion
 

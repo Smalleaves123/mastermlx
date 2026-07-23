@@ -3,6 +3,7 @@ from __future__ import annotations
 import numpy as np
 
 from .model import RobotModel
+from .results import RobotResult
 from .trajectory import plan_joint_trajectory
 
 
@@ -44,6 +45,16 @@ class RobotExperiment:
         return self.robot.links
 
     @property
+    def n_joints(self):
+        return self.robot.n_joints
+
+    @property
+    def model(self):
+        """Return the underlying :class:`RobotModel`."""
+
+        return self.robot
+
+    @property
     def base(self):
         return self.robot.base
 
@@ -54,14 +65,26 @@ class RobotExperiment:
     def fk(self, joint_values=None, return_all=False):
         return self.robot.fk(joint_values=joint_values, return_all=return_all)
 
+    def forward_kinematics(self, joint_values=None, return_all=False):
+        return self.robot.forward_kinematics(joint_values=joint_values, return_all=return_all)
+
     def positions(self, joint_values=None):
         return self.robot.positions(joint_values=joint_values)
+
+    def frame_positions(self, joint_values=None):
+        return self.robot.frame_positions(joint_values=joint_values)
 
     def jacobian(self, joint_values=None):
         return self.robot.jacobian(joint_values=joint_values)
 
+    def geometric_jacobian(self, joint_values=None):
+        return self.robot.geometric_jacobian(joint_values=joint_values)
+
     def ik(self, target, joint_values=None, **kwargs):
         return self.robot.ik(target, joint_values=joint_values, **kwargs)
+
+    def inverse_kinematics(self, target, joint_values=None, **kwargs):
+        return self.robot.inverse_kinematics(target, joint_values=joint_values, **kwargs)
 
     def plan_trajectory(
         self,
@@ -97,7 +120,7 @@ class RobotExperiment:
         ee_path_length = float(np.sum(np.linalg.norm(ee_deltas, axis=1))) if ee_deltas.size else 0.0
         workspace_min = end_effector.min(axis=0)
         workspace_max = end_effector.max(axis=0)
-        return {
+        return RobotResult({
             "robot": self.name,
             "n_steps": int(trajectory.shape[0]),
             "n_joints": int(trajectory.shape[1]),
@@ -107,7 +130,7 @@ class RobotExperiment:
             "workspace_min": workspace_min,
             "workspace_max": workspace_max,
             "final_pose": self.robot.fk(trajectory[-1]),
-        }
+        })
 
     def track_trajectory(self, trajectory, gains=(4.0, 0.4), dt=0.1, damping=0.0, state=None):
         """Track a joint trajectory using the simple simulator and PD control."""
@@ -150,12 +173,12 @@ class RobotExperiment:
         raise AttributeError("pose_estimator does not define reset()")
 
     def summary(self):
-        return {
+        return RobotResult({
             "name": self.name,
             "n_joints": len(self.links),
             "has_pose_estimator": self.pose_estimator is not None,
             "robot": self.robot.name,
-        }
+        })
 
 
 def compare_robot_models(models, joint_values, task="kinematics"):
@@ -181,13 +204,13 @@ def compare_robot_models(models, joint_values, task="kinematics"):
             best_experiment = experiment
 
     leaderboard.sort(key=lambda item: item[1], reverse=True)
-    return {
+    return RobotResult({
         "task": task,
         "leaderboard": leaderboard,
         "best_name": best_name,
         "best_score": best_score,
         "best_experiment": best_experiment,
-    }
+    })
 
 
 __all__ = ["RobotExperiment", "compare_robot_models"]

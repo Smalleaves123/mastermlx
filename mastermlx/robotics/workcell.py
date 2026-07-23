@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import csv
 import json
+from collections.abc import Mapping
 from pathlib import Path
 
 import numpy as np
 
 from ..planning import smooth
 from .model import RobotModel
+from .results import JointTrajectory, RobotResult
 from .trajectory import sample_joint_trajectory_segments
 from .transforms import homogeneous_transform, matrix_to_quaternion, quaternion_to_matrix
 
@@ -206,12 +208,12 @@ class RobotWorkcell:
             position_errors.append(position_error)
             orientation_errors.append(orientation_error)
 
-        return {
+        return RobotResult({
             "targets": normalized_targets,
             "joint_targets": np.asarray(configurations, dtype=float),
             "position_errors": np.asarray(position_errors, dtype=float),
             "orientation_errors": np.asarray(orientation_errors, dtype=float),
-        }
+        })
 
     def plan_cartesian_task(
         self,
@@ -286,12 +288,12 @@ class RobotWorkcell:
             joint_path, collision_step=collision_step, clearance=clearance
         ):
             raise RuntimeError("interpolated Cartesian path does not satisfy collision clearance")
-        return {
+        return RobotResult({
             "targets": normalized,
             "interpolated_targets": interpolated,
             "ik": ik_result,
             "joint_path": joint_path,
-        }
+        })
 
     def plan_joint_path(
         self,
@@ -354,7 +356,7 @@ class RobotWorkcell:
             segments.append(segment if not segments else segment[1:])
             current = goal
         path = np.concatenate(segments, axis=0)
-        return {"ik": ik_result, "joint_path": path}
+        return RobotResult({"ik": ik_result, "joint_path": path})
 
     def retime_joint_path(
         self,
@@ -409,23 +411,23 @@ class RobotWorkcell:
         delta = path[1:] - path[:-1]
         jerk_scale = (60.0 - 360.0 * tau + 360.0 * tau**2) / durations[segment_indices] ** 3
         jerk = jerk_scale[:, None] * delta[segment_indices]
-        return {
-            "time": time,
-            "position": position,
-            "velocity": velocity,
-            "acceleration": acceleration,
-            "jerk": jerk,
-            "durations": durations,
-            "path": path.copy(),
-            "velocity_limits": velocity_limits.copy(),
-            "acceleration_limits": None if acceleration_limits is None else acceleration_limits.copy(),
-            "jerk_limits": None if jerk_limits is None else jerk_limits.copy(),
-        }
+        return JointTrajectory(
+            time=time,
+            position=position,
+            velocity=velocity,
+            acceleration=acceleration,
+            jerk=jerk,
+            durations=durations,
+            path=path.copy(),
+            velocity_limits=velocity_limits.copy(),
+            acceleration_limits=None if acceleration_limits is None else acceleration_limits.copy(),
+            jerk_limits=None if jerk_limits is None else jerk_limits.copy(),
+        )
 
     def simulate_tracking(self, trajectory, *, gains=(4.0, 0.4), dt=None, damping=0.0, state=None):
         """Track a retimed or sampled joint trajectory in the virtual controller."""
 
-        if isinstance(trajectory, dict):
+        if isinstance(trajectory, Mapping):
             reference = np.asarray(trajectory["position"], dtype=float)
             reference_time = np.asarray(trajectory.get("time"), dtype=float)
             if reference_time.shape != (reference.shape[0],):
@@ -470,7 +472,7 @@ class RobotWorkcell:
         )
         actual = states[1:, : self.n_joints]
         joint_error = actual - reference
-        return {
+        return RobotResult({
             "time": simulation_time,
             "reference": reference,
             "states": states,
@@ -479,12 +481,12 @@ class RobotWorkcell:
             "actual": actual,
             "joint_error": joint_error,
             "dt": dt,
-        }
+        })
 
     def safety_report(self, trajectory, tracking=None, *, clearance_margin=0.0, singularity_threshold=1e-8):
         """Summarize collision clearance, motion limits, and tracking error."""
 
-        if isinstance(trajectory, dict):
+        if isinstance(trajectory, Mapping):
             position = np.asarray(trajectory["position"], dtype=float)
             time = np.asarray(trajectory.get("time"), dtype=float)
             velocity = trajectory.get("velocity")
@@ -553,7 +555,7 @@ class RobotWorkcell:
         motion_violation = any(
             item is not None and item["violation"] is True for item in motion_metrics.values()
         )
-        report = {
+        report = RobotResult({
             "workcell": self.name,
             "n_joints": self.n_joints,
             "n_samples": int(position.shape[0]),
@@ -584,7 +586,7 @@ class RobotWorkcell:
             "minimum_position_manipulability": float(np.min(manipulabilities)),
             "maximum_position_condition_number": float(np.max(condition_numbers)),
             "singular_configuration": bool(any(item["singular"] for item in kinematics)),
-        }
+        })
         if tracking is not None:
             error = np.asarray(tracking["joint_error"], dtype=float)
             if error.ndim != 2 or error.shape[1] != self.n_joints:
@@ -597,8 +599,8 @@ class RobotWorkcell:
     def export_artifacts(self, directory, trajectory, *, tracking=None, report=None):
         """Export the planned trajectory, optional tracking trace, and safety report."""
 
-        if not isinstance(trajectory, dict):
-            raise TypeError("trajectory must be the dictionary returned by retime_joint_path")
+        if not isinstance(trajectory, Mapping):
+            raise TypeError("trajectory must be a mapping returned by retime_joint_path")
         directory = Path(directory)
         directory.mkdir(parents=True, exist_ok=True)
         fields = ["time"]
@@ -610,7 +612,7 @@ class RobotWorkcell:
         trajectory_path = directory / "trajectory.csv"
         self._write_csv(trajectory_path, fields, zip(*columns))
 
-        paths = {"trajectory_csv": trajectory_path}
+        paths = RobotResult({"trajectory_csv": trajectory_path})
         if tracking is not None:
             tracking_path = directory / "tracking.csv"
             fields = ["time"]

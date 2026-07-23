@@ -13,7 +13,7 @@ It gives you a broad set of classic ML algorithms, math utilities, and optional 
 - Online tabular learning with incremental updates, sliding windows, drift alerts, and delayed labels
 - Optional C++ and Cython backends for speed-critical paths
 - Pure Python fallback when compiled extensions are not available
-- Robotics foundations for transforms, kinematics, trajectories, and Jacobians
+- Robotics foundations for transforms, kinematics, trajectories, Jacobians, canonical model aliases, and batch evaluation
 - Planar workcell workflow with configurable joint limits, continuous Cartesian task interpolation, clearance-aware paths, constrained retiming, kinematic diagnostics, virtual tracking, and CSV/JSON exports
 - Control foundations for PID, LQR, MPC, and iLQR optimization control
 - Optional Cython acceleration for control, robotics, estimation, distance, kernels, particle filters, and time-series hot paths

@@ -29,6 +29,7 @@ from .trajectory import (
     sample_joint_trajectory_segments,
 )
 from .model import RobotModel
+from .results import JointTrajectory, RobotResult
 from .experiment import RobotExperiment, compare_robot_models
 from .workcell import RobotWorkcell
 from .state_estimation import PlanarPoseEKF, wrap_angle
@@ -60,6 +61,8 @@ __all__ = [
     "smooth_joint_path",
     "parse_urdf",
     "RobotModel",
+    "RobotResult",
+    "JointTrajectory",
     "RobotExperiment",
     "RobotWorkcell",
     "PlanarPoseEKF",
