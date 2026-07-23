@@ -130,3 +130,36 @@ def test_workcell_retimes_tracks_reports_and_exports(tmp_path):
     exported_report = json.loads(paths["safety_report_json"].read_text())
     assert exported_report["workcell"] == "planar2r"
     assert paths["tracking_csv"].is_file()
+
+
+def test_workcell_plans_continuous_cartesian_targets_with_clearance():
+    workcell = _workcell(with_obstacle=True)
+    q_start = np.array([0.2, -0.1])
+    q_goal = np.array([0.45, -0.25])
+    target = workcell.robot.fk(q_goal)[:3, 3]
+
+    task = workcell.plan_cartesian_task(
+        [target],
+        q_start,
+        steps_per_segment=6,
+        ik_kwargs={"max_iter": 300},
+        clearance=0.02,
+    )
+
+    assert len(task["interpolated_targets"]) == 6
+    assert task["joint_path"].shape == (7, 2)
+    assert np.all(np.asarray([workcell.world.clearance(q) for q in task["joint_path"]]) >= 0.02)
+    assert np.all(np.asarray(task["ik"]["position_errors"]) < 1e-4)
+
+
+def test_workcell_report_includes_motion_and_singularity_diagnostics():
+    workcell = _workcell()
+    path = np.array([[0.2, -0.1], [0.35, -0.25], [0.5, -0.2]])
+    trajectory = workcell.retime_joint_path(path, velocity_limits=0.7, acceleration_limits=1.2, jerk_limits=5.0)
+    report = workcell.safety_report(trajectory, clearance_margin=0.0)
+
+    assert report["clearance_violation"] is False
+    assert report["motion_limit_violation"] is False
+    assert report["motion_limits"]["velocity"]["maximum_by_joint"]
+    assert report["minimum_position_manipulability"] >= 0.0
+    assert np.isfinite(report["maximum_position_condition_number"])

@@ -112,10 +112,15 @@ class SimpleWorld:
                 minimum = min(minimum, distance - obstacle.radius)
         return minimum
 
-    def plan_path(self, q_start, q_goal, bounds, **kwargs):
-        """Plan a collision-free path in joint space."""
+    def plan_path(self, q_start, q_goal, bounds, *, hit=None, **kwargs):
+        """Plan a collision-free path in joint space.
 
-        return rrt(q_start, q_goal, bounds, hit=self.hit, **kwargs)
+        Callers may provide a stricter state predicate, such as a minimum
+        clearance requirement.  The default remains the world's collision
+        predicate.
+        """
+
+        return rrt(q_start, q_goal, bounds, hit=self.hit if hit is None else hit, **kwargs)
 
     def lidar_scan(self, joint_values=None, num_rays=64, max_range=10.0):
         """Very small planar range scan against circular obstacles."""

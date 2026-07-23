@@ -42,6 +42,37 @@ class RobotModel:
     def jacobian(self, joint_values=None):
         return geometric_jacobian(self.links, joint_values=joint_values, base=self.base, tool=self.tool)
 
+    def kinematic_metrics(self, joint_values=None, *, translational=False, threshold=1e-8):
+        """Return singularity and dexterity diagnostics at a configuration.
+
+        ``translational=True`` evaluates only the linear part of the Jacobian,
+        which is usually the useful metric for planar TCP positioning.  The
+        returned singular values are ordered from largest to smallest.
+        """
+
+        threshold = float(threshold)
+        if not np.isfinite(threshold) or threshold <= 0.0:
+            raise ValueError("threshold must be a positive finite value")
+        jacobian = self.jacobian(joint_values)
+        if translational:
+            jacobian = jacobian[:3]
+        singular_values = np.linalg.svd(jacobian, compute_uv=False)
+        scale = float(singular_values[0]) if singular_values.size else 0.0
+        effective_threshold = threshold * max(1.0, scale)
+        rank = int(np.count_nonzero(singular_values > effective_threshold))
+        full_rank = min(jacobian.shape)
+        smallest = float(singular_values[-1]) if singular_values.size else 0.0
+        condition_number = float("inf") if smallest <= effective_threshold else scale / smallest
+        return {
+            "singular_values": singular_values,
+            "rank": rank,
+            "full_rank": full_rank,
+            "singular": rank < full_rank,
+            "condition_number": condition_number,
+            "manipulability": float(np.prod(singular_values)) if singular_values.size else 0.0,
+            "translational": bool(translational),
+        }
+
     def ik(self, target, joint_values=None, **kwargs):
         return inverse_kinematics(target, self.links, joint_values=joint_values, base=self.base, tool=self.tool, **kwargs)
 

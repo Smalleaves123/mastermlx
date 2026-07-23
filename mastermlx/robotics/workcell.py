@@ -11,6 +11,7 @@ import numpy as np
 from ..planning import smooth
 from .model import RobotModel
 from .trajectory import sample_joint_trajectory_segments
+from .transforms import homogeneous_transform, matrix_to_quaternion, quaternion_to_matrix
 
 
 _QUINTIC_MAX_VELOCITY = 1.875
@@ -55,6 +56,20 @@ def _orientation_error(actual, target):
     rotation = target[:3, :3] @ actual[:3, :3].T
     cosine = np.clip((np.trace(rotation) - 1.0) / 2.0, -1.0, 1.0)
     return float(np.arccos(cosine))
+
+
+def _slerp(first, second, alpha):
+    first = np.asarray(first, dtype=float).reshape(4)
+    second = np.asarray(second, dtype=float).reshape(4)
+    dot = float(np.dot(first, second))
+    if dot < 0.0:
+        second = -second
+        dot = -dot
+    if dot > 0.9995:
+        return (first + float(alpha) * (second - first)) / np.linalg.norm(first + float(alpha) * (second - first))
+    angle = np.arccos(np.clip(dot, -1.0, 1.0))
+    weights = np.sin((1.0 - float(alpha)) * angle), np.sin(float(alpha) * angle)
+    return (weights[0] * first + weights[1] * second) / np.sin(angle)
 
 
 class RobotWorkcell:
@@ -122,19 +137,22 @@ class RobotWorkcell:
         upper = np.maximum(values - self.joint_limits[:, 1], 0.0)
         return np.max(np.maximum(lower, upper), axis=-1)
 
-    def _collision_free_path(self, path, collision_step=0.05):
+    def _collision_free_path(self, path, collision_step=0.05, clearance=0.0):
         path = np.asarray(path, dtype=float)
         if path.ndim != 2 or path.shape[0] < 1 or path.shape[1] != self.n_joints:
             raise ValueError("path must have shape (n_points, n_joints)")
         collision_step = float(collision_step)
-        if collision_step <= 0.0:
-            raise ValueError("collision_step must be positive")
+        clearance = float(clearance)
+        if collision_step <= 0.0 or not np.isfinite(collision_step):
+            raise ValueError("collision_step must be a positive finite value")
+        if clearance < 0.0 or not np.isfinite(clearance):
+            raise ValueError("clearance must be a non-negative finite value")
         for start, end in zip(path[:-1], path[1:]):
             count = max(1, int(np.ceil(np.linalg.norm(end - start) / collision_step)))
             for alpha in np.linspace(0.0, 1.0, count + 1):
-                if self.world.hit(start + alpha * (end - start)):
+                if self.world.clearance(start + alpha * (end - start)) < clearance:
                     return False
-        return not self.world.hit(path[-1])
+        return self.world.clearance(path[-1]) >= clearance
 
     def solve_tcp_path(
         self,
@@ -195,6 +213,86 @@ class RobotWorkcell:
             "orientation_errors": np.asarray(orientation_errors, dtype=float),
         }
 
+    def plan_cartesian_task(
+        self,
+        targets,
+        q_start,
+        *,
+        steps_per_segment=10,
+        ik_kwargs=None,
+        position_tolerance=1e-4,
+        orientation_tolerance=1e-3,
+        check_collisions=True,
+        collision_step=0.05,
+        clearance=0.0,
+    ):
+        """Plan a task with continuous Cartesian interpolation between targets.
+
+        Position-only targets are linearly interpolated.  Homogeneous targets
+        use linear position interpolation and quaternion SLERP for orientation.
+        Every interpolated target is solved with the previous configuration as
+        the IK seed, so the returned joint path follows the Cartesian task
+        instead of only matching its sparse waypoints.
+        """
+
+        q_start = _joint_vector(q_start, self.n_joints, "q_start")
+        self._check_joint_limits(q_start, "q_start")
+        targets = list(targets)
+        if not targets:
+            raise ValueError("targets must be non-empty")
+        steps_per_segment = int(steps_per_segment)
+        if steps_per_segment < 1:
+            raise ValueError("steps_per_segment must be at least 1")
+        clearance = float(clearance)
+        if clearance < 0.0 or not np.isfinite(clearance):
+            raise ValueError("clearance must be a non-negative finite value")
+
+        normalized = []
+        for target in targets:
+            target = np.asarray(target, dtype=float)
+            if target.shape not in {(3,), (4, 4)} or not np.all(np.isfinite(target)):
+                raise ValueError("each target must be a finite 3-vector or 4x4 transform")
+            normalized.append(target.copy())
+
+        current_pose = self.robot.fk(q_start)
+        interpolated = []
+        for target in normalized:
+            if target.shape == (3,):
+                start_position = current_pose[:3, 3]
+                for alpha in np.linspace(0.0, 1.0, steps_per_segment + 1)[1:]:
+                    interpolated.append(start_position + alpha * (target - start_position))
+            else:
+                start_position = current_pose[:3, 3]
+                start_quaternion = matrix_to_quaternion(current_pose[:3, :3])
+                target_quaternion = matrix_to_quaternion(target[:3, :3])
+                for alpha in np.linspace(0.0, 1.0, steps_per_segment + 1)[1:]:
+                    pose = homogeneous_transform(
+                        quaternion_to_matrix(_slerp(start_quaternion, target_quaternion, alpha)),
+                        start_position + alpha * (target[:3, 3] - start_position),
+                    )
+                    interpolated.append(pose)
+            current_pose = target if target.shape == (4, 4) else homogeneous_transform(current_pose[:3, :3], target)
+
+        ik_result = self.solve_tcp_path(
+            interpolated,
+            q_start,
+            ik_kwargs=ik_kwargs,
+            position_tolerance=position_tolerance,
+            orientation_tolerance=orientation_tolerance,
+            check_collisions=check_collisions,
+        )
+        joint_path = np.vstack([q_start, ik_result["joint_targets"]])
+        if check_collisions and not self._collision_free_path(
+            joint_path, collision_step=collision_step, clearance=clearance
+        ):
+            raise RuntimeError("interpolated Cartesian path does not satisfy collision clearance")
+        return {
+            "targets": normalized,
+            "interpolated_targets": interpolated,
+            "ik": ik_result,
+            "joint_path": joint_path,
+        }
+
     def plan_joint_path(
         self,
         q_start,
@@ -204,6 +302,7 @@ class RobotWorkcell:
         smooth_path=True,
         shortcut_attempts=100,
         collision_step=0.05,
+        clearance=0.0,
         **rrt_kwargs,
     ):
         """Return a collision-free joint-space path, using a direct path first."""
@@ -219,22 +318,28 @@ class RobotWorkcell:
             raise ValueError("q_goal must be inside bounds")
 
         direct = np.vstack([q_start, q_goal])
-        if self._collision_free_path(direct, collision_step=collision_step):
+        if self._collision_free_path(direct, collision_step=collision_step, clearance=clearance):
             return direct
 
-        path = self.world.plan_path(q_start, q_goal, bounds, **rrt_kwargs)
+        clearance = float(clearance)
+        if clearance < 0.0 or not np.isfinite(clearance):
+            raise ValueError("clearance must be a non-negative finite value")
+        def hit(values):
+            return self.world.clearance(values) < clearance
+
+        path = self.world.plan_path(q_start, q_goal, bounds, hit=hit, **rrt_kwargs)
         if path is None:
             raise RuntimeError("RRT could not find a collision-free joint-space path")
         if smooth_path:
             candidate = smooth(
                 path,
-                hit=self.world.hit,
+                hit=hit,
                 n=int(shortcut_attempts),
                 random_state=rrt_kwargs.get("random_state"),
             )
-            if self._collision_free_path(candidate, collision_step=collision_step):
+            if self._collision_free_path(candidate, collision_step=collision_step, clearance=clearance):
                 path = candidate
-        if not self._collision_free_path(path, collision_step=collision_step):
+        if not self._collision_free_path(path, collision_step=collision_step, clearance=clearance):
             raise RuntimeError("planner returned a path that does not satisfy collision checks")
         return path
 
@@ -312,6 +417,9 @@ class RobotWorkcell:
             "jerk": jerk,
             "durations": durations,
             "path": path.copy(),
+            "velocity_limits": velocity_limits.copy(),
+            "acceleration_limits": None if acceleration_limits is None else acceleration_limits.copy(),
+            "jerk_limits": None if jerk_limits is None else jerk_limits.copy(),
         }
 
     def simulate_tracking(self, trajectory, *, gains=(4.0, 0.4), dt=None, damping=0.0, state=None):
@@ -373,7 +481,7 @@ class RobotWorkcell:
             "dt": dt,
         }
 
-    def safety_report(self, trajectory, tracking=None):
+    def safety_report(self, trajectory, tracking=None, *, clearance_margin=0.0, singularity_threshold=1e-8):
         """Summarize collision clearance, motion limits, and tracking error."""
 
         if isinstance(trajectory, dict):
@@ -386,6 +494,9 @@ class RobotWorkcell:
             position = np.asarray(trajectory, dtype=float)
             time = None
             velocity = acceleration = jerk = None
+        clearance_margin = float(clearance_margin)
+        if clearance_margin < 0.0 or not np.isfinite(clearance_margin):
+            raise ValueError("clearance_margin must be a non-negative finite value")
         if position.ndim != 2 or position.shape[0] < 1 or position.shape[1] != self.n_joints:
             raise ValueError("trajectory positions must have shape (n_steps, n_joints)")
 
@@ -408,6 +519,40 @@ class RobotWorkcell:
         limit_violation = reference_limit_violation
         if tracking_limit_violation is not None:
             limit_violation = np.concatenate([limit_violation, tracking_limit_violation])
+        motion_limits = {
+            "velocity": None if isinstance(trajectory, np.ndarray) else trajectory.get("velocity_limits"),
+            "acceleration": None if isinstance(trajectory, np.ndarray) else trajectory.get("acceleration_limits"),
+            "jerk": None if isinstance(trajectory, np.ndarray) else trajectory.get("jerk_limits"),
+        }
+        motion_metrics: dict[str, dict[str, object] | None] = {}
+        for name, values, limits in (
+            ("velocity", velocity, motion_limits["velocity"]),
+            ("acceleration", acceleration, motion_limits["acceleration"]),
+            ("jerk", jerk, motion_limits["jerk"]),
+        ):
+            if values is None:
+                motion_metrics[name] = None
+                continue
+            values = np.asarray(values, dtype=float)
+            if values.shape != position.shape:
+                raise ValueError(f"trajectory {name} must have shape {position.shape}")
+            maximum = np.max(np.abs(values), axis=0)
+            violation = None if limits is None else bool(np.any(maximum > np.asarray(limits) + 1e-12))
+            motion_metrics[name] = {
+                "maximum_by_joint": maximum.tolist(),
+                "limits": None if limits is None else np.asarray(limits, dtype=float).tolist(),
+                "violation": violation,
+            }
+        kinematics = [
+            self.robot.kinematic_metrics(q, translational=True, threshold=singularity_threshold)
+            for q in position
+        ]
+        condition_numbers = np.asarray([item["condition_number"] for item in kinematics], dtype=float)
+        manipulabilities = np.asarray([item["manipulability"] for item in kinematics], dtype=float)
+        clearance_violation = bool(np.any(all_clearances < clearance_margin))
+        motion_violation = any(
+            item is not None and item["violation"] is True for item in motion_metrics.values()
+        )
         report = {
             "workcell": self.name,
             "n_joints": self.n_joints,
@@ -415,6 +560,8 @@ class RobotWorkcell:
             "duration": None if time is None else float(time[-1] - time[0]),
             "joint_path_length": joint_path_length,
             "collision": bool(np.any(all_clearances <= 0.0)),
+            "clearance_margin": clearance_margin,
+            "clearance_violation": clearance_violation,
             "reference_collision": bool(np.any(reference_clearances <= 0.0)),
             "tracking_collision": None if tracking_clearances is None else bool(np.any(tracking_clearances <= 0.0)),
             "minimum_clearance": None if finite_clearances.size == 0 else float(np.min(finite_clearances)),
@@ -432,6 +579,11 @@ class RobotWorkcell:
             "max_velocity": None if velocity is None else float(np.max(np.abs(velocity))),
             "max_acceleration": None if acceleration is None else float(np.max(np.abs(acceleration))),
             "max_jerk": None if jerk is None else float(np.max(np.abs(jerk))),
+            "motion_limits": motion_metrics,
+            "motion_limit_violation": motion_violation,
+            "minimum_position_manipulability": float(np.min(manipulabilities)),
+            "maximum_position_condition_number": float(np.max(condition_numbers)),
+            "singular_configuration": bool(any(item["singular"] for item in kinematics)),
         }
         if tracking is not None:
             error = np.asarray(tracking["joint_error"], dtype=float)

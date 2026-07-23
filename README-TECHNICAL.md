@@ -306,7 +306,8 @@ be inspected directly.
 - `plan_joint_path`
 - `smooth_joint_path`
 - `plan_joint_trajectory`
-- `RobotWorkcell` for joint-limited TCP task planning, velocity/acceleration/jerk-constrained retiming, virtual tracking, and safety exports
+- `RobotWorkcell` for joint-limited TCP and continuous Cartesian task planning, clearance-aware paths, velocity/acceleration/jerk-constrained retiming, singularity diagnostics, virtual tracking, and safety exports
+- `RobotModel.kinematic_metrics` for Jacobian rank, condition number, and manipulability diagnostics
 - `PlanarPoseEKF`
 - state-estimation helpers for odometry, position, and heading fusion
 
