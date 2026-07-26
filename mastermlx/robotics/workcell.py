@@ -9,7 +9,8 @@ from pathlib import Path
 
 import numpy as np
 
-from ..planning import smooth
+from ..planning import rrt_star, smooth
+from .collision import path_collision_report
 from .model import RobotModel
 from .results import JointTrajectory, RobotResult
 from .trajectory import sample_joint_trajectory_segments
@@ -301,6 +302,7 @@ class RobotWorkcell:
         q_goal,
         bounds=None,
         *,
+        planner="rrt",
         smooth_path=True,
         shortcut_attempts=100,
         collision_step=0.05,
@@ -329,9 +331,17 @@ class RobotWorkcell:
         def hit(values):
             return self.world.clearance(values) < clearance
 
-        path = self.world.plan_path(q_start, q_goal, bounds, hit=hit, **rrt_kwargs)
+        planner_kwargs = dict(rrt_kwargs)
+        planner_kwargs.setdefault("collision_step", collision_step)
+        planner = str(planner).lower()
+        if planner == "rrt":
+            path = self.world.plan_path(q_start, q_goal, bounds, hit=hit, **planner_kwargs)
+        elif planner in {"rrt_star", "rrt*"}:
+            path = rrt_star(q_start, q_goal, bounds, hit=hit, **planner_kwargs)
+        else:
+            raise ValueError("planner must be one of: rrt, rrt_star")
         if path is None:
-            raise RuntimeError("RRT could not find a collision-free joint-space path")
+            raise RuntimeError(f"{planner} could not find a collision-free joint-space path")
         if smooth_path:
             candidate = smooth(
                 path,
@@ -344,6 +354,78 @@ class RobotWorkcell:
         if not self._collision_free_path(path, collision_step=collision_step, clearance=clearance):
             raise RuntimeError("planner returned a path that does not satisfy collision checks")
         return path
+
+    def plan_motion(
+        self,
+        q_start,
+        q_goal,
+        bounds=None,
+        *,
+        planner="rrt",
+        velocity_limits=1.0,
+        acceleration_limits=None,
+        jerk_limits=None,
+        clearance=0.0,
+        collision_step=0.05,
+        smooth_path=True,
+        shortcut_attempts=100,
+        retime_kwargs=None,
+        track=False,
+        tracking_kwargs=None,
+        **planner_kwargs,
+    ):
+        """Plan, retime, and diagnose a joint-space motion in one call."""
+
+        path = self.plan_joint_path(
+            q_start,
+            q_goal,
+            bounds,
+            planner=planner,
+            smooth_path=smooth_path,
+            shortcut_attempts=shortcut_attempts,
+            collision_step=collision_step,
+            clearance=clearance,
+            **planner_kwargs,
+        )
+        collision = path_collision_report(
+            self.robot,
+            path,
+            self.world.obstacles,
+            interpolation_step=collision_step,
+        )
+        deltas = np.diff(path, axis=0)
+        planning_report = RobotResult({
+            "planner": str(planner),
+            "n_waypoints": int(path.shape[0]),
+            "joint_path_length": float(np.sum(np.linalg.norm(deltas, axis=1))) if deltas.size else 0.0,
+            "minimum_clearance": collision["minimum_clearance"],
+            "collision": collision["collision"],
+            "clearance_margin": float(clearance),
+            "clearance_violation": bool(collision["minimum_clearance"] < float(clearance)),
+            "collision_samples": collision["n_samples"],
+        })
+
+        retime_kwargs = {} if retime_kwargs is None else dict(retime_kwargs)
+        trajectory = self.retime_joint_path(
+            path,
+            velocity_limits=velocity_limits,
+            acceleration_limits=acceleration_limits,
+            jerk_limits=jerk_limits,
+            **retime_kwargs,
+        )
+        tracking = None
+        if track:
+            tracking_kwargs = {} if tracking_kwargs is None else dict(tracking_kwargs)
+            tracking = self.simulate_tracking(trajectory, **tracking_kwargs)
+        safety = self.safety_report(trajectory, tracking=tracking, clearance_margin=clearance)
+        return RobotResult({
+            "path": path,
+            "trajectory": trajectory,
+            "tracking": tracking,
+            "planning_report": planning_report,
+            "collision_report": collision,
+            "safety_report": safety,
+        })
 
     def plan_tcp_task(self, targets, q_start, bounds=None, *, ik_kwargs=None, **planning_kwargs):
         """Plan a complete TCP task from continuous IK through collision-free motion."""

@@ -9,6 +9,9 @@
 
 ## Unreleased
 
+- Added robot collision and clearance diagnostics for sphere/circle, box, and capsule obstacles.
+- Added an RRT* path planner with optional early return for fast demos and tests.
+- Added a `RobotWorkcell.plan_motion()` workflow that plans, retimes, optionally tracks, and reports a joint-space motion.
 - Added a PyTorch-inspired `Module`/`Parameter` interface with recursive
   parameter discovery, state dictionaries, strict loading, train/eval mode,
   and portable `.npz` save/load for sequential and MLP models.

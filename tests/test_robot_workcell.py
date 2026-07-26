@@ -163,3 +163,34 @@ def test_workcell_report_includes_motion_and_singularity_diagnostics():
     assert report["motion_limits"]["velocity"]["maximum_by_joint"]
     assert report["minimum_position_manipulability"] >= 0.0
     assert np.isfinite(report["maximum_position_condition_number"])
+
+
+def test_workcell_plan_motion_returns_planning_trajectory_and_reports():
+    workcell = _workcell()
+
+    result = workcell.plan_motion(
+        np.array([0.2, -0.1]),
+        np.array([0.5, -0.2]),
+        bounds=[[-np.pi, np.pi], [-np.pi, np.pi]],
+        planner="rrt_star",
+        step=0.2,
+        goal_rate=0.25,
+        search_radius=0.5,
+        max_iter=1200,
+        random_state=3,
+        stop_on_first_path=True,
+        velocity_limits=0.8,
+        acceleration_limits=1.5,
+        jerk_limits=8.0,
+        track=True,
+        tracking_kwargs={"dt": 0.05},
+    )
+
+    assert np.allclose(result["path"][0], [0.2, -0.1])
+    assert np.allclose(result["path"][-1], [0.5, -0.2])
+    assert result["planning_report"]["planner"] == "rrt_star"
+    assert result["planning_report"]["n_waypoints"] == result["path"].shape[0]
+    assert not result["planning_report"]["collision"]
+    assert result["trajectory"].n_joints == 2
+    assert result["tracking"]["actual"].shape == result["tracking"]["reference"].shape
+    assert not result["safety_report"]["reference_collision"]

@@ -18,6 +18,18 @@ from .transforms import (
 )
 from .kinematics import DHLink, chain_positions, dh_transform, forward_kinematics, inverse_kinematics
 from .jacobian import finite_difference_jacobian, geometric_jacobian, planar_2r_jacobian
+from .collision import (
+    BoxObstacle,
+    CapsuleObstacle,
+    SphereObstacle,
+    chain_collision_report,
+    path_collision_report,
+    point_obstacle_clearance,
+    point_segment_distance,
+    robot_collision_report,
+    segment_distance,
+    segment_obstacle_clearance,
+)
 from .trajectory import (
     cubic_time_scaling,
     joint_trajectory,
@@ -37,7 +49,11 @@ from .urdf_parser import URDFJoint, URDFLink, parse_urdf, urdf_to_dh_chain
 from .visualizer import plot_chain
 
 __all__ = [
+    "BoxObstacle",
+    "CapsuleObstacle",
     "DHLink",
+    "SphereObstacle",
+    "chain_collision_report",
     "chain_positions",
     "compose_transform",
     "cubic_time_scaling",
@@ -54,8 +70,11 @@ __all__ = [
     "plan_joint_trajectory",
     "matrix_to_euler",
     "matrix_to_quaternion",
+    "path_collision_report",
     "planar_2r_jacobian",
     "plot_chain",
+    "point_obstacle_clearance",
+    "point_segment_distance",
     "quaternion_to_matrix",
     "quintic_time_scaling",
     "smooth_joint_path",
@@ -65,6 +84,7 @@ __all__ = [
     "JointTrajectory",
     "RobotExperiment",
     "RobotWorkcell",
+    "robot_collision_report",
     "PlanarPoseEKF",
     "rpy_to_matrix",
     "rot_x",
@@ -72,6 +92,8 @@ __all__ = [
     "rot_z",
     "sample_joint_trajectory",
     "sample_joint_trajectory_segments",
+    "segment_distance",
+    "segment_obstacle_clearance",
     "URDFJoint",
     "URDFLink",
     "skew",

@@ -1,6 +1,6 @@
 import numpy as np
 
-from mastermlx import rrt, smooth
+from mastermlx import rrt, rrt_star, smooth
 
 
 def test_rrt_finds_a_free_path():
@@ -37,6 +37,30 @@ def test_rrt_avoids_obstacle():
     assert path is not None
     assert np.all([not hit(point) for point in path])
     assert np.max(path[:, 1]) > 0.8
+
+
+def test_rrt_star_finds_and_rewires_a_free_path():
+    def hit(p):
+        return 0.4 < p[0] < 0.6 and p[1] < 0.8
+
+    path = rrt_star(
+        [0.1, 0.1],
+        [0.9, 0.1],
+        bounds=[[0.0, 1.0], [0.0, 1.0]],
+        hit=hit,
+        step=0.08,
+        goal_rate=0.25,
+        search_radius=0.25,
+        max_iter=1200,
+        random_state=2,
+        stop_on_first_path=True,
+    )
+
+    assert path is not None
+    assert np.allclose(path[0], [0.1, 0.1])
+    assert np.allclose(path[-1], [0.9, 0.1])
+    assert np.all([not hit(point) for point in path])
+    assert path.shape[0] < 60
 
 
 def test_smooth_keeps_endpoints():

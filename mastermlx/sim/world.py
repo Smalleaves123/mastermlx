@@ -6,6 +6,13 @@ from pathlib import Path
 
 import numpy as np
 
+from ..robotics.collision import (
+    BoxObstacle,
+    CapsuleObstacle,
+    SphereObstacle,
+    chain_collision_report,
+    point_segment_distance,
+)
 from ..robotics.model import RobotModel
 from ..robotics.visualizer import plot_chain
 from ..planning import rrt
@@ -33,6 +40,27 @@ class SimpleWorld:
         self.obstacles.append(CircleObstacle(point, float(radius)))
         return self.obstacles[-1]
 
+    def add_sphere(self, center, radius):
+        """Add a circular or spherical obstacle."""
+
+        obstacle = SphereObstacle(tuple(map(float, center)), float(radius))
+        self.obstacles.append(obstacle)
+        return obstacle
+
+    def add_box(self, lower, upper):
+        """Add an axis-aligned box obstacle."""
+
+        obstacle = BoxObstacle(tuple(map(float, lower)), tuple(map(float, upper)))
+        self.obstacles.append(obstacle)
+        return obstacle
+
+    def add_capsule(self, start, end, radius):
+        """Add a capsule obstacle around a line segment."""
+
+        obstacle = CapsuleObstacle(tuple(map(float, start)), tuple(map(float, end)), float(radius))
+        self.obstacles.append(obstacle)
+        return obstacle
+
     def link_positions(self, joint_values=None):
         points = self.robot.positions(joint_values)
         if points.shape[1] >= 2:
@@ -41,44 +69,10 @@ class SimpleWorld:
 
     @staticmethod
     def _seg_dist(point, start, end):
-        edge = end - start
-        length_sq = float(np.dot(edge, edge))
-        if length_sq == 0.0:
-            return float(np.linalg.norm(point - start))
-        t = float(np.dot(point - start, edge) / length_sq)
-        t = min(1.0, max(0.0, t))
-        return float(np.linalg.norm(point - (start + t * edge)))
+        return point_segment_distance(point, start, end)
 
     def collision_report(self, joint_values=None):
-        points = self.link_positions(joint_values)
-        hits = []
-        for idx, point in enumerate(points):
-            for obstacle in self.obstacles:
-                dist = float(np.linalg.norm(point[:2] - np.asarray(obstacle.center, dtype=float)))
-                if dist <= obstacle.radius:
-                    hits.append(
-                        {
-                            "point_index": idx,
-                            "obstacle": obstacle,
-                            "distance": dist,
-                        }
-                    )
-        for idx, (start, end) in enumerate(zip(points[:-1], points[1:])):
-            for obstacle in self.obstacles:
-                dist = self._seg_dist(
-                    np.asarray(obstacle.center, dtype=float),
-                    np.asarray(start[:2], dtype=float),
-                    np.asarray(end[:2], dtype=float),
-                )
-                if dist <= obstacle.radius:
-                    hits.append(
-                        {
-                            "segment_index": idx,
-                            "obstacle": obstacle,
-                            "distance": dist,
-                        }
-                    )
-        return hits
+        return chain_collision_report(self.link_positions(joint_values), self.obstacles)["hits"]
 
     def hit(self, joint_values=None):
         """Return whether any joint, link segment, or obstacle overlaps."""
@@ -93,24 +87,9 @@ class SimpleWorld:
         no obstacles.
         """
 
-        if not self.obstacles:
-            return float("inf")
-
-        points = self.link_positions(joint_values)
-        minimum = float("inf")
-        for point in points:
-            for obstacle in self.obstacles:
-                distance = float(np.linalg.norm(point[:2] - np.asarray(obstacle.center, dtype=float)))
-                minimum = min(minimum, distance - obstacle.radius)
-        for start, end in zip(points[:-1], points[1:]):
-            for obstacle in self.obstacles:
-                distance = self._seg_dist(
-                    np.asarray(obstacle.center, dtype=float),
-                    np.asarray(start[:2], dtype=float),
-                    np.asarray(end[:2], dtype=float),
-                )
-                minimum = min(minimum, distance - obstacle.radius)
-        return minimum
+        return chain_collision_report(self.link_positions(joint_values), self.obstacles)[
+            "minimum_clearance"
+        ]
 
     def plan_path(self, q_start, q_goal, bounds, *, hit=None, **kwargs):
         """Plan a collision-free path in joint space.
@@ -150,8 +129,19 @@ class SimpleWorld:
         if points.shape[1] == 2:
             import matplotlib.pyplot as plt
             for obstacle in self.obstacles:
-                circle = plt.Circle(obstacle.center, obstacle.radius, fill=False, linestyle="--")
-                ax.add_patch(circle)
+                if hasattr(obstacle, "center") and len(obstacle.center) == 2:
+                    circle = plt.Circle(obstacle.center, obstacle.radius, fill=False, linestyle="--")
+                    ax.add_patch(circle)
+                elif hasattr(obstacle, "lower") and len(obstacle.lower) == 2:
+                    lower = np.asarray(obstacle.lower, dtype=float)
+                    upper = np.asarray(obstacle.upper, dtype=float)
+                    rect = plt.Rectangle(
+                        lower,
+                        *(upper - lower),
+                        fill=False,
+                        linestyle="--",
+                    )
+                    ax.add_patch(rect)
         return ax
 
     def trajectory_follow(self, trajectory, gains=(4.0, 0.4), dt=0.1, damping=0.0, state=None):
@@ -197,7 +187,17 @@ def load_world_config(config):
     )
     world = SimpleWorld(robot)
     for obstacle in data.get("obstacles", []):
-        world.add_obstacle(obstacle["center"], obstacle["radius"])
+        kind = str(obstacle.get("kind", "circle")).lower()
+        if kind in {"circle", "disc", "disk"}:
+            world.add_obstacle(obstacle["center"], obstacle["radius"])
+        elif kind == "sphere":
+            world.add_sphere(obstacle["center"], obstacle["radius"])
+        elif kind == "box":
+            world.add_box(obstacle["lower"], obstacle["upper"])
+        elif kind == "capsule":
+            world.add_capsule(obstacle["start"], obstacle["end"], obstacle["radius"])
+        else:
+            raise ValueError("obstacle kind must be one of: circle, sphere, box, capsule")
     state = data.get("state")
     if state is not None:
         state = np.asarray(state, dtype=float).reshape(-1)
