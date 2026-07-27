@@ -54,6 +54,9 @@ print(kmeans.inertia_)
 print(mlx.entropy(np.array([0.2, 0.3, 0.5])))
 ```
 
+For copy-and-run tutorials covering robotics and core ML APIs, see the
+[public examples](example/README.md).
+
 ## Highlights
 
 - Models: linear models, trees, ensembles, clustering, decomposition, probabilistic methods, neural nets, SVMs, preprocessing, feature selection
