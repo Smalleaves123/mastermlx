@@ -150,6 +150,7 @@ the arrays in an application.
 | `06_basic_ml.py` | The same fit/transform/predict style outside robotics |
 | `07_state_estimation.py` | Planar pose filtering and sensor updates |
 | `08_public_api_catalog.py` | Public robotics API names and recommended entry points |
+| `09_signal_condition_monitoring.py` | Vibration quality, features, and streaming detection |
 
 The catalog is intentionally lightweight: it prints the callable signatures;
 the preceding files show the corresponding calls with real data.

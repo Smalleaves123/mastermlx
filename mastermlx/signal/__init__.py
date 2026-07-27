@@ -124,6 +124,7 @@ from .systems import (
     zero_phase_filter,
 )
 from .experiment import SignalExperiment, SignalFeatureTransformer, compare_signal_models
+from .condition import VibrationFeatureTransformer, signal_quality_report, vibration_features
 from .fourier import (
     FourierTransformer,
     InverseFourierTransformer,
@@ -268,6 +269,9 @@ __all__ = [
     "SlidingWindowStream",
     "StreamingFeatureExtractor",
     "SignalMonitor",
+    "VibrationFeatureTransformer",
+    "signal_quality_report",
+    "vibration_features",
     "stft_spectrum",
     "top_frequency_peaks",
     "stack_signal_features",

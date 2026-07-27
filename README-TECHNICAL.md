@@ -180,6 +180,24 @@ frequency estimation. Parametric estimators return model coefficients or
 modal dictionaries so their stability, damping, and frequency estimates can
 be inspected directly.
 
+Condition-monitoring helpers provide a business-level path from raw sensor
+data to interpretable features:
+
+```python
+from mastermlx.signal import VibrationFeatureTransformer, signal_quality_report, vibration_features
+
+quality = signal_quality_report(signal, sample_rate=1000, saturation_level=2.0)
+features = vibration_features(signal, sample_rate=1000, n_fft=2048)
+transformer = VibrationFeatureTransformer(sample_rate=1000, n_fft=256)
+feature_matrix = transformer.fit_transform(batch_of_signals)
+```
+
+The quality report tracks finite-sample ratio, missing/infinite samples, RMS,
+crest factor, saturation, duration, and optional SNR/PSNR. Vibration features
+combine time-domain statistics, dominant frequency, spectral centroid and
+bandwidth, zero-crossing rate, and normalized band energies. The transformer
+is compatible with `SignalFeatureTransformer` and `SignalExperiment`.
+
 ## Module Map
 
 ### `linear_models`
