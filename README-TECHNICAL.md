@@ -312,6 +312,7 @@ be inspected directly.
 - `RobotModel.positions_batch` provides batched end-effector workspace positions
 - `RobotModel.end_effector_velocity` and `RobotModel.end_effector_velocity_batch` provide velocity-level task-space mappings
 - `RobotModel.differential_ik` provides damped least-squares velocity-level task-space control
+- `RobotModel.ik_batch` and `inverse_kinematics_batch` solve target sequences with optional warm-starting and joint limits
 - `RobotModel.joint_limits` enables limit-aware FK/Jacobian validation, clipping, and projected IK; URDF `<limit>` entries are imported when available
 - `RobotModel.default_joint_values` selects zero when valid and otherwise the limit midpoint for safe default evaluation
 - `RobotWorkcell` automatically inherits model joint limits unless explicit workcell limits are supplied

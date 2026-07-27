@@ -15,6 +15,7 @@
   end-effector-twist mapping on `RobotModel`.
 - Added model-level joint position limits, clipping and violation diagnostics,
   projected constrained IK, and URDF joint-limit import.
+- Added warm-started batch inverse kinematics for position and pose target sequences.
 - Added weighted CSR graphs with C++-accelerated Dijkstra, strongly connected
   components, and multi-source BFS, with Python fallbacks and label-preserving
   wrappers.

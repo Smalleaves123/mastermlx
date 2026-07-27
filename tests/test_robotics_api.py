@@ -54,6 +54,30 @@ def test_robot_model_joint_limits_and_constrained_ik():
     assert np.allclose(offset_robot.fk(), offset_robot.fk([1.5, 1.5]))
 
 
+def test_robot_model_batch_ik_supports_warm_start_and_limits():
+    robot = RobotModel.from_dh(
+        _robot().links,
+        joint_limits=[[-1.0, 1.0], [-1.0, 1.0]],
+    )
+    configurations = np.array([[0.15, -0.1], [0.2, -0.05], [0.25, 0.0]])
+    targets = robot.positions_batch(configurations)
+    solutions = robot.ik_batch(targets, joint_values=[0.0, 0.0], max_iter=200, damping=1e-5)
+
+    assert solutions.shape == configurations.shape
+    assert np.all(robot.joint_limit_violation(solutions) == 0.0)
+    assert np.allclose(robot.positions_batch(solutions), targets, atol=1e-5)
+
+    per_target = robot.ik_batch(
+        targets[:2],
+        joint_values=np.zeros((2, robot.n_joints)),
+        warm_start=False,
+        max_iter=200,
+    )
+    assert per_target.shape == (2, robot.n_joints)
+    with pytest.raises(ValueError, match="per-target"):
+        robot.ik_batch(targets[:2], joint_values=np.zeros((2, robot.n_joints)))
+
+
 def test_robot_model_velocity_mapping_and_differential_ik():
     robot = _robot()
     q = np.array([0.2, -0.1])

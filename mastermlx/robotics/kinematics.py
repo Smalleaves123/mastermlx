@@ -348,3 +348,78 @@ def inverse_kinematics(
         q = clip_joint_values(q + step_size * dq, joint_limits)
 
     return q
+
+
+def inverse_kinematics_batch(
+    targets,
+    links,
+    joint_values=None,
+    base=None,
+    tool=None,
+    max_iter=100,
+    tol=1e-6,
+    damping=1e-4,
+    step_size=1.0,
+    joint_limits=None,
+    warm_start=True,
+):
+    """Solve IK for multiple position vectors or homogeneous targets.
+
+    With ``warm_start=True``, each solution seeds the next target.  A single
+    initial configuration can be supplied through ``joint_values``; a matrix
+    of per-target seeds is also accepted when warm starts are disabled.
+    """
+
+    links, _, _, _, _, _, _ = _pack_links_cached(links)
+    targets = np.asarray(targets, dtype=float)
+    if targets.ndim == 2 and targets.shape[1] == 3:
+        normalized_targets = targets
+    elif targets.ndim == 3 and targets.shape[1:] == (4, 4):
+        normalized_targets = targets
+    else:
+        raise ValueError("targets must have shape (n_targets, 3) or (n_targets, 4, 4)")
+    if normalized_targets.shape[0] < 1 or not np.all(np.isfinite(normalized_targets)):
+        raise ValueError("targets must contain at least one finite target")
+
+    n_targets = normalized_targets.shape[0]
+    n_joints = len(links)
+    seeds = None
+    if joint_values is not None:
+        seeds = np.asarray(joint_values, dtype=float)
+        if seeds.ndim == 1:
+            if seeds.size != n_joints:
+                raise ValueError(f"joint_values must contain {n_joints} values")
+        elif seeds.ndim == 2:
+            if seeds.shape != (n_targets, n_joints):
+                raise ValueError(f"joint_values must have shape ({n_targets}, {n_joints})")
+            if warm_start:
+                raise ValueError("per-target joint_values require warm_start=False")
+        else:
+            raise ValueError("joint_values must be a vector or a per-target matrix")
+        if not np.all(np.isfinite(seeds)):
+            raise ValueError("joint_values must contain only finite values")
+
+    solutions = np.empty((n_targets, n_joints), dtype=float)
+    previous = None if seeds is None or seeds.ndim == 2 else seeds
+    for index, target in enumerate(normalized_targets):
+        if seeds is not None and seeds.ndim == 2:
+            seed = seeds[index]
+        elif warm_start:
+            seed = previous
+        else:
+            seed = seeds
+        solution = inverse_kinematics(
+            target,
+            links,
+            joint_values=seed,
+            base=base,
+            tool=tool,
+            max_iter=max_iter,
+            tol=tol,
+            damping=damping,
+            step_size=step_size,
+            joint_limits=joint_limits,
+        )
+        solutions[index] = solution
+        previous = solution
+    return solutions

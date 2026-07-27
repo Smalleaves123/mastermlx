@@ -10,6 +10,7 @@ from .kinematics import (
     forward_kinematics,
     forward_kinematics_batch,
     inverse_kinematics,
+    inverse_kinematics_batch,
 )
 from .constraints import check_joint_limits, clip_joint_values, joint_limit_violation, validate_joint_limits
 from .jacobian import geometric_jacobian, geometric_jacobian_batch
@@ -254,6 +255,21 @@ class RobotModel:
         """Canonical long-form alias for :meth:`ik`."""
 
         return self.ik(target, joint_values=joint_values, **kwargs)
+
+    def ik_batch(self, targets, joint_values=None, *, warm_start=True, **kwargs):
+        """Solve IK for a sequence of position or pose targets."""
+
+        kwargs = dict(kwargs)
+        kwargs.setdefault("joint_limits", self.joint_limits)
+        return inverse_kinematics_batch(
+            targets,
+            self.links,
+            joint_values=joint_values,
+            base=self.base,
+            tool=self.tool,
+            warm_start=warm_start,
+            **kwargs,
+        )
 
     def plot(self, joint_values=None, ax=None, annotate=False):
         points = self.positions(joint_values=joint_values)
