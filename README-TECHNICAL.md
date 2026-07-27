@@ -184,12 +184,27 @@ Condition-monitoring helpers provide a business-level path from raw sensor
 data to interpretable features:
 
 ```python
-from mastermlx.signal import VibrationFeatureTransformer, signal_quality_report, vibration_features
+from mastermlx.signal import (
+    SignalHealthMonitor,
+    VibrationFeatureTransformer,
+    signal_quality_report,
+    vibration_features,
+    windowed_vibration_features,
+)
 
 quality = signal_quality_report(signal, sample_rate=1000, saturation_level=2.0)
 features = vibration_features(signal, sample_rate=1000, n_fft=2048)
 transformer = VibrationFeatureTransformer(sample_rate=1000, n_fft=256)
 feature_matrix = transformer.fit_transform(batch_of_signals)
+
+monitor = SignalHealthMonitor(
+    sample_rate=1000,
+    feature_limits={"rms": (0.2, 1.2), "dominant_frequency": (40, 60)},
+)
+assessment = monitor.assess(signal)
+windows = windowed_vibration_features(
+    signal, sample_rate=1000, window_length=256, hop_length=128,
+)
 ```
 
 The quality report tracks finite-sample ratio, missing/infinite samples, RMS,
@@ -197,6 +212,10 @@ crest factor, saturation, duration, and optional SNR/PSNR. Vibration features
 combine time-domain statistics, dominant frequency, spectral centroid and
 bandwidth, zero-crossing rate, and normalized band energies. The transformer
 is compatible with `SignalFeatureTransformer` and `SignalExperiment`.
+`SignalHealthMonitor` adds explicit feature limits, health scores, status values
+(`healthy`, `warning`, or `critical`), and machine-readable violations. Use
+`windowed_vibration_features` to turn a long channel into timestamped feature
+matrices for dashboards, alarm histories, or downstream models.
 
 ## Module Map
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+from collections.abc import Mapping
 
 from .features import rms_energy, spectral_bandwidth, spectral_centroid, zero_crossing_rate
 from .fourier import band_energy, dominant_frequency
@@ -77,7 +78,21 @@ def signal_quality_report(signal, sample_rate=None, reference=None, saturation_l
     return report
 
 
-def vibration_features(signal, sample_rate, bands=None, n_fft=None, window="hann"):
+def _resolve_analysis_frame_length(n_samples, n_fft=None, frame_length=None):
+    n_fft = None if n_fft is None else int(n_fft)
+    if n_fft is not None and n_fft < 2:
+        raise ValueError("n_fft must be at least 2")
+    if frame_length is None:
+        frame_length = min(256, n_fft) if n_fft is not None else 256
+    frame_length = int(frame_length)
+    if frame_length < 2:
+        raise ValueError("frame_length must be at least 2")
+    if n_fft is not None and n_fft < frame_length:
+        raise ValueError("n_fft must be at least frame_length")
+    return min(frame_length, max(2, int(n_samples)))
+
+
+def vibration_features(signal, sample_rate, bands=None, n_fft=None, window="hann", frame_length=None):
     """Extract interpretable time/frequency features for condition monitoring.
 
     The returned dictionary is intentionally flat so it can be logged as a
@@ -91,6 +106,7 @@ def vibration_features(signal, sample_rate, bands=None, n_fft=None, window="hann
     sample_rate = float(sample_rate)
     if not np.isfinite(sample_rate) or sample_rate <= 0.0:
         raise ValueError("sample_rate must be positive and finite")
+    frame_length = _resolve_analysis_frame_length(len(values), n_fft=n_fft, frame_length=frame_length)
 
     centered = values - np.mean(values)
     std = float(np.std(values))
@@ -119,11 +135,11 @@ def vibration_features(signal, sample_rate, bands=None, n_fft=None, window="hann
         normalize=True,
     )
     centroid = np.asarray(
-        spectral_centroid(values, sample_rate=sample_rate, n_fft=n_fft, window=window),
+        spectral_centroid(values, sample_rate=sample_rate, frame_length=frame_length, n_fft=n_fft, window=window),
         dtype=float,
     )
     bandwidth = np.asarray(
-        spectral_bandwidth(values, sample_rate=sample_rate, n_fft=n_fft, window=window),
+        spectral_bandwidth(values, sample_rate=sample_rate, frame_length=frame_length, n_fft=n_fft, window=window),
         dtype=float,
     )
     result = {
@@ -143,6 +159,223 @@ def vibration_features(signal, sample_rate, bands=None, n_fft=None, window="hann
     }
     result.update({f"band_energy_{index}": float(value) for index, value in enumerate(energies)})
     return result
+
+
+def _feature_limits(feature_limits):
+    if feature_limits is None:
+        return {}
+    if not isinstance(feature_limits, Mapping):
+        raise TypeError("feature_limits must be a mapping of feature names to (lower, upper)")
+    limits = {}
+    for name, bounds in feature_limits.items():
+        if not isinstance(bounds, (tuple, list, np.ndarray)) or len(bounds) != 2:
+            raise ValueError(f"limit for {name!r} must be a (lower, upper) pair")
+        lower, upper = bounds
+        lower = None if lower is None else float(lower)
+        upper = None if upper is None else float(upper)
+        if lower is not None and not np.isfinite(lower):
+            raise ValueError(f"lower limit for {name!r} must be finite or None")
+        if upper is not None and not np.isfinite(upper):
+            raise ValueError(f"upper limit for {name!r} must be finite or None")
+        if lower is not None and upper is not None and lower > upper:
+            raise ValueError(f"lower limit for {name!r} must not exceed upper limit")
+        limits[str(name)] = (lower, upper)
+    return limits
+
+
+def assess_signal_health(
+    signal,
+    sample_rate,
+    feature_limits=None,
+    bands=None,
+    n_fft=None,
+    window="hann",
+    saturation_level=None,
+    frame_length=None,
+):
+    """Assess one sensor signal with quality metrics and threshold-based alerts.
+
+    ``feature_limits`` maps a feature name to ``(lower, upper)``. Either bound
+    may be ``None``. The result is JSON-friendly apart from the nested feature
+    values and contains ``status``, ``health_score``, ``alerts``, ``quality``,
+    ``features``, and ``violations`` keys.
+    """
+
+    limits = _feature_limits(feature_limits)
+    quality = signal_quality_report(
+        signal,
+        sample_rate=sample_rate,
+        saturation_level=saturation_level,
+    )
+    if not quality["valid"]:
+        return {
+            "status": "critical",
+            "health_score": 0.0,
+            "alerts": ("non_finite_samples",),
+            "quality": quality,
+            "features": None,
+            "violations": {},
+        }
+
+    features = vibration_features(
+        signal,
+        sample_rate=sample_rate,
+        bands=bands,
+        n_fft=n_fft,
+        window=window,
+        frame_length=frame_length,
+    )
+    violations = {}
+    for name, (lower, upper) in limits.items():
+        if name not in features:
+            raise KeyError(f"feature limit refers to unknown feature {name!r}")
+        value = float(features[name])
+        if lower is not None and value < lower:
+            violations[name] = {"value": value, "bound": "lower", "limit": lower}
+        elif upper is not None and value > upper:
+            violations[name] = {"value": value, "bound": "upper", "limit": upper}
+
+    alerts = list(violations)
+    if quality.get("saturation_ratio", 0.0) > 0.0:
+        alerts.append("saturation")
+    score = 100.0 if not limits else max(0.0, 100.0 * (1.0 - len(violations) / len(limits)))
+    if alerts:
+        status = "warning"
+    else:
+        status = "healthy"
+    return {
+        "status": status,
+        "health_score": float(score),
+        "alerts": tuple(alerts),
+        "quality": quality,
+        "features": features,
+        "violations": violations,
+    }
+
+
+def windowed_vibration_features(
+    signal,
+    sample_rate,
+    window_length,
+    hop_length=None,
+    bands=None,
+    n_fft=None,
+    window="hann",
+    pad_end=False,
+    frame_length=None,
+):
+    """Extract vibration features from overlapping windows of one signal.
+
+    Returns a dictionary with ``start_samples``, ``start_times``,
+    ``features`` (a matrix), and ``feature_names``. By default only complete
+    windows are used; set ``pad_end=True`` to include a zero-padded final
+    window.
+    """
+
+    values, _ = _finite_signal(signal)
+    if not np.all(np.isfinite(values)):
+        raise ValueError("signal must contain only finite values")
+    window_length = int(window_length)
+    hop_length = window_length if hop_length is None else int(hop_length)
+    if window_length < 1:
+        raise ValueError("window_length must be at least 1")
+    if hop_length < 1:
+        raise ValueError("hop_length must be at least 1")
+
+    starts = list(range(0, max(values.size - window_length + 1, 0), hop_length))
+    if pad_end and (not starts or starts[-1] + window_length < values.size):
+        next_start = 0 if not starts else starts[-1] + hop_length
+        if next_start < values.size:
+            starts.append(next_start)
+    rows = []
+    for start in starts:
+        chunk = values[start : start + window_length]
+        if chunk.size < window_length:
+            chunk = np.pad(chunk, (0, window_length - chunk.size))
+        rows.append(
+            vibration_features(
+                chunk,
+                sample_rate=sample_rate,
+                bands=bands,
+                n_fft=n_fft,
+                window=window,
+                frame_length=frame_length,
+            )
+        )
+    if rows:
+        names = tuple(rows[0])
+        matrix = np.asarray([[row[name] for name in names] for row in rows], dtype=float)
+    else:
+        names = tuple(vibration_features(np.zeros(window_length), sample_rate, bands, n_fft, window))
+        matrix = np.empty((0, len(names)), dtype=float)
+    return {
+        "start_samples": np.asarray(starts, dtype=int),
+        "start_times": np.asarray(starts, dtype=float) / float(sample_rate),
+        "features": matrix,
+        "feature_names": names,
+    }
+
+
+class SignalHealthMonitor:
+    """Reusable threshold-based health assessor for sensor channels."""
+
+    def __init__(
+        self,
+        sample_rate,
+        feature_limits=None,
+        bands=None,
+        n_fft=None,
+        window="hann",
+        saturation_level=None,
+        frame_length=None,
+    ):
+        self.sample_rate = float(sample_rate)
+        self.feature_limits = None if feature_limits is None else dict(feature_limits)
+        self.bands = None if bands is None else list(bands)
+        self.n_fft = None if n_fft is None else int(n_fft)
+        self.window = window
+        self.saturation_level = saturation_level
+        self.frame_length = None if frame_length is None else int(frame_length)
+
+    def assess(self, signal):
+        """Return one health assessment dictionary."""
+
+        return assess_signal_health(
+            signal,
+            sample_rate=self.sample_rate,
+            feature_limits=self.feature_limits,
+            bands=self.bands,
+            n_fft=self.n_fft,
+            window=self.window,
+            saturation_level=self.saturation_level,
+            frame_length=self.frame_length,
+        )
+
+    def assess_batch(self, X):
+        """Assess a 1D signal or each row of a 2D signal batch."""
+
+        values = np.asarray(X, dtype=float)
+        if values.ndim == 1:
+            values = values[None, :]
+        if values.ndim != 2 or values.shape[0] == 0:
+            raise ValueError("X must have shape (n_signals, n_samples) or be 1D")
+        return [self.assess(signal) for signal in values]
+
+    def get_params(self, deep=True):
+        return {
+            "sample_rate": self.sample_rate,
+            "feature_limits": self.feature_limits,
+            "bands": self.bands,
+            "n_fft": self.n_fft,
+            "window": self.window,
+            "saturation_level": self.saturation_level,
+            "frame_length": self.frame_length,
+        }
+
+    def set_params(self, **params):
+        for key, value in params.items():
+            setattr(self, key, value)
+        return self
 
 
 class VibrationFeatureTransformer:
@@ -219,4 +452,11 @@ class VibrationFeatureTransformer:
         return self
 
 
-__all__ = ["VibrationFeatureTransformer", "signal_quality_report", "vibration_features"]
+__all__ = [
+    "SignalHealthMonitor",
+    "VibrationFeatureTransformer",
+    "assess_signal_health",
+    "signal_quality_report",
+    "vibration_features",
+    "windowed_vibration_features",
+]

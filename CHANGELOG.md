@@ -11,6 +11,8 @@
 
 - Added condition-monitoring signal APIs for quality reports, vibration
   features, and feature-transformer integration with signal experiments.
+- Added windowed vibration feature extraction and threshold-based signal health
+  assessment with health scores, statuses, and machine-readable alerts.
 - Added a Cython batched forward-kinematics kernel plus workspace-position
   batches and damped differential-IK velocity helpers on `RobotModel`.
 - Added a Cython batched geometric-Jacobian kernel and batch joint-velocity to

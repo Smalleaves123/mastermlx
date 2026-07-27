@@ -4,7 +4,11 @@ This directory is the public, copy-and-run tutorial for `mastermlx`. The
 examples use the normal installed Python package and do not depend on a local
 Conda environment, an absolute filesystem path, or the repository internals.
 
-The current examples target the public API released in `mastermlx==0.1.13`.
+Examples `00` through `09` target the public API released in
+`mastermlx==0.1.13`. Example `10` demonstrates the newer signal-health APIs in
+the current source tree; run it after installing this checkout with
+`python -m pip install -e .`, or wait for the next PyPI release before using
+that example with an installed package.
 
 ## 1. Install
 
@@ -151,6 +155,7 @@ the arrays in an application.
 | `07_state_estimation.py` | Planar pose filtering and sensor updates |
 | `08_public_api_catalog.py` | Public robotics API names and recommended entry points |
 | `09_signal_condition_monitoring.py` | Vibration quality, features, and streaming detection |
+| `10_signal_health_monitor.py` | Windowed features, health scores, and threshold alerts |
 
 The catalog is intentionally lightweight: it prints the callable signatures;
 the preceding files show the corresponding calls with real data.
