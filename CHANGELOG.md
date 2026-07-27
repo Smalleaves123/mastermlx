@@ -9,6 +9,15 @@
 
 ## Unreleased
 
+- Added a Cython batched forward-kinematics kernel plus workspace-position
+  batches and damped differential-IK velocity helpers on `RobotModel`.
+- Added a Cython batched geometric-Jacobian kernel and batch joint-velocity to
+  end-effector-twist mapping on `RobotModel`.
+- Added model-level joint position limits, clipping and violation diagnostics,
+  projected constrained IK, and URDF joint-limit import.
+- Added weighted CSR graphs with C++-accelerated Dijkstra, strongly connected
+  components, and multi-source BFS, with Python fallbacks and label-preserving
+  wrappers.
 - Added robot collision and clearance diagnostics for sphere/circle, box, and capsule obstacles.
 - Added an RRT* path planner with optional early return for fast demos and tests.
 - Added a `RobotWorkcell.plan_motion()` workflow that plans, retimes, optionally tracks, and reports a joint-space motion.

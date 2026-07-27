@@ -297,6 +297,7 @@ be inspected directly.
 
 - `DHLink`
 - `forward_kinematics`
+- `forward_kinematics_batch`
 - `inverse_kinematics`
 - `geometric_jacobian`
 - `cubic_time_scaling`
@@ -307,7 +308,13 @@ be inspected directly.
 - `smooth_joint_path`
 - `plan_joint_trajectory`
 - `RobotWorkcell` for joint-limited TCP and continuous Cartesian task planning, clearance-aware paths, velocity/acceleration/jerk-constrained retiming, singularity diagnostics, virtual tracking, and safety exports
-- `RobotModel` exposes both concise (`fk`, `ik`, `jacobian`) and canonical long-form names, plus batch FK/Jacobian evaluation
+- `RobotModel` exposes both concise (`fk`, `ik`, `jacobian`) and canonical long-form names, plus compiled batch FK/Jacobian evaluation
+- `RobotModel.positions_batch` provides batched end-effector workspace positions
+- `RobotModel.end_effector_velocity` and `RobotModel.end_effector_velocity_batch` provide velocity-level task-space mappings
+- `RobotModel.differential_ik` provides damped least-squares velocity-level task-space control
+- `RobotModel.joint_limits` enables limit-aware FK/Jacobian validation, clipping, and projected IK; URDF `<limit>` entries are imported when available
+- `RobotModel.default_joint_values` selects zero when valid and otherwise the limit midpoint for safe default evaluation
+- `RobotWorkcell` automatically inherits model joint limits unless explicit workcell limits are supplied
 - `RobotModel.kinematic_metrics` for Jacobian rank, condition number, and manipulability diagnostics
 - `RobotResult` and `JointTrajectory` for mapping-compatible, attribute-accessible workflow results
 - `PlanarPoseEKF`

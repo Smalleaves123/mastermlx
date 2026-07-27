@@ -235,6 +235,94 @@ def forward_kinematics_dh(
     return T
 
 
+def forward_kinematics_batch_dh(
+    np.ndarray[DTYPE_t, ndim=1] a,
+    np.ndarray[DTYPE_t, ndim=1] alpha,
+    np.ndarray[DTYPE_t, ndim=1] d,
+    np.ndarray[DTYPE_t, ndim=1] theta,
+    np.ndarray[ITYPE_t, ndim=1] joint_type,
+    np.ndarray[DTYPE_t, ndim=1] offset,
+    np.ndarray[DTYPE_t, ndim=2] q,
+    base=None,
+    tool=None,
+):
+    """Compute end-effector transforms for a batch of DH configurations."""
+
+    cdef Py_ssize_t n = a.shape[0]
+    cdef Py_ssize_t n_samples = q.shape[0]
+    cdef Py_ssize_t sample, i
+    cdef double qi, ai, alphai, di, thetai, offi, ct, st, ca, sa
+    cdef np.ndarray[DTYPE_t, ndim=2] base_arr = np.asarray(
+        np.eye(4, dtype=np.float64) if base is None else base,
+        dtype=np.float64,
+    )
+    cdef np.ndarray[DTYPE_t, ndim=2] tool_arr = None
+    cdef np.ndarray[DTYPE_t, ndim=3] output = np.empty((n_samples, 4, 4), dtype=np.float64)
+    cdef np.ndarray[DTYPE_t, ndim=2] T
+    cdef np.ndarray[DTYPE_t, ndim=2] A
+    cdef np.ndarray[DTYPE_t, ndim=2] T_new
+    cdef np.ndarray[DTYPE_t, ndim=2] T_tmp
+
+    if base_arr.ndim != 2 or base_arr.shape[0] != 4 or base_arr.shape[1] != 4:
+        raise ValueError("Expected a 4x4 base transform")
+    if tool is not None:
+        tool_arr = _as_transform(tool)
+    if q.ndim != 2 or q.shape[1] != n:
+        raise ValueError("q must have shape (n_samples, n_joints)")
+
+    for sample in range(n_samples):
+        T = np.array(base_arr, dtype=np.float64, copy=True)
+        A = np.empty((4, 4), dtype=np.float64)
+        T_new = np.empty((4, 4), dtype=np.float64)
+        for i in range(n):
+            qi = q[sample, i]
+            ai = a[i]
+            alphai = alpha[i]
+            di = d[i]
+            thetai = theta[i]
+            offi = offset[i]
+
+            if joint_type[i] != 0:
+                thetai = thetai + qi + offi
+            else:
+                di = di + qi + offi
+
+            ct = cos(thetai)
+            st = sin(thetai)
+            ca = cos(alphai)
+            sa = sin(alphai)
+
+            A[0, 0] = ct
+            A[0, 1] = -st * ca
+            A[0, 2] = st * sa
+            A[0, 3] = ai * ct
+            A[1, 0] = st
+            A[1, 1] = ct * ca
+            A[1, 2] = -ct * sa
+            A[1, 3] = ai * st
+            A[2, 0] = 0.0
+            A[2, 1] = sa
+            A[2, 2] = ca
+            A[2, 3] = di
+            A[3, 0] = 0.0
+            A[3, 1] = 0.0
+            A[3, 2] = 0.0
+            A[3, 3] = 1.0
+
+            _matmul4(T, A, T_new)
+            T_tmp = T
+            T = T_new
+            T_new = T_tmp
+
+        if tool_arr is not None:
+            _matmul4(T, tool_arr, T_new)
+            T_tmp = T
+            T = T_new
+            T_new = T_tmp
+        output[sample, :, :] = T
+    return output
+
+
 def geometric_jacobian_dh(
     np.ndarray[DTYPE_t, ndim=1] a,
     np.ndarray[DTYPE_t, ndim=1] alpha,
@@ -337,3 +425,123 @@ def geometric_jacobian_dh(
             J[5, i] = 0.0
 
     return J
+
+
+def geometric_jacobian_batch_dh(
+    np.ndarray[DTYPE_t, ndim=1] a,
+    np.ndarray[DTYPE_t, ndim=1] alpha,
+    np.ndarray[DTYPE_t, ndim=1] d,
+    np.ndarray[DTYPE_t, ndim=1] theta,
+    np.ndarray[ITYPE_t, ndim=1] joint_type,
+    np.ndarray[DTYPE_t, ndim=1] offset,
+    np.ndarray[DTYPE_t, ndim=2] q,
+    base=None,
+    tool=None,
+):
+    """Compute geometric Jacobians for a batch of DH configurations."""
+
+    cdef Py_ssize_t n = a.shape[0]
+    cdef Py_ssize_t n_samples = q.shape[0]
+    cdef Py_ssize_t sample, i
+    cdef double qi, ai, alphai, di, thetai, offi, ct, st, ca, sa
+    cdef np.ndarray[DTYPE_t, ndim=2] base_arr = np.asarray(
+        np.eye(4, dtype=np.float64) if base is None else base,
+        dtype=np.float64,
+    )
+    cdef np.ndarray[DTYPE_t, ndim=2] tool_arr = None
+    cdef np.ndarray[DTYPE_t, ndim=3] output = np.empty((n_samples, 6, n), dtype=np.float64)
+    cdef np.ndarray[DTYPE_t, ndim=2] T
+    cdef np.ndarray[DTYPE_t, ndim=2] A
+    cdef np.ndarray[DTYPE_t, ndim=2] T_new
+    cdef np.ndarray[DTYPE_t, ndim=2] T_tmp
+    cdef np.ndarray[DTYPE_t, ndim=2] origins = np.empty((n, 3), dtype=np.float64)
+    cdef np.ndarray[DTYPE_t, ndim=2] axes = np.empty((n, 3), dtype=np.float64)
+    cdef double px, py, pz, dx, dy, dz
+
+    if base_arr.ndim != 2 or base_arr.shape[0] != 4 or base_arr.shape[1] != 4:
+        raise ValueError("Expected a 4x4 base transform")
+    if tool is not None:
+        tool_arr = _as_transform(tool)
+    if q.ndim != 2 or q.shape[1] != n:
+        raise ValueError("q must have shape (n_samples, n_joints)")
+
+    for sample in range(n_samples):
+        T = np.array(base_arr, dtype=np.float64, copy=True)
+        A = np.empty((4, 4), dtype=np.float64)
+        T_new = np.empty((4, 4), dtype=np.float64)
+        for i in range(n):
+            origins[i, 0] = T[0, 3]
+            origins[i, 1] = T[1, 3]
+            origins[i, 2] = T[2, 3]
+            axes[i, 0] = T[0, 2]
+            axes[i, 1] = T[1, 2]
+            axes[i, 2] = T[2, 2]
+
+            qi = q[sample, i]
+            ai = a[i]
+            alphai = alpha[i]
+            di = d[i]
+            thetai = theta[i]
+            offi = offset[i]
+
+            if joint_type[i] != 0:
+                thetai = thetai + qi + offi
+            else:
+                di = di + qi + offi
+
+            ct = cos(thetai)
+            st = sin(thetai)
+            ca = cos(alphai)
+            sa = sin(alphai)
+
+            A[0, 0] = ct
+            A[0, 1] = -st * ca
+            A[0, 2] = st * sa
+            A[0, 3] = ai * ct
+            A[1, 0] = st
+            A[1, 1] = ct * ca
+            A[1, 2] = -ct * sa
+            A[1, 3] = ai * st
+            A[2, 0] = 0.0
+            A[2, 1] = sa
+            A[2, 2] = ca
+            A[2, 3] = di
+            A[3, 0] = 0.0
+            A[3, 1] = 0.0
+            A[3, 2] = 0.0
+            A[3, 3] = 1.0
+
+            _matmul4(T, A, T_new)
+            T_tmp = T
+            T = T_new
+            T_new = T_tmp
+
+        if tool_arr is not None:
+            _matmul4(T, tool_arr, T_new)
+            T_tmp = T
+            T = T_new
+            T_new = T_tmp
+
+        px = T[0, 3]
+        py = T[1, 3]
+        pz = T[2, 3]
+        for i in range(n):
+            dx = px - origins[i, 0]
+            dy = py - origins[i, 1]
+            dz = pz - origins[i, 2]
+            if joint_type[i] != 0:
+                output[sample, 0, i] = axes[i, 1] * dz - axes[i, 2] * dy
+                output[sample, 1, i] = axes[i, 2] * dx - axes[i, 0] * dz
+                output[sample, 2, i] = axes[i, 0] * dy - axes[i, 1] * dx
+                output[sample, 3, i] = axes[i, 0]
+                output[sample, 4, i] = axes[i, 1]
+                output[sample, 5, i] = axes[i, 2]
+            else:
+                output[sample, 0, i] = axes[i, 0]
+                output[sample, 1, i] = axes[i, 1]
+                output[sample, 2, i] = axes[i, 2]
+                output[sample, 3, i] = 0.0
+                output[sample, 4, i] = 0.0
+                output[sample, 5, i] = 0.0
+
+    return output

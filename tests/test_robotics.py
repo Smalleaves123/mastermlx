@@ -194,12 +194,14 @@ def test_urdf_parser_and_chain_conversion():
         <child link="link1" />
         <origin xyz="1 0 0" rpy="0 0 0" />
         <axis xyz="0 0 1" />
+        <limit lower="-1.0" upper="1.0" effort="1" velocity="1" />
       </joint>
       <joint name="joint2" type="revolute">
         <parent link="link1" />
         <child link="link2" />
         <origin xyz="1 0 0" rpy="0 0 0" />
         <axis xyz="0 0 1" />
+        <limit lower="-2.0" upper="2.0" effort="1" velocity="1" />
       </joint>
     </robot>
     """
@@ -210,3 +212,6 @@ def test_urdf_parser_and_chain_conversion():
     assert len(chain) == 2
     assert chain[0].a == 1.0
     assert chain[1].a == 1.0
+    limited_chain, limits = urdf_to_dh_chain(xml, return_limits=True)
+    assert len(limited_chain) == 2
+    assert np.allclose(limits, [[-1.0, 1.0], [-2.0, 2.0]])

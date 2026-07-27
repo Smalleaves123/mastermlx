@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from collections.abc import Iterable
+from typing import Any
 
 import numpy as np
 
@@ -199,8 +200,8 @@ def chain_collision_report(points, obstacles, *, link_radius=0.0):
     link_radius = float(link_radius)
     if link_radius < 0.0 or not np.isfinite(link_radius):
         raise ValueError("link_radius must be a non-negative finite value")
-    hits = []
-    closest = {
+    hits: list[dict[str, Any]] = []
+    closest: dict[str, Any] = {
         "kind": None,
         "index": None,
         "obstacle_index": None,
@@ -227,7 +228,7 @@ def chain_collision_report(points, obstacles, *, link_radius=0.0):
                     "clearance": float(clearance),
                 }
             if clearance <= 0.0:
-                hit = {
+                hit: dict[str, Any] = {
                     "kind": "point",
                     "point_index": point_index,
                     "obstacle_index": obstacle_index,

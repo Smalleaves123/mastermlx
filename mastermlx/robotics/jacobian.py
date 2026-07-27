@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from .kinematics import _geometric_jacobian_packed, _pack_links
+from .kinematics import _geometric_jacobian_batch_packed, _geometric_jacobian_packed, _pack_links
 
 
 def geometric_jacobian(links, joint_values=None, base=None, tool=None):
@@ -17,6 +17,20 @@ def geometric_jacobian(links, joint_values=None, base=None, tool=None):
         if q.size != n:
             raise ValueError(f"Expected {n} joint values, got {q.size}")
     return _geometric_jacobian_packed(a, alpha, d, theta, joint_type, offset, q, base=base, tool=tool)
+
+
+def geometric_jacobian_batch(links, joint_values, base=None, tool=None):
+    """Return geometric Jacobians for a batch of serial-manipulator states."""
+
+    links, a, alpha, d, theta, joint_type, offset = _pack_links(links)
+    q = np.asarray(joint_values, dtype=float)
+    if q.ndim != 2 or q.shape[1] != len(links):
+        raise ValueError(f"joint_values must have shape (n_samples, {len(links)})")
+    if not np.all(np.isfinite(q)):
+        raise ValueError("joint_values must contain only finite values")
+    return _geometric_jacobian_batch_packed(
+        a, alpha, d, theta, joint_type, offset, np.ascontiguousarray(q), base=base, tool=tool
+    )
 
 
 def planar_2r_jacobian(l1, l2, q1, q2):

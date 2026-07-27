@@ -17,6 +17,7 @@ class URDFJoint:
     origin_xyz: tuple[float, float, float]
     origin_rpy: tuple[float, float, float]
     axis: tuple[float, float, float]
+    limits: tuple[float, float] | None = None
 
 
 @dataclass(frozen=True)
@@ -49,6 +50,10 @@ def parse_urdf(xml_text):
         child = node.find("child")
         origin = node.find("origin")
         axis = node.find("axis")
+        limit = node.find("limit")
+        limits = None
+        if limit is not None and "lower" in limit.attrib and "upper" in limit.attrib:
+            limits = (float(limit.attrib["lower"]), float(limit.attrib["upper"]))
         joints.append(
             URDFJoint(
                 name=name,
@@ -58,12 +63,13 @@ def parse_urdf(xml_text):
                 origin_xyz=_parse_vector(origin.attrib.get("xyz") if origin is not None else None, 3),
                 origin_rpy=_parse_vector(origin.attrib.get("rpy") if origin is not None else None, 3),
                 axis=_parse_vector(axis.attrib.get("xyz") if axis is not None else None, 3, default=0.0),
+                limits=limits,
             )
         )
     return links, joints
 
 
-def urdf_to_dh_chain(xml_text, base_link=None, tip_link=None):
+def urdf_to_dh_chain(xml_text, base_link=None, tip_link=None, *, return_limits=False):
     """Convert a simple serial URDF chain into a DHLink list.
 
     This is intentionally conservative: only serial chains of revolute/prismatic
@@ -72,7 +78,7 @@ def urdf_to_dh_chain(xml_text, base_link=None, tip_link=None):
 
     links, joints = parse_urdf(xml_text)
     if not joints:
-        return []
+        return ([], None) if return_limits else []
 
     if base_link is None:
         base_link = joints[0].parent
@@ -80,6 +86,7 @@ def urdf_to_dh_chain(xml_text, base_link=None, tip_link=None):
         tip_link = joints[-1].child
 
     chain = []
+    limits = []
     current = base_link
     for joint in joints:
         if joint.parent != current:
@@ -102,7 +109,10 @@ def urdf_to_dh_chain(xml_text, base_link=None, tip_link=None):
             chain.append(DHLink(a=a, alpha=alpha, d=d, theta=theta, joint_type="prismatic", offset=0.0))
         else:
             chain.append(DHLink(a=a, alpha=alpha, d=d, theta=theta, joint_type="revolute", offset=0.0))
+        limits.append(joint.limits)
         current = joint.child
         if current == tip_link:
             break
+    if return_limits:
+        return chain, np.asarray(limits, dtype=float) if limits and all(limit is not None for limit in limits) else None
     return chain

@@ -31,8 +31,8 @@ class RobotExperiment:
         self.name = self.robot.name if name is None else str(name)
 
     @classmethod
-    def from_dh(cls, links, *, name="robot", base=None, tool=None, pose_estimator=None):
-        robot = RobotModel.from_dh(links, name=name, base=base, tool=tool)
+    def from_dh(cls, links, *, name="robot", base=None, tool=None, joint_limits=None, pose_estimator=None):
+        robot = RobotModel.from_dh(links, name=name, base=base, tool=tool, joint_limits=joint_limits)
         return cls(robot, pose_estimator=pose_estimator, name=name)
 
     @classmethod

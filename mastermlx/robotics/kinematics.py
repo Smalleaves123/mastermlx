@@ -6,15 +6,20 @@ from typing import Any
 import numpy as np
 
 from ..config import get_backend
+from .constraints import check_joint_limits, clip_joint_values, validate_joint_limits
 
 try:
     from ._robotics_ops import (
         forward_kinematics_dh as _cy_forward_kinematics_dh,
+        forward_kinematics_batch_dh as _cy_forward_kinematics_batch_dh,
         geometric_jacobian_dh as _cy_geometric_jacobian_dh,
+        geometric_jacobian_batch_dh as _cy_geometric_jacobian_batch_dh,
     )
 except ImportError:  # pragma: no cover - fallback when Cython extensions are unavailable
     _cy_forward_kinematics_dh = None
+    _cy_forward_kinematics_batch_dh = None
     _cy_geometric_jacobian_dh = None
+    _cy_geometric_jacobian_batch_dh = None
 
 
 _PACKED_LINKS_CACHE: dict[tuple[Any, ...], Any] = {}
@@ -158,6 +163,37 @@ def forward_kinematics(links, joint_values=None, base=None, tool=None, return_al
     return T
 
 
+def forward_kinematics_batch(links, joint_values, base=None, tool=None):
+    """Compute end-effector transforms for a batch of joint configurations."""
+
+    links, a, alpha, d, theta, joint_type, offset = _pack_links_cached(links)
+    q = np.asarray(joint_values, dtype=float)
+    if q.ndim != 2 or q.shape[1] != len(links):
+        raise ValueError(f"joint_values must have shape (n_samples, {len(links)})")
+    if not np.all(np.isfinite(q)):
+        raise ValueError("joint_values must contain only finite values")
+    q = np.ascontiguousarray(q)
+    if get_backend() != "numpy" and _cy_forward_kinematics_batch_dh is not None:
+        return np.asarray(
+            _cy_forward_kinematics_batch_dh(
+                a,
+                alpha,
+                d,
+                theta,
+                joint_type,
+                offset,
+                q,
+                base=base,
+                tool=tool,
+            ),
+            dtype=float,
+        )
+    return np.asarray(
+        [forward_kinematics(links, values, base=base, tool=tool) for values in q],
+        dtype=float,
+    )
+
+
 def chain_positions(links, joint_values=None, base=None, tool=None):
     """Return the position of each chain frame origin, including the base."""
 
@@ -213,6 +249,33 @@ def _geometric_jacobian_packed(a, alpha, d, theta, joint_type, offset, q, base=N
     return J
 
 
+def _geometric_jacobian_batch_packed(a, alpha, d, theta, joint_type, offset, q, base=None, tool=None):
+    if get_backend() != "numpy" and _cy_geometric_jacobian_batch_dh is not None:
+        return np.asarray(
+            _cy_geometric_jacobian_batch_dh(
+                a,
+                alpha,
+                d,
+                theta,
+                joint_type,
+                offset,
+                q,
+                base=base,
+                tool=tool,
+            ),
+            dtype=float,
+        )
+    return np.asarray(
+        [
+            _geometric_jacobian_packed(
+                a, alpha, d, theta, joint_type, offset, values, base=base, tool=tool
+            )
+            for values in q
+        ],
+        dtype=float,
+    )
+
+
 def inverse_kinematics(
     target,
     links,
@@ -223,6 +286,7 @@ def inverse_kinematics(
     tol=1e-6,
     damping=1e-4,
     step_size=1.0,
+    joint_limits=None,
 ):
     """Solve inverse kinematics with damped least squares.
 
@@ -233,12 +297,18 @@ def inverse_kinematics(
 
     links, a, alpha, d, theta, joint_type, offset = _pack_links_cached(links)
     n = len(links)
+    joint_limits = validate_joint_limits(joint_limits, n)
     if joint_values is None:
         q = np.zeros(n, dtype=float)
+        if joint_limits is not None:
+            q = np.mean(joint_limits, axis=1)
     else:
         q = np.asarray(joint_values, dtype=float).reshape(-1)
         if q.size != n:
             raise ValueError(f"Expected {n} joint values, got {q.size}")
+        if not np.all(np.isfinite(q)):
+            raise ValueError("joint_values must contain only finite values")
+    check_joint_limits(q, joint_limits)
 
     target = np.asarray(target, dtype=float)
     if target.shape == (3,):
@@ -275,6 +345,6 @@ def inverse_kinematics(
 
         JJt = J @ J.T
         dq = J.T @ np.linalg.solve(JJt + (damping**2) * np.eye(JJt.shape[0], dtype=float), error)
-        q = q + step_size * dq
+        q = clip_joint_values(q + step_size * dq, joint_limits)
 
     return q

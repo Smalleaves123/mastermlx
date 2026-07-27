@@ -16,8 +16,16 @@ from .transforms import (
     transform_points,
     unskew,
 )
-from .kinematics import DHLink, chain_positions, dh_transform, forward_kinematics, inverse_kinematics
-from .jacobian import finite_difference_jacobian, geometric_jacobian, planar_2r_jacobian
+from .kinematics import (
+    DHLink,
+    chain_positions,
+    dh_transform,
+    forward_kinematics,
+    forward_kinematics_batch,
+    inverse_kinematics,
+)
+from .constraints import check_joint_limits, clip_joint_values, joint_limit_violation, validate_joint_limits
+from .jacobian import finite_difference_jacobian, geometric_jacobian, geometric_jacobian_batch, planar_2r_jacobian
 from .collision import (
     BoxObstacle,
     CapsuleObstacle,
@@ -54,17 +62,22 @@ __all__ = [
     "DHLink",
     "SphereObstacle",
     "chain_collision_report",
+    "check_joint_limits",
     "chain_positions",
     "compose_transform",
     "cubic_time_scaling",
+    "clip_joint_values",
     "dh_transform",
     "euler_to_matrix",
     "finite_difference_jacobian",
     "forward_kinematics",
+    "forward_kinematics_batch",
     "geometric_jacobian",
+    "geometric_jacobian_batch",
     "homogeneous_transform",
     "invert_transform",
     "inverse_kinematics",
+    "joint_limit_violation",
     "joint_trajectory",
     "plan_joint_path",
     "plan_joint_trajectory",
@@ -100,6 +113,7 @@ __all__ = [
     "transform_points",
     "wrap_angle",
     "urdf_to_dh_chain",
+    "validate_joint_limits",
     "unskew",
     "compare_robot_models",
 ]

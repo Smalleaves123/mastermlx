@@ -11,6 +11,7 @@ import numpy as np
 
 from ..planning import rrt_star, smooth
 from .collision import path_collision_report
+from .constraints import validate_joint_limits
 from .model import RobotModel
 from .results import JointTrajectory, RobotResult
 from .trajectory import sample_joint_trajectory_segments
@@ -42,17 +43,6 @@ def _limits(values, n_joints, name):
     if not np.all(np.isfinite(values)) or np.any(values <= 0.0):
         raise ValueError(f"{name} must contain only positive finite values")
     return values
-
-
-def _joint_limits(values, n_joints):
-    if values is None:
-        return None
-    values = np.asarray(values, dtype=float)
-    if values.shape != (n_joints, 2):
-        raise ValueError("joint_limits must have shape (n_joints, 2)")
-    if not np.all(np.isfinite(values)) or np.any(values[:, 0] >= values[:, 1]):
-        raise ValueError("joint_limits must contain finite lower < upper bounds")
-    return values.copy()
 
 
 def _orientation_error(actual, target):
@@ -97,7 +87,8 @@ class RobotWorkcell:
         self.robot = robot
         self.world = world
         self.name = robot.name if name is None else str(name)
-        self.joint_limits = _joint_limits(joint_limits, len(robot.links))
+        configured_limits = robot.joint_limits if joint_limits is None else joint_limits
+        self.joint_limits = validate_joint_limits(configured_limits, len(robot.links))
 
     @property
     def n_joints(self):
