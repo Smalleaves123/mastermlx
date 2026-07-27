@@ -34,6 +34,22 @@ returns `TaskSchedule(start, finish, worker)` entries and supports a bounded
 `max_workers` value. `find_subgraph_matches` returns injective mappings from
 pattern nodes to graph nodes; `induced=True` also checks non-edges.
 
+For weighted large graphs, use `WeightedCSRGraph` and `dijkstra_csr`:
+
+```python
+from mastermlx.graphs import WeightedCSRGraph, dijkstra_csr
+
+weighted = WeightedCSRGraph.from_graph({
+    "a": [("b", 2.0), ("c", 5.0)],
+    "b": [("c", 1.0)],
+    "c": [],
+})
+path, cost = dijkstra_csr(weighted, "a", "c")
+```
+
+Weights must be finite and non-negative. Without a goal, `dijkstra_csr`
+returns distances for reachable nodes; with a goal, it returns `(path, cost)`.
+
 ## Knowledge graph
 
 Facts are ordinary triples. Variables in rule patterns use a `?name` prefix.
@@ -76,7 +92,10 @@ visit_order = bfs_csr(csr, "extract")
 task_order = topological_sort_csr(csr)
 ```
 
-The accelerated functions are `bfs_csr`, `connected_components_csr`, and
-`topological_sort_csr`. They fall back to the Python implementations when the
-extension is unavailable or the backend is set to `numpy`. Run
+The accelerated functions are `bfs_csr`, `connected_components_csr`,
+`topological_sort_csr`, `dijkstra_csr`, `multi_source_bfs_csr`, and
+`strongly_connected_components_csr`. They fall back to the Python
+implementations when the extension is unavailable or the backend is set to
+`numpy`. `multi_source_bfs_csr` returns a distance mapping for every node,
+using `-1` for unreachable nodes. Run
 `python benchmarks/bench_graphs.py` to compare both paths locally.

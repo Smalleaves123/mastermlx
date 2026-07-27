@@ -52,45 +52,49 @@ def connected_components(graph: Graph) -> list[list[Hashable]]:
 
 
 def strongly_connected_components(graph: Graph) -> list[list[Hashable]]:
-    """Return strongly connected components using Tarjan's algorithm."""
+    """Return strongly connected components using an iterative Kosaraju pass."""
 
     adjacency = _adjacency(graph)
-    index = 0
-    indices: dict[Hashable, int] = {}
-    lowlink: dict[Hashable, int] = {}
-    stack: list[Hashable] = []
-    on_stack: set[Hashable] = set()
+    reverse: dict[Hashable, list[Hashable]] = {node: [] for node in adjacency}
+    for node, neighbors in adjacency.items():
+        for neighbor in neighbors:
+            reverse[neighbor].append(node)
+
+    visited: set[Hashable] = set()
+    finish_order: list[Hashable] = []
+    for root in adjacency:
+        if root in visited:
+            continue
+        visited.add(root)
+        stack: list[tuple[Hashable, int]] = [(root, 0)]
+        while stack:
+            node, offset = stack[-1]
+            if offset < len(adjacency[node]):
+                neighbor = adjacency[node][offset]
+                stack[-1] = (node, offset + 1)
+                if neighbor not in visited:
+                    visited.add(neighbor)
+                    stack.append((neighbor, 0))
+            else:
+                finish_order.append(node)
+                stack.pop()
+
+    assigned: set[Hashable] = set()
     result: list[list[Hashable]] = []
-
-    def visit(node: Hashable) -> None:
-        nonlocal index
-        indices[node] = index
-        lowlink[node] = index
-        index += 1
-        stack.append(node)
-        on_stack.add(node)
-
-        for neighbor in adjacency[node]:
-            if neighbor not in indices:
-                visit(neighbor)
-                lowlink[node] = min(lowlink[node], lowlink[neighbor])
-            elif neighbor in on_stack:
-                lowlink[node] = min(lowlink[node], indices[neighbor])
-
-        if lowlink[node] != indices[node]:
-            return
+    for root in reversed(finish_order):
+        if root in assigned:
+            continue
+        assigned.add(root)
+        node_stack: list[Hashable] = [root]
         component: list[Hashable] = []
-        while True:
-            member = stack.pop()
-            on_stack.remove(member)
-            component.append(member)
-            if member == node:
-                break
+        while node_stack:
+            node = node_stack.pop()
+            component.append(node)
+            for neighbor in reverse[node]:
+                if neighbor not in assigned:
+                    assigned.add(neighbor)
+                    node_stack.append(neighbor)
         result.append(component)
-
-    for node in adjacency:
-        if node not in indices:
-            visit(node)
     return result
 
 

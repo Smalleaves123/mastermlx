@@ -2,15 +2,18 @@
 #include <pybind11/pybind11.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <functional>
 #include <limits>
 #include <queue>
 #include <stdexcept>
+#include <stack>
 #include <vector>
 
 namespace py = pybind11;
 using IntArray = py::array_t<std::int64_t, py::array::c_style | py::array::forcecast>;
+using FloatArray = py::array_t<double, py::array::c_style | py::array::forcecast>;
 
 struct CsrView {
     const std::int64_t* indptr;
@@ -47,6 +50,20 @@ CsrView validate_csr(const IntArray& indptr_, const IntArray& indices_) {
         }
     }
     return {offsets, neighbors, nodes, edges};
+}
+
+const double* validate_weights(const FloatArray& weights_, const CsrView& csr) {
+    const auto weights = weights_.request();
+    if (weights.ndim != 1 || weights.shape[0] != csr.edges) {
+        throw std::invalid_argument("weights must be a 1D array matching indices");
+    }
+    const auto* values = static_cast<const double*>(weights.ptr);
+    for (std::int64_t edge = 0; edge < csr.edges; ++edge) {
+        if (!std::isfinite(values[edge]) || values[edge] < 0.0) {
+            throw std::invalid_argument("weights must be finite and non-negative");
+        }
+    }
+    return values;
 }
 
 py::array_t<std::int64_t> bfs_order(IntArray indptr_, IntArray indices_, std::int64_t start) {
@@ -167,9 +184,202 @@ py::array_t<std::int64_t> topological_order(IntArray indptr_, IntArray indices_)
     return output;
 }
 
+py::tuple dijkstra_weighted(
+    IntArray indptr_,
+    IntArray indices_,
+    FloatArray weights_,
+    std::int64_t start,
+    std::int64_t goal
+) {
+    const auto csr = validate_csr(indptr_, indices_);
+    const auto* weights = validate_weights(weights_, csr);
+    if (start < 0 || start >= csr.nodes) {
+        throw std::invalid_argument("start must be a valid node id");
+    }
+    if (goal < -1 || goal >= csr.nodes) {
+        throw std::invalid_argument("goal must be -1 or a valid node id");
+    }
+
+    const double inf = std::numeric_limits<double>::infinity();
+    std::vector<double> distances(static_cast<std::size_t>(csr.nodes), inf);
+    std::vector<std::int64_t> predecessors(static_cast<std::size_t>(csr.nodes), -1);
+    using QueueItem = std::pair<double, std::int64_t>;
+    std::priority_queue<QueueItem, std::vector<QueueItem>, std::greater<QueueItem>> queue;
+    distances[static_cast<std::size_t>(start)] = 0.0;
+    queue.emplace(0.0, start);
+
+    {
+        py::gil_scoped_release release;
+        while (!queue.empty()) {
+            const QueueItem current = queue.top();
+            queue.pop();
+            const double cost = current.first;
+            const auto node = current.second;
+            if (cost > distances[static_cast<std::size_t>(node)]) {
+                continue;
+            }
+            if (node == goal) {
+                break;
+            }
+            for (std::int64_t edge = csr.indptr[node]; edge < csr.indptr[node + 1]; ++edge) {
+                const auto neighbor = csr.indices[edge];
+                const double next_cost = cost + weights[edge];
+                auto& distance = distances[static_cast<std::size_t>(neighbor)];
+                if (next_cost < distance) {
+                    distance = next_cost;
+                    predecessors[static_cast<std::size_t>(neighbor)] = node;
+                    queue.emplace(next_cost, neighbor);
+                }
+            }
+        }
+    }
+
+    py::array_t<double> distance_output(csr.nodes);
+    py::array_t<std::int64_t> predecessor_output(csr.nodes);
+    std::copy(distances.begin(), distances.end(), static_cast<double*>(distance_output.request().ptr));
+    std::copy(
+        predecessors.begin(),
+        predecessors.end(),
+        static_cast<std::int64_t*>(predecessor_output.request().ptr)
+    );
+    return py::make_tuple(distance_output, predecessor_output);
+}
+
+py::array_t<std::int64_t> multi_source_bfs_distances(
+    IntArray indptr_,
+    IntArray indices_,
+    IntArray starts_
+) {
+    const auto csr = validate_csr(indptr_, indices_);
+    const auto starts = starts_.request();
+    if (starts.ndim != 1) {
+        throw std::invalid_argument("starts must be a 1D array");
+    }
+    const auto* sources = static_cast<const std::int64_t*>(starts.ptr);
+    std::vector<std::int64_t> distances(static_cast<std::size_t>(csr.nodes), -1);
+    std::queue<std::int64_t> queue;
+    for (py::ssize_t index = 0; index < starts.shape[0]; ++index) {
+        const auto source = sources[index];
+        if (source < 0 || source >= csr.nodes) {
+            throw std::invalid_argument("starts contains an invalid node id");
+        }
+        if (distances[static_cast<std::size_t>(source)] == -1) {
+            distances[static_cast<std::size_t>(source)] = 0;
+            queue.push(source);
+        }
+    }
+
+    {
+        py::gil_scoped_release release;
+        while (!queue.empty()) {
+            const auto node = queue.front();
+            queue.pop();
+            const auto next_distance = distances[static_cast<std::size_t>(node)] + 1;
+            for (std::int64_t edge = csr.indptr[node]; edge < csr.indptr[node + 1]; ++edge) {
+                const auto neighbor = csr.indices[edge];
+                auto& distance = distances[static_cast<std::size_t>(neighbor)];
+                if (distance == -1) {
+                    distance = next_distance;
+                    queue.push(neighbor);
+                }
+            }
+        }
+    }
+
+    py::array_t<std::int64_t> output(csr.nodes);
+    std::copy(distances.begin(), distances.end(), static_cast<std::int64_t*>(output.request().ptr));
+    return output;
+}
+
+py::array_t<std::int64_t> strongly_connected_components(IntArray indptr_, IntArray indices_) {
+    const auto csr = validate_csr(indptr_, indices_);
+    std::vector<std::vector<std::int64_t>> reverse(static_cast<std::size_t>(csr.nodes));
+    std::vector<unsigned char> visited(static_cast<std::size_t>(csr.nodes), 0);
+    std::vector<std::int64_t> finish_order;
+    std::vector<std::int64_t> labels(static_cast<std::size_t>(csr.nodes), -1);
+    finish_order.reserve(static_cast<std::size_t>(csr.nodes));
+
+    {
+        py::gil_scoped_release release;
+        for (std::int64_t root = 0; root < csr.nodes; ++root) {
+            if (visited[static_cast<std::size_t>(root)] != 0) {
+                continue;
+            }
+            std::vector<std::pair<std::int64_t, std::int64_t>> stack;
+            visited[static_cast<std::size_t>(root)] = 1;
+            stack.emplace_back(root, csr.indptr[root]);
+            while (!stack.empty()) {
+                auto& frame = stack.back();
+                const auto node = frame.first;
+                auto& edge = frame.second;
+                if (edge < csr.indptr[node + 1]) {
+                    const auto neighbor = csr.indices[edge++];
+                    reverse[static_cast<std::size_t>(neighbor)].push_back(node);
+                    if (visited[static_cast<std::size_t>(neighbor)] == 0) {
+                        visited[static_cast<std::size_t>(neighbor)] = 1;
+                        stack.emplace_back(neighbor, csr.indptr[neighbor]);
+                    }
+                } else {
+                    finish_order.push_back(node);
+                    stack.pop_back();
+                }
+            }
+        }
+
+        std::int64_t component = 0;
+        for (auto it = finish_order.rbegin(); it != finish_order.rend(); ++it) {
+            const auto root = *it;
+            if (labels[static_cast<std::size_t>(root)] != -1) {
+                continue;
+            }
+            std::vector<std::int64_t> stack = {root};
+            labels[static_cast<std::size_t>(root)] = component;
+            while (!stack.empty()) {
+                const auto node = stack.back();
+                stack.pop_back();
+                for (const auto neighbor : reverse[static_cast<std::size_t>(node)]) {
+                    auto& label = labels[static_cast<std::size_t>(neighbor)];
+                    if (label == -1) {
+                        label = component;
+                        stack.push_back(neighbor);
+                    }
+                }
+            }
+            ++component;
+        }
+
+    }
+
+    py::array_t<std::int64_t> output(csr.nodes);
+    std::copy(labels.begin(), labels.end(), static_cast<std::int64_t*>(output.request().ptr));
+    return output;
+}
+
 PYBIND11_MODULE(_graph_cpp, m) {
     m.doc() = "C++ kernels for CSR graph traversal and analysis";
     m.def("bfs_order", &bfs_order, py::arg("indptr"), py::arg("indices"), py::arg("start"));
     m.def("connected_components", &connected_components, py::arg("indptr"), py::arg("indices"));
     m.def("topological_order", &topological_order, py::arg("indptr"), py::arg("indices"));
+    m.def(
+        "dijkstra_weighted",
+        &dijkstra_weighted,
+        py::arg("indptr"),
+        py::arg("indices"),
+        py::arg("weights"),
+        py::arg("start"),
+        py::arg("goal")
+    );
+    m.def(
+        "multi_source_bfs_distances",
+        &multi_source_bfs_distances,
+        py::arg("indptr"),
+        py::arg("indices"),
+        py::arg("starts")
+    );
+    m.def(
+        "strongly_connected_components",
+        &strongly_connected_components,
+        py::arg("indptr"),
+        py::arg("indices")
+    );
 }
