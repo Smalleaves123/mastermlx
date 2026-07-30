@@ -11,7 +11,7 @@ import numpy as np
 
 from ..base import BaseExperiment
 from ..planning import rrt_star, smooth
-from .collision import path_collision_report
+from .collision import chain_clearance_batch, path_collision_report
 from .constraints import validate_joint_limits
 from .model import RobotModel
 from .results import JointTrajectory, RobotResult
@@ -580,7 +580,8 @@ class RobotWorkcell(BaseExperiment):
         if position.ndim != 2 or position.shape[0] < 1 or position.shape[1] != self.n_joints:
             raise ValueError("trajectory positions must have shape (n_steps, n_joints)")
 
-        reference_clearances = np.asarray([self.world.clearance(q) for q in position], dtype=float)
+        reference_points = np.asarray([self.world.link_positions(q) for q in position], dtype=float)
+        reference_clearances = chain_clearance_batch(reference_points, self.world.obstacles)
         deltas = np.diff(position, axis=0)
         joint_path_length = float(np.sum(np.linalg.norm(deltas, axis=1))) if deltas.size else 0.0
         reference_limit_violation = self._joint_limit_violation(position)
@@ -591,7 +592,8 @@ class RobotWorkcell(BaseExperiment):
             actual = np.asarray(tracking["actual"], dtype=float)
             if actual.ndim != 2 or actual.shape[1] != self.n_joints or not np.all(np.isfinite(actual)):
                 raise ValueError("tracking actual must have shape (n_steps, n_joints) with finite values")
-            tracking_clearances = np.asarray([self.world.clearance(q) for q in actual], dtype=float)
+            tracking_points = np.asarray([self.world.link_positions(q) for q in actual], dtype=float)
+            tracking_clearances = chain_clearance_batch(tracking_points, self.world.obstacles)
             tracking_limit_violation = self._joint_limit_violation(actual)
 
         all_clearances = reference_clearances if tracking_clearances is None else np.concatenate([reference_clearances, tracking_clearances])

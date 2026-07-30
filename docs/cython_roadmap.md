@@ -31,6 +31,7 @@ development model.
   - inverse-kinematics helper packing
   - trajectory sampling and joint-path smoothing
   - C++ batched forward kinematics and geometric Jacobians selected by `auto`
+  - C++ batched sphere/box/capsule clearance for workcell safety reports
 
 ## Next priority batches
 

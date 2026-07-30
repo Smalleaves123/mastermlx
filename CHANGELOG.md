@@ -154,3 +154,4 @@ Initial public release of `mastermlx`.
 - Math tools for metrics, distance functions, kernels, statistics, and time series
 - Optional C++ and Cython acceleration
 - Added an optional C++ backend for batched DH forward kinematics and geometric Jacobians; `auto` selects it when compiled.
+- Added an optional C++ batched collision-clearance backend for sphere, box, and capsule workcell obstacles.

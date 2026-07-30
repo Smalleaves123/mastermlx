@@ -4,11 +4,28 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from collections.abc import Iterable
+from functools import lru_cache
+import importlib
 from typing import Any
 
 import numpy as np
 
+from ..config import get_backend
 from .results import RobotResult
+
+
+@lru_cache(maxsize=3)
+def _load_cpp_collision(backend=None):
+    """Load the optional C++ batch clearance kernel for the auto backend."""
+
+    if backend is None:
+        backend = get_backend()
+    if backend != "auto":
+        return None
+    try:
+        return importlib.import_module("mastermlx.robotics._collision_cpp")
+    except ImportError:
+        return None
 
 
 def _point(values, dims=None, name="point"):
@@ -145,6 +162,86 @@ def _obstacle_dims(obstacle):
     if hasattr(obstacle, "start") and hasattr(obstacle, "end"):
         return len(tuple(obstacle.start))
     raise TypeError("obstacle must define center/radius, lower/upper, or start/end/radius")
+
+
+def _pack_obstacles(obstacles, point_dims):
+    """Pack supported obstacle objects into the fixed C++ array contract."""
+
+    obstacles = list(obstacles)
+    types = np.empty(len(obstacles), dtype=np.int8)
+    dims = np.empty(len(obstacles), dtype=np.int8)
+    params = np.zeros((len(obstacles), 7), dtype=float)
+    for index, obstacle in enumerate(obstacles):
+        dimension = _obstacle_dims(obstacle)
+        if dimension > point_dims or dimension > 3:
+            return None
+        dims[index] = dimension
+        if hasattr(obstacle, "center"):
+            types[index] = 0
+            center = _point(obstacle.center, dimension, "center")
+            radius = float(obstacle.radius)
+            if radius < 0.0 or not np.isfinite(radius):
+                raise ValueError("radius must be a non-negative finite value")
+            params[index, :dimension] = center
+            params[index, 3] = radius
+        elif hasattr(obstacle, "lower") and hasattr(obstacle, "upper"):
+            types[index] = 1
+            lower = _point(obstacle.lower, dimension, "lower")
+            upper = _point(obstacle.upper, dimension, "upper")
+            if np.any(lower >= upper):
+                raise ValueError("box lower bounds must be strictly below upper bounds")
+            params[index, :dimension] = lower
+            params[index, 3 : 3 + dimension] = upper
+        else:
+            types[index] = 2
+            start = _point(obstacle.start, dimension, "start")
+            end = _point(obstacle.end, dimension, "end")
+            radius = float(obstacle.radius)
+            if radius < 0.0 or not np.isfinite(radius):
+                raise ValueError("radius must be a non-negative finite value")
+            params[index, :dimension] = start
+            params[index, 3 : 3 + dimension] = end
+            params[index, 6] = radius
+    return np.ascontiguousarray(types), np.ascontiguousarray(dims), np.ascontiguousarray(params)
+
+
+def chain_clearance_batch(points, obstacles, *, link_radius=0.0, box_samples=25):
+    """Return minimum signed clearance for a batch of robot chains.
+
+    ``points`` has shape ``(n_samples, n_chain_points, n_dims)``.  The C++
+    path handles 1D-3D sphere, box, and capsule obstacles; higher-dimensional
+    inputs retain the Python fallback.
+    """
+
+    points = np.asarray(points, dtype=float)
+    if points.ndim != 3 or points.shape[0] < 1 or points.shape[1] < 1 or points.shape[2] < 1:
+        raise ValueError("points must have shape (n_samples, n_points, n_dims)")
+    if not np.all(np.isfinite(points)):
+        raise ValueError("points must contain only finite values")
+    link_radius = float(link_radius)
+    if link_radius < 0.0 or not np.isfinite(link_radius):
+        raise ValueError("link_radius must be a non-negative finite value")
+    box_samples = int(box_samples)
+    if box_samples < 2:
+        raise ValueError("box_samples must be at least 2")
+    obstacles = list(obstacles)
+    if not obstacles:
+        return np.full(points.shape[0], np.inf, dtype=float)
+
+    packed = _pack_obstacles(obstacles, points.shape[2])
+    cpp = _load_cpp_collision(get_backend())
+    if packed is not None and cpp is not None and callable(getattr(cpp, "chain_clearance_batch", None)):
+        types, dims, params = packed
+        return np.asarray(
+            cpp.chain_clearance_batch(
+                np.ascontiguousarray(points), types, dims, params, link_radius, box_samples
+            ),
+            dtype=float,
+        )
+    return np.asarray(
+        [chain_collision_report(chain, obstacles, link_radius=link_radius)["minimum_clearance"] for chain in points],
+        dtype=float,
+    )
 
 
 def point_obstacle_clearance(point, obstacle):
@@ -320,6 +417,7 @@ def path_collision_report(
 __all__ = [
     "BoxObstacle",
     "CapsuleObstacle",
+    "chain_clearance_batch",
     "SphereObstacle",
     "chain_collision_report",
     "path_collision_report",

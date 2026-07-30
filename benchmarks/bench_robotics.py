@@ -7,7 +7,14 @@ import time
 import numpy as np
 
 from mastermlx import get_backend, set_backend
-from mastermlx.robotics import RobotModel, robotics_backend_report
+from mastermlx.robotics import (
+    BoxObstacle,
+    CapsuleObstacle,
+    RobotModel,
+    SphereObstacle,
+    chain_clearance_batch,
+    robotics_backend_report,
+)
 
 
 def bench(fn, n_runs=3):
@@ -40,6 +47,12 @@ def main():
     configurations = rng.normal(0.0, 0.5, size=(2_000, robot.n_joints))
     q = configurations[0]
     qd = rng.normal(0.0, 0.2, size=robot.n_joints)
+    chain_points = np.asarray([robot.positions(values)[:, :2] for values in configurations])
+    obstacles = [
+        SphereObstacle((0.5, 0.1), 0.08),
+        BoxObstacle((0.9, -0.2), (1.1, 0.2)),
+        CapsuleObstacle((0.0, 0.6), (1.8, 0.6), 0.05),
+    ]
     print(f"Robot backend requested: {get_backend()}")
     print(f"Robot backend capabilities: {robotics_backend_report()}")
     old = get_backend()
@@ -55,12 +68,16 @@ def main():
             velocity_time, velocity = bench(
                 lambda: robot.end_effector_velocity(q, qd, translational=False)
             )
+            clearance_time, clearances = bench(
+                lambda: chain_clearance_batch(chain_points, obstacles, link_radius=0.02)
+            )
             print(
                 f"{backend:>5}  fk_batch={fk_time:.5f}s ({poses.shape})  "
                 f"positions_batch={positions_time:.5f}s ({positions.shape})  "
                 f"jacobian_batch={jacobian_time:.5f}s ({jacobians.shape})  "
                 f"velocity_batch={velocity_batch_time:.5f}s ({velocity_batch.shape})  "
-                f"velocity={velocity_time:.5f}s ({velocity.shape})"
+                f"velocity={velocity_time:.5f}s ({velocity.shape})  "
+                f"clearance_batch={clearance_time:.5f}s ({clearances.shape})"
             )
     finally:
         set_backend(old)
