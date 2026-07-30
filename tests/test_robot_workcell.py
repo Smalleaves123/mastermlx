@@ -64,6 +64,28 @@ def test_workcell_uses_rrt_when_direct_path_is_blocked():
     assert workcell._collision_free_path(path)
 
 
+def test_workcell_parallel_planning_is_seed_deterministic():
+    workcell = _workcell()
+    workcell.world.add_obstacle((1.5, 0.0), 0.15)
+    kwargs = dict(
+        bounds=[[-np.pi, np.pi], [-np.pi, np.pi]],
+        step=0.15,
+        goal_rate=0.25,
+        max_iter=3000,
+        random_state=0,
+        planner="rrt_star",
+        stop_on_first_path=True,
+        smooth_path=False,
+    )
+    serial = workcell.plan_joint_path(
+        [np.pi / 2.0, 0.0], [-np.pi / 2.0, 0.0], workers=1, **kwargs
+    )
+    parallel = workcell.plan_joint_path(
+        [np.pi / 2.0, 0.0], [-np.pi / 2.0, 0.0], workers=3, **kwargs
+    )
+    assert np.array_equal(parallel, serial)
+
+
 def test_workcell_enforces_joint_limits_and_reports_tracking_violations():
     limits = np.array([[-0.6, 0.6], [-0.5, 0.5]])
     workcell = _workcell(joint_limits=limits)

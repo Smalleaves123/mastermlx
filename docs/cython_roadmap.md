@@ -36,7 +36,9 @@ development model.
   - C++ quintic retiming with velocity, acceleration, and jerk limits
   - C++ batch position IK with damped least-squares and warm-start support
   - C++ batched transform composition and pose interpolation with reusable output buffers
+  - C++ batched chain-frame positions for collision and planning queries
   - Batched workcell kinematic diagnostics built on compiled Jacobians and NumPy SVD
+  - Deterministic bounded worker pools for RRT/RRT* edge queries
 
 ## Next priority batches
 
@@ -86,7 +88,8 @@ Suggested kernels:
 
 For robotics, the next C++ candidates should be chosen in this order:
 
-1. Parallel planning queries with bounded, deterministic worker pools.
+1. Detailed collision reports with reusable hit/closest output buffers.
+2. C++ trajectory diagnostics for velocity, acceleration, and jerk limits.
 
 Each candidate should expose a small typed-array contract, retain the current
 Python implementation as a fallback, and be admitted only when a workload

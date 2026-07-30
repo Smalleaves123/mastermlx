@@ -61,6 +61,16 @@ def main():
     ]
     broadphase_obstacles = obstacles + [SphereObstacle((20.0 + index, 20.0), 0.1) for index in range(20)]
     workcell = RobotWorkcell(robot, SimpleWorld(robot))
+    planning_robot = RobotModel.from_dh(
+        [
+            {"a": 1.0, "alpha": 0.0, "d": 0.0, "theta": 0.0},
+            {"a": 1.0, "alpha": 0.0, "d": 0.0, "theta": 0.0},
+        ],
+        name="planning-benchmark-robot",
+    )
+    planning_world = SimpleWorld(planning_robot)
+    planning_world.add_obstacle((1.5, 0.0), 0.15)
+    planning_workcell = RobotWorkcell(planning_robot, planning_world)
     retime_path = configurations[:32]
     ik_targets = robot.positions_batch(configurations[:64])
     ik_seeds = np.zeros((ik_targets.shape[0], robot.n_joints), dtype=float)
@@ -112,6 +122,21 @@ def main():
             metrics_time, metrics = bench(
                 lambda: robot.kinematic_metrics_batch(configurations, translational=True)
             )
+            planning_time, planning_path = bench(
+                lambda: planning_workcell.plan_joint_path(
+                    [np.pi / 2.0, 0.0],
+                    [-np.pi / 2.0, 0.0],
+                    bounds=[[-np.pi, np.pi], [-np.pi, np.pi]],
+                    planner="rrt_star",
+                    step=0.15,
+                    goal_rate=0.25,
+                    max_iter=600,
+                    random_state=0,
+                    stop_on_first_path=True,
+                    smooth_path=False,
+                    workers=2,
+                )
+            )
             retime_time, retimed = bench(
                 lambda: workcell.retime_joint_path(
                     retime_path,
@@ -141,6 +166,7 @@ def main():
                 f"compose_batch={compose_time:.5f}s ({composed.shape})  "
                 f"pose_interp={interpolate_time:.5f}s ({interpolated_poses.shape})  "
                 f"kinematic_metrics_batch={metrics_time:.5f}s ({metrics['condition_number'].shape})  "
+                f"planning_workers={planning_time:.5f}s ({planning_path.shape})  "
                 f"retime={retime_time:.5f}s ({retimed['position'].shape})  "
                 f"ik_batch={ik_time:.5f}s ({ik_solutions.shape})"
             )

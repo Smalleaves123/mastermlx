@@ -21,6 +21,7 @@ from .transforms import (
 from .kinematics import (
     DHLink,
     chain_positions,
+    chain_positions_batch,
     dh_transform,
     forward_kinematics,
     forward_kinematics_batch,
@@ -72,6 +73,7 @@ __all__ = [
     "chain_collision_free_batch",
     "check_joint_limits",
     "chain_positions",
+    "chain_positions_batch",
     "compose_transform",
     "compose_transform_batch",
     "cubic_time_scaling",

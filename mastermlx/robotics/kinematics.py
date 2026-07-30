@@ -268,6 +268,30 @@ def forward_kinematics_batch(links, joint_values, base=None, tool=None):
     )
 
 
+def chain_positions_batch(links, joint_values, base=None, tool=None):
+    """Return frame-origin positions for a batch of joint configurations."""
+
+    links, a, alpha, d, theta, joint_type, offset = _pack_links_cached(links)
+    q = np.asarray(joint_values, dtype=float)
+    if q.ndim != 2 or q.shape[1] != len(links):
+        raise ValueError(f"joint_values must have shape (n_samples, {len(links)})")
+    if q.shape[0] < 1 or not np.all(np.isfinite(q)):
+        raise ValueError("joint_values must be non-empty and finite")
+    q = np.ascontiguousarray(q)
+    cpp = _load_cpp_kinematics(get_backend())
+    if cpp is not None and callable(getattr(cpp, "chain_positions_batch_dh", None)):
+        return np.asarray(
+            cpp.chain_positions_batch_dh(
+                a, alpha, d, theta, joint_type, offset, q, base=base, tool=tool
+            ),
+            dtype=float,
+        )
+    return np.asarray(
+        [chain_positions(links, values, base=base, tool=tool) for values in q],
+        dtype=float,
+    )
+
+
 def chain_positions(links, joint_values=None, base=None, tool=None):
     """Return the position of each chain frame origin, including the base."""
 

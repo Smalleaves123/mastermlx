@@ -96,7 +96,8 @@ static void chain_transform(
     const Transform* tool,
     double* output,
     double* origins,
-    double* axes) {
+    double* axes,
+    double* frame_positions = nullptr) {
     double transform[16];
     double next[16];
     std::copy(base.begin(), base.end(), transform);
@@ -109,6 +110,11 @@ static void chain_transform(
             axes[3 * i] = transform[2];
             axes[3 * i + 1] = transform[6];
             axes[3 * i + 2] = transform[10];
+        }
+        if (frame_positions != nullptr) {
+            frame_positions[3 * i] = transform[3];
+            frame_positions[3 * i + 1] = transform[7];
+            frame_positions[3 * i + 2] = transform[11];
         }
 
         double joint_d = d[i];
@@ -133,11 +139,69 @@ static void chain_transform(
         std::copy(next, next + 16, transform);
     }
 
+    if (frame_positions != nullptr) {
+        frame_positions[3 * n] = transform[3];
+        frame_positions[3 * n + 1] = transform[7];
+        frame_positions[3 * n + 2] = transform[11];
+    }
+
     if (tool != nullptr) {
         matmul4(transform, tool->data(), next);
         std::copy(next, next + 16, transform);
+        if (frame_positions != nullptr) {
+            frame_positions[3 * (n + 1)] = transform[3];
+            frame_positions[3 * (n + 1) + 1] = transform[7];
+            frame_positions[3 * (n + 1) + 2] = transform[11];
+        }
     }
     std::copy(transform, transform + 16, output);
+}
+
+template <typename Fn>
+static void parallel_rows(py::ssize_t rows, py::ssize_t work, Fn&& fn);
+
+static py::array_t<double> chain_positions_batch_dh(
+    Vector a_, Vector alpha_, Vector d_, Vector theta_, JointTypes joint_type_, Vector offset_,
+    Batch q_, py::object base, py::object tool) {
+    const auto a = a_.request();
+    const auto alpha = alpha_.request();
+    const auto d = d_.request();
+    const auto theta = theta_.request();
+    const auto joint_type = joint_type_.request();
+    const auto offset = offset_.request();
+    const auto q = q_.request();
+    validate_inputs(a, alpha, d, theta, joint_type, offset, q);
+    const Transform base_transform = read_transform(base, "base");
+    const bool has_tool = !tool.is_none();
+    const Transform tool_transform = read_transform(tool, "tool");
+    const py::ssize_t samples = q.shape[0];
+    const py::ssize_t joints = a.shape[0];
+    const py::ssize_t frames = joints + 1 + (has_tool ? 1 : 0);
+    py::array_t<double> output(
+        py::array::ShapeContainer(std::vector<py::ssize_t>{samples, frames, 3}));
+
+    const auto* a_data = static_cast<const double*>(a.ptr);
+    const auto* alpha_data = static_cast<const double*>(alpha.ptr);
+    const auto* d_data = static_cast<const double*>(d.ptr);
+    const auto* theta_data = static_cast<const double*>(theta.ptr);
+    const auto* type_data = static_cast<const std::int8_t*>(joint_type.ptr);
+    const auto* offset_data = static_cast<const double*>(offset.ptr);
+    const auto* q_data = static_cast<const double*>(q.ptr);
+    auto* output_data = static_cast<double*>(output.request().ptr);
+    {
+        py::gil_scoped_release release;
+        parallel_rows(samples, joints, [&](py::ssize_t begin, py::ssize_t end) {
+            for (py::ssize_t sample = begin; sample < end; ++sample) {
+                double transform[16];
+                chain_transform(
+                    a_data, alpha_data, d_data, theta_data, type_data, offset_data,
+                    q_data + sample * joints, joints, base_transform,
+                    has_tool ? &tool_transform : nullptr,
+                    transform, nullptr, nullptr, output_data + sample * frames * 3);
+            }
+        });
+    }
+    return output;
 }
 
 template <typename Fn>
@@ -291,6 +355,11 @@ PYBIND11_MODULE(_kinematics_cpp, m) {
         py::arg("base") = py::none(), py::arg("tool") = py::none());
     m.def(
         "geometric_jacobian_batch_dh", &geometric_jacobian_batch_dh,
+        py::arg("a"), py::arg("alpha"), py::arg("d"), py::arg("theta"),
+        py::arg("joint_type"), py::arg("offset"), py::arg("q"),
+        py::arg("base") = py::none(), py::arg("tool") = py::none());
+    m.def(
+        "chain_positions_batch_dh", &chain_positions_batch_dh,
         py::arg("a"), py::arg("alpha"), py::arg("d"), py::arg("theta"),
         py::arg("joint_type"), py::arg("offset"), py::arg("q"),
         py::arg("base") = py::none(), py::arg("tool") = py::none());

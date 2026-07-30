@@ -7,6 +7,7 @@ import numpy as np
 from .kinematics import (
     DHLink,
     chain_positions,
+    chain_positions_batch,
     forward_kinematics,
     forward_kinematics_batch,
     inverse_kinematics,
@@ -128,6 +129,14 @@ class RobotModel:
         """Canonical alias for the chain frame positions."""
 
         return self.positions(joint_values=joint_values)
+
+    def frame_positions_batch(self, joint_values):
+        """Return all chain frame positions for a batch of configurations."""
+
+        values = self.validate_joint_values(
+            joint_values, batch=True, check_limits=self.joint_limits is not None
+        )
+        return chain_positions_batch(self.links, values, base=self.base, tool=self.tool)
 
     def jacobian(self, joint_values=None):
         if joint_values is None and self.joint_limits is not None:

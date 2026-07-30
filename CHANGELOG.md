@@ -30,6 +30,8 @@
   fallback paths and reusable output buffers.
 - Added batched workcell kinematic diagnostics using compiled Jacobians and
   NumPy SVD, reducing Python loops in long safety reports.
+- Added C++ batched chain-frame positions and deterministic bounded worker
+  pools for RRT/RRT* edge queries in robot workcells.
 - Added model-level joint position limits, clipping and violation diagnostics,
   projected constrained IK, and URDF joint-limit import.
 - Added warm-started batch inverse kinematics for position and pose target sequences.

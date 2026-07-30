@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 
@@ -18,13 +19,52 @@ def _free(p, hit):
     return hit is None or not bool(hit(np.asarray(p, dtype=float)))
 
 
-def _clear(a, b, hit, step):
+def _clear(a, b, hit, step, edge_free=None):
+    if edge_free is not None:
+        return bool(edge_free(a, b, step))
     dist = float(np.linalg.norm(b - a))
     n = max(1, int(math.ceil(dist / max(step, 1e-12))))
     for t in np.linspace(0.0, 1.0, n + 1):
         if not _free(a + t * (b - a), hit):
             return False
     return True
+
+
+def _validate_workers(workers):
+    workers = int(workers)
+    if workers < 1:
+        raise ValueError("workers must be at least 1")
+    return workers
+
+
+class _EdgeQueryPool:
+    """Run ordered edge checks through a bounded, optional worker pool."""
+
+    def __init__(self, hit, step, edge_free=None, workers=1):
+        self.hit = hit
+        self.step = step
+        self.edge_free = edge_free
+        self.executor = None if workers == 1 else ThreadPoolExecutor(max_workers=workers)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        if self.executor is not None:
+            self.executor.shutdown(wait=True)
+        return False
+
+    def check(self, edges):
+        edges = list(edges)
+        if not edges:
+            return []
+
+        def evaluate(edge):
+            return _clear(edge[0], edge[1], self.hit, self.step, edge_free=self.edge_free)
+
+        if self.executor is None:
+            return [evaluate(edge) for edge in edges]
+        return list(self.executor.map(evaluate, edges))
 
 
 def _path(nodes, parents, idx):
@@ -45,6 +85,8 @@ def rrt(
     max_iter=5000,
     random_state=None,
     collision_step=None,
+    edge_free=None,
+    workers=1,
 ):
     """Plan a collision-free path in an arbitrary-dimensional state space."""
 
@@ -65,6 +107,7 @@ def rrt(
     collision_step = step * 0.5 if collision_step is None else float(collision_step)
     if collision_step <= 0.0 or not np.isfinite(collision_step):
         raise ValueError("collision_step must be a positive finite value")
+    _validate_workers(workers)
     if not _free(start, hit) or not _free(goal, hit):
         raise ValueError("start and goal must be free")
     if np.array_equal(start, goal):
@@ -82,11 +125,13 @@ def rrt(
         if length == 0.0:
             continue
         new = near + delta * min(step, length) / length
-        if not _free(new, hit) or not _clear(near, new, hit, collision_step):
+        if not _free(new, hit) or not _clear(near, new, hit, collision_step, edge_free=edge_free):
             continue
         nodes.append(new)
         parents.append(len(nodes) - 2)
-        if np.linalg.norm(new - goal) <= step and _clear(new, goal, hit, collision_step):
+        if np.linalg.norm(new - goal) <= step and _clear(
+            new, goal, hit, collision_step, edge_free=edge_free
+        ):
             nodes.append(goal.copy())
             parents.append(len(nodes) - 2)
             return _path(nodes, parents, len(nodes) - 1)
@@ -106,6 +151,8 @@ def rrt_star(
     random_state=None,
     collision_step=None,
     stop_on_first_path=False,
+    edge_free=None,
+    workers=1,
 ):
     """Plan a collision-free path with RRT* rewiring.
 
@@ -132,6 +179,7 @@ def rrt_star(
     collision_step = step * 0.5 if collision_step is None else float(collision_step)
     if collision_step <= 0.0 or not np.isfinite(collision_step):
         raise ValueError("collision_step must be a positive finite value")
+    workers = _validate_workers(workers)
     if search_radius is None:
         search_radius = 4.0 * step
     search_radius = float(search_radius)
@@ -155,70 +203,82 @@ def rrt_star(
     best_goal = None
     best_cost = float("inf")
 
-    for _ in range(max_iter):
-        sample = goal if rng.random() < goal_rate else rng.uniform(bounds[:, 0], bounds[:, 1])
-        distances = np.asarray([np.linalg.norm(node - sample) for node in nodes], dtype=float)
-        nearest_index = int(np.argmin(distances))
-        nearest = nodes[nearest_index]
-        delta = sample - nearest
-        length = float(np.linalg.norm(delta))
-        if length == 0.0:
-            continue
-        new = nearest + delta * min(step, length) / length
-        if not _free(new, hit) or not _clear(nearest, new, hit, collision_step):
-            continue
-
-        near_indices = np.flatnonzero(
-            np.asarray([np.linalg.norm(node - new) for node in nodes], dtype=float) <= search_radius
-        )
-        parent = nearest_index
-        parent_cost = costs[nearest_index] + float(np.linalg.norm(new - nearest))
-        for index in near_indices:
-            candidate = nodes[int(index)]
-            edge_cost = float(np.linalg.norm(new - candidate))
-            cost = costs[int(index)] + edge_cost
-            if cost < parent_cost and _clear(candidate, new, hit, collision_step):
-                parent = int(index)
-                parent_cost = cost
-
-        nodes.append(new)
-        parents.append(parent)
-        costs.append(parent_cost)
-        new_index = len(nodes) - 1
-
-        for index in near_indices:
-            index = int(index)
-            if index == parent:
+    with _EdgeQueryPool(hit, collision_step, edge_free=edge_free, workers=workers) as queries:
+        for _ in range(max_iter):
+            sample = goal if rng.random() < goal_rate else rng.uniform(bounds[:, 0], bounds[:, 1])
+            distances = np.asarray([np.linalg.norm(node - sample) for node in nodes], dtype=float)
+            nearest_index = int(np.argmin(distances))
+            nearest = nodes[nearest_index]
+            delta = sample - nearest
+            length = float(np.linalg.norm(delta))
+            if length == 0.0:
                 continue
-            edge_cost = float(np.linalg.norm(nodes[index] - new))
-            rewired_cost = parent_cost + edge_cost
-            if rewired_cost + 1e-12 < costs[index] and _clear(new, nodes[index], hit, collision_step):
-                parents[index] = new_index
-                costs[index] = rewired_cost
+            new = nearest + delta * min(step, length) / length
+            if not _free(new, hit) or not queries.check([(nearest, new)])[0]:
+                continue
 
-        distance_to_goal = float(np.linalg.norm(new - goal))
-        total_goal_cost = parent_cost + distance_to_goal
-        if (
-            distance_to_goal <= goal_tolerance
-            and total_goal_cost < best_cost
-            and _clear(new, goal, hit, collision_step)
-        ):
-            if best_goal is None:
-                nodes.append(goal.copy())
-                parents.append(new_index)
-                costs.append(total_goal_cost)
-                best_goal = len(nodes) - 1
-            else:
-                parents[best_goal] = new_index
-                costs[best_goal] = total_goal_cost
-            best_cost = total_goal_cost
-            if stop_on_first_path:
-                return _path(nodes, parents, best_goal)
+            near_indices = np.flatnonzero(
+                np.asarray([np.linalg.norm(node - new) for node in nodes], dtype=float) <= search_radius
+            )
+            parent = nearest_index
+            parent_cost = costs[nearest_index] + float(np.linalg.norm(new - nearest))
+            parent_candidates = []
+            for index in near_indices:
+                index = int(index)
+                candidate = nodes[index]
+                edge_cost = float(np.linalg.norm(new - candidate))
+                cost = costs[index] + edge_cost
+                if cost < parent_cost:
+                    parent_candidates.append((index, cost, candidate))
+            parent_checks = queries.check((candidate, new) for _, _, candidate in parent_candidates)
+            for (index, cost, _), is_free in zip(parent_candidates, parent_checks):
+                if is_free and cost < parent_cost:
+                    parent = index
+                    parent_cost = cost
+
+            nodes.append(new)
+            parents.append(parent)
+            costs.append(parent_cost)
+            new_index = len(nodes) - 1
+
+            rewire_candidates = []
+            for index in near_indices:
+                index = int(index)
+                if index == parent:
+                    continue
+                edge_cost = float(np.linalg.norm(nodes[index] - new))
+                rewired_cost = parent_cost + edge_cost
+                if rewired_cost + 1e-12 < costs[index]:
+                    rewire_candidates.append((index, rewired_cost, nodes[index]))
+            rewire_checks = queries.check((new, candidate) for _, _, candidate in rewire_candidates)
+            for (index, rewired_cost, _), is_free in zip(rewire_candidates, rewire_checks):
+                if is_free and rewired_cost + 1e-12 < costs[index]:
+                    parents[index] = new_index
+                    costs[index] = rewired_cost
+
+            distance_to_goal = float(np.linalg.norm(new - goal))
+            total_goal_cost = parent_cost + distance_to_goal
+            if (
+                distance_to_goal <= goal_tolerance
+                and total_goal_cost < best_cost
+                and queries.check([(new, goal)])[0]
+            ):
+                if best_goal is None:
+                    nodes.append(goal.copy())
+                    parents.append(new_index)
+                    costs.append(total_goal_cost)
+                    best_goal = len(nodes) - 1
+                else:
+                    parents[best_goal] = new_index
+                    costs[best_goal] = total_goal_cost
+                best_cost = total_goal_cost
+                if stop_on_first_path:
+                    return _path(nodes, parents, best_goal)
 
     return None if best_goal is None else _path(nodes, parents, best_goal)
 
 
-def smooth(path, hit=None, n=100, random_state=None):
+def smooth(path, hit=None, n=100, random_state=None, edge_free=None, workers=1):
     """Shortcut a path in an arbitrary-dimensional state space."""
 
     path = np.asarray(path, dtype=float)
@@ -227,13 +287,14 @@ def smooth(path, hit=None, n=100, random_state=None):
     n = int(n)
     if n < 0:
         raise ValueError("n must be non-negative")
+    _validate_workers(workers)
     rng = np.random.default_rng(random_state)
     out = path.copy()
     for _ in range(n):
         if out.shape[0] <= 2:
             break
         i, j = sorted(rng.integers(0, out.shape[0], size=2))
-        if j <= i + 1 or not _clear(out[i], out[j], hit, 0.01):
+        if j <= i + 1 or not _clear(out[i], out[j], hit, 0.01, edge_free=edge_free):
             continue
         out = np.concatenate([out[: i + 1], out[j:]], axis=0)
     return out

@@ -134,8 +134,14 @@ class RobotWorkcell(BaseExperiment):
             count = max(1, int(np.ceil(np.linalg.norm(end - start) / collision_step)))
             samples.extend(start + alpha * (end - start) for alpha in np.linspace(0.0, 1.0, count + 1))
         samples.append(path[-1])
-        points = np.asarray([self.world.link_positions(values) for values in samples], dtype=float)
+        points = self.robot.frame_positions_batch(np.asarray(samples, dtype=float))
+        points = points[:, :, :2] if points.shape[2] >= 2 else points
         return bool(np.all(chain_collision_free_batch(points, self.world.obstacles, clearance=clearance)))
+
+    def _collision_free_edge(self, start, end, collision_step, clearance):
+        return self._collision_free_path(
+            np.vstack([start, end]), collision_step=collision_step, clearance=clearance
+        )
 
     def solve_tcp_path(
         self,
@@ -280,6 +286,7 @@ class RobotWorkcell(BaseExperiment):
         shortcut_attempts=100,
         collision_step=0.05,
         clearance=0.0,
+        workers=1,
         **rrt_kwargs,
     ):
         """Return a collision-free joint-space path, using a direct path first."""
@@ -301,11 +308,19 @@ class RobotWorkcell(BaseExperiment):
         clearance = float(clearance)
         if clearance < 0.0 or not np.isfinite(clearance):
             raise ValueError("clearance must be a non-negative finite value")
+        workers = int(workers)
+        if workers < 1:
+            raise ValueError("workers must be at least 1")
         def hit(values):
             return self.world.clearance(values) < clearance
 
+        def edge_free(start, end, step):
+            return self._collision_free_edge(start, end, step, clearance)
+
         planner_kwargs = dict(rrt_kwargs)
         planner_kwargs.setdefault("collision_step", collision_step)
+        planner_kwargs.setdefault("edge_free", edge_free)
+        planner_kwargs.setdefault("workers", workers)
         planner = str(planner).lower()
         if planner == "rrt":
             path = self.world.plan_path(q_start, q_goal, bounds, hit=hit, **planner_kwargs)
@@ -321,6 +336,8 @@ class RobotWorkcell(BaseExperiment):
                 hit=hit,
                 n=int(shortcut_attempts),
                 random_state=rrt_kwargs.get("random_state"),
+                edge_free=edge_free,
+                workers=workers,
             )
             if self._collision_free_path(candidate, collision_step=collision_step, clearance=clearance):
                 path = candidate
@@ -342,6 +359,7 @@ class RobotWorkcell(BaseExperiment):
         collision_step=0.05,
         smooth_path=True,
         shortcut_attempts=100,
+        workers=1,
         retime_kwargs=None,
         track=False,
         tracking_kwargs=None,
@@ -358,6 +376,7 @@ class RobotWorkcell(BaseExperiment):
             shortcut_attempts=shortcut_attempts,
             collision_step=collision_step,
             clearance=clearance,
+            workers=workers,
             **planner_kwargs,
         )
         collision = path_collision_report(
