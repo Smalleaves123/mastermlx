@@ -109,6 +109,9 @@ def main():
             interpolate_time, interpolated_poses = bench(
                 lambda: interpolate_pose_batch(pose_start, pose_end, pose_alphas)
             )
+            metrics_time, metrics = bench(
+                lambda: robot.kinematic_metrics_batch(configurations, translational=True)
+            )
             retime_time, retimed = bench(
                 lambda: workcell.retime_joint_path(
                     retime_path,
@@ -137,6 +140,7 @@ def main():
                 f"broadphase={broadphase_time:.5f}s ({free.shape})  "
                 f"compose_batch={compose_time:.5f}s ({composed.shape})  "
                 f"pose_interp={interpolate_time:.5f}s ({interpolated_poses.shape})  "
+                f"kinematic_metrics_batch={metrics_time:.5f}s ({metrics['condition_number'].shape})  "
                 f"retime={retime_time:.5f}s ({retimed['position'].shape})  "
                 f"ik_batch={ik_time:.5f}s ({ik_solutions.shape})"
             )

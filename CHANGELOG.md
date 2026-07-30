@@ -28,6 +28,8 @@
   end-effector-twist mapping on `RobotModel`.
 - Added C++ batch transform composition and pose interpolation with NumPy
   fallback paths and reusable output buffers.
+- Added batched workcell kinematic diagnostics using compiled Jacobians and
+  NumPy SVD, reducing Python loops in long safety reports.
 - Added model-level joint position limits, clipping and violation diagnostics,
   projected constrained IK, and URDF joint-limit import.
 - Added warm-started batch inverse kinematics for position and pose target sequences.

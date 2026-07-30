@@ -244,6 +244,46 @@ class RobotModel:
             "translational": bool(translational),
         })
 
+    def kinematic_metrics_batch(self, joint_values, *, translational=False, threshold=1e-8):
+        """Return singularity and dexterity diagnostics for configurations.
+
+        The Jacobian batch uses the selected compiled backend, while the SVD
+        reduction stays in NumPy for parity with :meth:`kinematic_metrics`.
+        """
+
+        threshold = float(threshold)
+        if not np.isfinite(threshold) or threshold <= 0.0:
+            raise ValueError("threshold must be a positive finite value")
+        values = self.validate_joint_values(
+            joint_values, batch=True, check_limits=self.joint_limits is not None
+        )
+        jacobian = self.jacobian_batch(values)
+        if translational:
+            jacobian = jacobian[:, :3, :]
+        singular_values = np.linalg.svd(jacobian, compute_uv=False)
+        scale = singular_values[:, 0] if singular_values.shape[1] else np.zeros(values.shape[0])
+        effective_threshold = threshold * np.maximum(1.0, scale)
+        rank = np.count_nonzero(singular_values > effective_threshold[:, None], axis=1)
+        full_rank = min(jacobian.shape[1:])
+        smallest = singular_values[:, -1] if singular_values.shape[1] else np.zeros(values.shape[0])
+        condition_number = np.divide(
+            scale,
+            smallest,
+            out=np.full(values.shape[0], np.inf, dtype=float),
+            where=smallest > effective_threshold,
+        )
+        return RobotResult({
+            "singular_values": singular_values,
+            "rank": rank.astype(int),
+            "full_rank": full_rank,
+            "singular": rank < full_rank,
+            "condition_number": condition_number,
+            "manipulability": np.prod(singular_values, axis=1)
+            if singular_values.shape[1]
+            else np.zeros(values.shape[0]),
+            "translational": bool(translational),
+        })
+
     def ik(self, target, joint_values=None, **kwargs):
         if joint_values is not None:
             joint_values = self.validate_joint_values(joint_values, check_limits=self.joint_limits is not None)

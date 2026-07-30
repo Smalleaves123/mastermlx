@@ -119,6 +119,17 @@ def test_robot_model_batch_velocity_mapping():
         robot.end_effector_velocity_batch(configurations, velocities[:1])
 
 
+def test_robot_model_batch_kinematic_metrics_match_single_configuration_metrics():
+    robot = _robot()
+    configurations = np.array([[0.1, -0.2], [0.4, 0.2], [-0.3, 0.5]])
+    batch = robot.kinematic_metrics_batch(configurations, translational=True)
+    singles = [robot.kinematic_metrics(q, translational=True) for q in configurations]
+    assert np.allclose(batch["singular_values"], [item["singular_values"] for item in singles])
+    assert np.array_equal(batch["rank"], [item["rank"] for item in singles])
+    assert np.allclose(batch["condition_number"], [item["condition_number"] for item in singles])
+    assert np.allclose(batch["manipulability"], [item["manipulability"] for item in singles])
+
+
 def test_robot_results_support_mapping_and_attribute_access(tmp_path):
     robot = _robot()
     world = SimpleWorld(robot)

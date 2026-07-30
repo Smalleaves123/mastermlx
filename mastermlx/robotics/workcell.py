@@ -617,12 +617,11 @@ class RobotWorkcell(BaseExperiment):
                 "limits": None if limits is None else np.asarray(limits, dtype=float).tolist(),
                 "violation": violation,
             }
-        kinematics = [
-            self.robot.kinematic_metrics(q, translational=True, threshold=singularity_threshold)
-            for q in position
-        ]
-        condition_numbers = np.asarray([item["condition_number"] for item in kinematics], dtype=float)
-        manipulabilities = np.asarray([item["manipulability"] for item in kinematics], dtype=float)
+        kinematics = self.robot.kinematic_metrics_batch(
+            position, translational=True, threshold=singularity_threshold
+        )
+        condition_numbers = np.asarray(kinematics["condition_number"], dtype=float)
+        manipulabilities = np.asarray(kinematics["manipulability"], dtype=float)
         clearance_violation = bool(np.any(all_clearances < clearance_margin))
         motion_violation = any(
             item is not None and item["violation"] is True for item in motion_metrics.values()
@@ -657,7 +656,7 @@ class RobotWorkcell(BaseExperiment):
             "motion_limit_violation": motion_violation,
             "minimum_position_manipulability": float(np.min(manipulabilities)),
             "maximum_position_condition_number": float(np.max(condition_numbers)),
-            "singular_configuration": bool(any(item["singular"] for item in kinematics)),
+            "singular_configuration": bool(np.any(kinematics["singular"])),
         })
         if tracking is not None:
             error = np.asarray(tracking["joint_error"], dtype=float)
