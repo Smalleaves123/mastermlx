@@ -9,6 +9,16 @@
 
 ## Unreleased
 
+## 0.1.14
+
+- Added C++ batched rigid-body mass, gravity, inverse, forward, and Coriolis
+  dynamics kernels with NumPy fallbacks and reusable output buffers.
+- Added large-workcell collision and dynamics scaling profiles, including AABB
+  broad-phase, detailed-hit capacity, and backend comparisons.
+- Added `RobotWorkcell.plan_pick_and_place()` for Cartesian approach/retract,
+  collision-aware transfer planning, retimed motion, safety reports, and
+  time-aligned gripper open/close events.
+
 - Added shared `BaseResult`, `BaseReport`, and `BaseExperiment` helpers for workflow outputs and JSON/CSV report exports.
 - Added `DataReadinessReport` for business-facing tabular quality, drift, and data-contract readiness checks.
 - Added `SignalHealthExperiment` for signal health scoring with optional windowed vibration-feature trends.
