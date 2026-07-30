@@ -80,6 +80,8 @@ def robotics_backend_report() -> dict[str, str | bool]:
         "active": active,
         "cpp_kinematics": cpp is not None,
         "cpp_collision": cpp_collision is not None,
+        "cpp_collision_broadphase": cpp_collision is not None
+        and callable(getattr(cpp_collision, "chain_collision_free_batch", None)),
         "cpp_retiming": cpp_retiming is not None,
         "cpp_ik": cpp_ik is not None,
         "cython_kinematics": cython,

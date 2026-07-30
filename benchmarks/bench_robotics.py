@@ -13,6 +13,7 @@ from mastermlx.robotics import (
     RobotModel,
     SphereObstacle,
     chain_clearance_batch,
+    chain_collision_free_batch,
     robotics_backend_report,
 )
 from mastermlx.robotics import RobotWorkcell
@@ -55,6 +56,7 @@ def main():
         BoxObstacle((0.9, -0.2), (1.1, 0.2)),
         CapsuleObstacle((0.0, 0.6), (1.8, 0.6), 0.05),
     ]
+    broadphase_obstacles = obstacles + [SphereObstacle((20.0 + index, 20.0), 0.1) for index in range(20)]
     workcell = RobotWorkcell(robot, SimpleWorld(robot))
     retime_path = configurations[:32]
     ik_targets = robot.positions_batch(configurations[:64])
@@ -76,6 +78,14 @@ def main():
             )
             clearance_time, clearances = bench(
                 lambda: chain_clearance_batch(chain_points, obstacles, link_radius=0.02)
+            )
+            broadphase_time, free = bench(
+                lambda: chain_collision_free_batch(
+                    chain_points,
+                    broadphase_obstacles,
+                    clearance=0.0,
+                    link_radius=0.02,
+                )
             )
             retime_time, retimed = bench(
                 lambda: workcell.retime_joint_path(
@@ -102,6 +112,7 @@ def main():
                 f"velocity_batch={velocity_batch_time:.5f}s ({velocity_batch.shape})  "
                 f"velocity={velocity_time:.5f}s ({velocity.shape})  "
                 f"clearance_batch={clearance_time:.5f}s ({clearances.shape})  "
+                f"broadphase={broadphase_time:.5f}s ({free.shape})  "
                 f"retime={retime_time:.5f}s ({retimed['position'].shape})  "
                 f"ik_batch={ik_time:.5f}s ({ik_solutions.shape})"
             )

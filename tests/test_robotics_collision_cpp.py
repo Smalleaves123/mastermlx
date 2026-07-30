@@ -7,6 +7,7 @@ from mastermlx.robotics import (
     CapsuleObstacle,
     SphereObstacle,
     chain_clearance_batch,
+    chain_collision_free_batch,
     chain_collision_report,
     robotics_backend_report,
 )
@@ -63,3 +64,24 @@ def test_batch_clearance_supports_three_dimensional_capsule():
     obstacle = CapsuleObstacle((0.5, 0.3, 0.0), (0.5, 0.3, 1.0), 0.1)
     expected = chain_collision_report(points[0], [obstacle])["minimum_clearance"]
     assert np.allclose(chain_clearance_batch(points, [obstacle]), [expected])
+
+
+def test_cpp_broadphase_matches_exact_clearance_thresholds():
+    cpp = _load_cpp_collision("auto")
+    if cpp is None or not hasattr(cpp, "chain_collision_free_batch"):
+        pytest.skip("C++ collision broad-phase extension is unavailable")
+    points = np.array(
+        [
+            [[0.0, 0.0], [0.8, 0.0], [1.6, 0.0]],
+            [[0.0, 0.8], [0.8, 0.8], [1.6, 0.8]],
+            [[0.0, 2.0], [0.8, 2.0], [1.6, 2.0]],
+        ]
+    )
+    obstacles = _obstacles() + [SphereObstacle((20.0, 20.0), 0.5)]
+    exact = chain_clearance_batch(points, obstacles, link_radius=0.03)
+    for threshold in (0.0, 0.05, 0.3):
+        expected = exact >= threshold
+        assert np.array_equal(
+            chain_collision_free_batch(points, obstacles, clearance=threshold, link_radius=0.03),
+            expected,
+        )

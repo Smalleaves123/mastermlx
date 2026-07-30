@@ -157,3 +157,4 @@ Initial public release of `mastermlx`.
 - Added an optional C++ batched collision-clearance backend for sphere, box, and capsule workcell obstacles.
 - Added an optional C++ quintic trajectory-retiming backend with velocity, acceleration, and jerk limits.
 - Added an optional C++ batch position-IK backend with damped least-squares, limits, and warm starts.
+- Added conservative C++ AABB broad-phase filtering for batched workcell collision checks.

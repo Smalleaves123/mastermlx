@@ -244,6 +244,61 @@ def chain_clearance_batch(points, obstacles, *, link_radius=0.0, box_samples=25)
     )
 
 
+def chain_collision_free_batch(
+    points, obstacles, *, clearance=0.0, link_radius=0.0, box_samples=25
+):
+    """Return whether each chain in a batch satisfies a clearance threshold.
+
+    The compiled path uses obstacle and chain AABBs as a conservative
+    broad-phase filter, then evaluates exact geometry only for candidates.
+    """
+
+    points = np.asarray(points, dtype=float)
+    if points.ndim != 3 or points.shape[0] < 1 or points.shape[1] < 1 or points.shape[2] < 1:
+        raise ValueError("points must have shape (n_samples, n_points, n_dims)")
+    if not np.all(np.isfinite(points)):
+        raise ValueError("points must contain only finite values")
+    clearance = float(clearance)
+    link_radius = float(link_radius)
+    if clearance < 0.0 or not np.isfinite(clearance):
+        raise ValueError("clearance must be a non-negative finite value")
+    if link_radius < 0.0 or not np.isfinite(link_radius):
+        raise ValueError("link_radius must be a non-negative finite value")
+    box_samples = int(box_samples)
+    if box_samples < 2:
+        raise ValueError("box_samples must be at least 2")
+    obstacles = list(obstacles)
+    if not obstacles:
+        return np.ones(points.shape[0], dtype=bool)
+
+    packed = _pack_obstacles(obstacles, points.shape[2])
+    cpp = _load_cpp_collision(get_backend())
+    if packed is not None and cpp is not None and callable(
+        getattr(cpp, "chain_collision_free_batch", None)
+    ):
+        types, dims, params = packed
+        return np.asarray(
+            cpp.chain_collision_free_batch(
+                np.ascontiguousarray(points),
+                types,
+                dims,
+                params,
+                clearance,
+                link_radius,
+                box_samples,
+            ),
+            dtype=bool,
+        )
+    return np.asarray(
+        [
+            chain_collision_report(chain, obstacles, link_radius=link_radius)["minimum_clearance"]
+            >= clearance
+            for chain in points
+        ],
+        dtype=bool,
+    )
+
+
 def point_obstacle_clearance(point, obstacle):
     """Return signed point clearance to an obstacle.
 
@@ -418,6 +473,7 @@ __all__ = [
     "BoxObstacle",
     "CapsuleObstacle",
     "chain_clearance_batch",
+    "chain_collision_free_batch",
     "SphereObstacle",
     "chain_collision_report",
     "path_collision_report",

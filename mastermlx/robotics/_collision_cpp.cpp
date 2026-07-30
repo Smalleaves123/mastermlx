@@ -7,6 +7,7 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace py = pybind11;
 
@@ -165,6 +166,51 @@ static double segment_clearance(
     return minimum;
 }
 
+static void obstacle_bounds(
+    const double* params, std::int8_t type, py::ssize_t dims, double* lower, double* upper) {
+    if (type == 1) {
+        for (py::ssize_t index = 0; index < dims; ++index) {
+            lower[index] = params[index];
+            upper[index] = params[3 + index];
+        }
+        return;
+    }
+    if (type == 0) {
+        const double radius = params[3];
+        for (py::ssize_t index = 0; index < dims; ++index) {
+            lower[index] = params[index] - radius;
+            upper[index] = params[index] + radius;
+        }
+        return;
+    }
+    const double radius = params[6];
+    for (py::ssize_t index = 0; index < dims; ++index) {
+        const double first = params[index];
+        const double second = params[3 + index];
+        lower[index] = std::min(first, second) - radius;
+        upper[index] = std::max(first, second) + radius;
+    }
+}
+
+static double aabb_distance(
+    const double* first_lower,
+    const double* first_upper,
+    const double* second_lower,
+    const double* second_upper,
+    py::ssize_t dims) {
+    double squared = 0.0;
+    for (py::ssize_t index = 0; index < dims; ++index) {
+        double gap = 0.0;
+        if (first_upper[index] < second_lower[index]) {
+            gap = second_lower[index] - first_upper[index];
+        } else if (second_upper[index] < first_lower[index]) {
+            gap = first_lower[index] - second_upper[index];
+        }
+        squared += gap * gap;
+    }
+    return std::sqrt(squared);
+}
+
 static void validate_inputs(
     const py::buffer_info& points,
     const py::buffer_info& types,
@@ -243,6 +289,79 @@ static py::array_t<double> chain_clearance_batch(
     return output;
 }
 
+static py::array_t<bool> chain_collision_free_batch(
+    Points points_, Types types_, Types dims_, Parameters params_, double clearance,
+    double link_radius, py::ssize_t box_samples) {
+    const auto points = points_.request();
+    const auto types = types_.request();
+    const auto dims = dims_.request();
+    const auto params = params_.request();
+    validate_inputs(points, types, dims, params, box_samples);
+    if (!std::isfinite(clearance) || !std::isfinite(link_radius) || clearance < 0.0 || link_radius < 0.0) {
+        throw std::invalid_argument("clearance and link_radius must be non-negative finite values");
+    }
+
+    const py::ssize_t samples = points.shape[0];
+    const py::ssize_t n_points = points.shape[1];
+    const py::ssize_t point_dims = points.shape[2];
+    const py::ssize_t n_obstacles = types.shape[0];
+    const auto* point_data = static_cast<const double*>(points.ptr);
+    const auto* type_data = static_cast<const std::int8_t*>(types.ptr);
+    const auto* dim_data = static_cast<const std::int8_t*>(dims.ptr);
+    const auto* parameter_data = static_cast<const double*>(params.ptr);
+    py::array_t<bool> output(py::array::ShapeContainer(std::vector<py::ssize_t>{samples}));
+    auto* output_data = static_cast<bool*>(output.request().ptr);
+
+    {
+        py::gil_scoped_release release;
+        for (py::ssize_t sample = 0; sample < samples; ++sample) {
+            bool free = true;
+            for (py::ssize_t obstacle = 0; obstacle < n_obstacles && free; ++obstacle) {
+                const py::ssize_t obstacle_dims = dim_data[obstacle];
+                const std::int8_t obstacle_type = type_data[obstacle];
+                const double* obstacle_params = parameter_data + obstacle * params.shape[1];
+                double obstacle_lower[3] = {0.0, 0.0, 0.0};
+                double obstacle_upper[3] = {0.0, 0.0, 0.0};
+                obstacle_bounds(obstacle_params, obstacle_type, obstacle_dims, obstacle_lower, obstacle_upper);
+                for (py::ssize_t point_index = 0; point_index < n_points && free; ++point_index) {
+                    const double* point = point_data + (sample * n_points + point_index) * point_dims;
+                    double point_lower[3] = {0.0, 0.0, 0.0};
+                    double point_upper[3] = {0.0, 0.0, 0.0};
+                    for (py::ssize_t index = 0; index < obstacle_dims; ++index) {
+                        point_lower[index] = point[index];
+                        point_upper[index] = point[index];
+                    }
+                    const double lower_bound = aabb_distance(
+                        point_lower, point_upper, obstacle_lower, obstacle_upper, obstacle_dims) - link_radius;
+                    if (lower_bound <= clearance
+                        && point_clearance(point, obstacle_params, obstacle_type, obstacle_dims) - link_radius < clearance) {
+                        free = false;
+                    }
+                }
+                for (py::ssize_t segment = 0; segment + 1 < n_points && free; ++segment) {
+                    const double* start = point_data + (sample * n_points + segment) * point_dims;
+                    const double* end = point_data + (sample * n_points + segment + 1) * point_dims;
+                    double segment_lower[3] = {0.0, 0.0, 0.0};
+                    double segment_upper[3] = {0.0, 0.0, 0.0};
+                    for (py::ssize_t index = 0; index < obstacle_dims; ++index) {
+                        segment_lower[index] = std::min(start[index], end[index]);
+                        segment_upper[index] = std::max(start[index], end[index]);
+                    }
+                    const double lower_bound = aabb_distance(
+                        segment_lower, segment_upper, obstacle_lower, obstacle_upper, obstacle_dims) - link_radius;
+                    if (lower_bound <= clearance
+                        && segment_clearance(start, end, obstacle_params, obstacle_type, obstacle_dims, box_samples)
+                            - link_radius < clearance) {
+                        free = false;
+                    }
+                }
+            }
+            output_data[sample] = free;
+        }
+    }
+    return output;
+}
+
 PYBIND11_MODULE(_collision_cpp, m) {
     m.doc() = "C++ accelerated batched robot collision clearance";
     m.def(
@@ -250,4 +369,9 @@ PYBIND11_MODULE(_collision_cpp, m) {
         py::arg("points"), py::arg("obstacle_types"), py::arg("obstacle_dims"),
         py::arg("obstacle_params"), py::arg("link_radius") = 0.0,
         py::arg("box_samples") = 25);
+    m.def(
+        "chain_collision_free_batch", &chain_collision_free_batch,
+        py::arg("points"), py::arg("obstacle_types"), py::arg("obstacle_dims"),
+        py::arg("obstacle_params"), py::arg("clearance") = 0.0,
+        py::arg("link_radius") = 0.0, py::arg("box_samples") = 25);
 }

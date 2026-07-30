@@ -10,7 +10,7 @@ This directory contains the first executable benchmark entry points for `masterm
 - `bench_signal.py` focuses on the signal-processing stack, including pipelines, streaming, detection, and `SignalExperiment`
 - `bench_workflows.py` runs a fast smoke benchmark for tabular readiness, signal health, and robot workcell reports
 - `bench_graphs.py` compares Python and optional C++ kernels on CSR graph traversal, shortest paths, and analysis
-- `bench_robotics.py` compares NumPy and compiled paths for batched robot kinematics, clearance, retiming, IK, and velocity mapping
+- `bench_robotics.py` compares NumPy and compiled paths for batched robot kinematics, clearance, broad-phase collision checks, retiming, IK, and velocity mapping
 - `bench_neural.py` compares NumPy and compiled paths for recurrent layers, Conv1D packing, IIR filtering, and ridge extraction
 
 ## How to use them

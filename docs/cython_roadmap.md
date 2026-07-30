@@ -32,6 +32,7 @@ development model.
   - trajectory sampling and joint-path smoothing
   - C++ batched forward kinematics and geometric Jacobians selected by `auto`
   - C++ batched sphere/box/capsule clearance for workcell safety reports
+  - C++ AABB broad-phase collision filtering for workcell path checks
   - C++ quintic retiming with velocity, acceleration, and jerk limits
   - C++ batch position IK with damped least-squares and warm-start support
 
@@ -83,9 +84,9 @@ Suggested kernels:
 
 For robotics, the next C++ candidates should be chosen in this order:
 
-1. Batch damped least-squares IK for repeated Cartesian targets.
-2. Broad-phase collision checks for workcell planning.
-3. Transform composition and pose interpolation with reusable output buffers.
+1. Transform composition and pose interpolation with reusable output buffers.
+2. Batch trajectory diagnostics and reusable output buffers.
+3. Parallel planning queries with bounded, deterministic worker pools.
 
 Each candidate should expose a small typed-array contract, retain the current
 Python implementation as a fallback, and be admitted only when a workload

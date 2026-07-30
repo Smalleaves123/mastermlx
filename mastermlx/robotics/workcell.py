@@ -11,7 +11,7 @@ import numpy as np
 
 from ..base import BaseExperiment
 from ..planning import rrt_star, smooth
-from .collision import chain_clearance_batch, path_collision_report
+from .collision import chain_clearance_batch, chain_collision_free_batch, path_collision_report
 from .constraints import validate_joint_limits
 from .model import RobotModel
 from .results import JointTrajectory, RobotResult
@@ -143,12 +143,13 @@ class RobotWorkcell(BaseExperiment):
             raise ValueError("collision_step must be a positive finite value")
         if clearance < 0.0 or not np.isfinite(clearance):
             raise ValueError("clearance must be a non-negative finite value")
+        samples: list[np.ndarray] = []
         for start, end in zip(path[:-1], path[1:]):
             count = max(1, int(np.ceil(np.linalg.norm(end - start) / collision_step)))
-            for alpha in np.linspace(0.0, 1.0, count + 1):
-                if self.world.clearance(start + alpha * (end - start)) < clearance:
-                    return False
-        return self.world.clearance(path[-1]) >= clearance
+            samples.extend(start + alpha * (end - start) for alpha in np.linspace(0.0, 1.0, count + 1))
+        samples.append(path[-1])
+        points = np.asarray([self.world.link_positions(values) for values in samples], dtype=float)
+        return bool(np.all(chain_collision_free_batch(points, self.world.obstacles, clearance=clearance)))
 
     def solve_tcp_path(
         self,
