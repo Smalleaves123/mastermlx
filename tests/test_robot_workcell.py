@@ -74,6 +74,7 @@ def test_workcell_path_collision_summary_uses_batched_chain_queries():
     assert summary["collision"]
     assert summary["first_collision_index"] is not None
     assert summary["n_samples"] > path.shape[0]
+    assert not workcell.path_collision_free(path, interpolation_step=0.05)
 
 
 def test_workcell_parallel_planning_is_seed_deterministic():

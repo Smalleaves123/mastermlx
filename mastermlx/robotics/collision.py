@@ -646,6 +646,47 @@ def _interpolate_joint_path(path, interpolation_step):
     return np.asarray(samples, dtype=float)
 
 
+def _path_samples(robot, joint_path, interpolation_step):
+    path = np.asarray(joint_path, dtype=float)
+    if path.ndim != 2 or path.shape[0] < 1 or path.shape[1] != robot.n_joints:
+        raise ValueError("joint_path must have shape (n_points, n_joints)")
+    if not np.all(np.isfinite(path)):
+        raise ValueError("joint_path must contain only finite values")
+    interpolation_step = float(interpolation_step)
+    if interpolation_step <= 0.0 or not np.isfinite(interpolation_step):
+        raise ValueError("interpolation_step must be a positive finite value")
+    return _interpolate_joint_path(path, interpolation_step)
+
+
+def path_collision_free(
+    robot,
+    joint_path,
+    obstacles: Iterable[object],
+    *,
+    clearance=0.0,
+    link_radius=0.0,
+    interpolation_step=0.05,
+):
+    """Return whether every interpolated path sample meets ``clearance``.
+
+    Chain frames are generated in one batch, then the compiled AABB
+    broad-phase rejects distant obstacles before evaluating exact geometry.
+    """
+
+    samples = _path_samples(robot, joint_path, interpolation_step)
+    points = robot.frame_positions_batch(samples)
+    return bool(
+        np.all(
+            chain_collision_free_batch(
+                points,
+                obstacles,
+                clearance=clearance,
+                link_radius=link_radius,
+            )
+        )
+    )
+
+
 def path_collision_summary(
     robot,
     joint_path,
@@ -661,16 +702,7 @@ def path_collision_summary(
     summaries through their optional compiled batch kernels.
     """
 
-    path = np.asarray(joint_path, dtype=float)
-    if path.ndim != 2 or path.shape[0] < 1 or path.shape[1] != robot.n_joints:
-        raise ValueError("joint_path must have shape (n_points, n_joints)")
-    if not np.all(np.isfinite(path)):
-        raise ValueError("joint_path must contain only finite values")
-    interpolation_step = float(interpolation_step)
-    if interpolation_step <= 0.0 or not np.isfinite(interpolation_step):
-        raise ValueError("interpolation_step must be a positive finite value")
-
-    samples = _interpolate_joint_path(path, interpolation_step)
+    samples = _path_samples(robot, joint_path, interpolation_step)
     points = robot.frame_positions_batch(samples)
     summary = chain_collision_summary_batch(points, obstacles, link_radius=link_radius)
     clearances = summary["minimum_clearance"]
@@ -699,17 +731,8 @@ def path_collision_report(
 ):
     """Return collision and clearance diagnostics along a joint-space path."""
 
-    path = np.asarray(joint_path, dtype=float)
-    if path.ndim != 2 or path.shape[0] < 1 or path.shape[1] != robot.n_joints:
-        raise ValueError("joint_path must have shape (n_points, n_joints)")
-    if not np.all(np.isfinite(path)):
-        raise ValueError("joint_path must contain only finite values")
-    interpolation_step = float(interpolation_step)
-    if interpolation_step <= 0.0 or not np.isfinite(interpolation_step):
-        raise ValueError("interpolation_step must be a positive finite value")
-
     obstacles = list(obstacles)
-    samples = _interpolate_joint_path(path, interpolation_step)
+    samples = _path_samples(robot, joint_path, interpolation_step)
     reports = []
     for q in samples:
         reports.append(robot_collision_report(robot, q, obstacles, link_radius=link_radius))
@@ -737,6 +760,7 @@ __all__ = [
     "chain_collision_summary_batch",
     "SphereObstacle",
     "chain_collision_report",
+    "path_collision_free",
     "path_collision_summary",
     "path_collision_report",
     "point_obstacle_clearance",

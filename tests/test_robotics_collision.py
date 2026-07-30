@@ -5,6 +5,7 @@ from mastermlx.robotics import (
     CapsuleObstacle,
     RobotModel,
     SphereObstacle,
+    path_collision_free,
     path_collision_report,
     path_collision_summary,
     robot_collision_report,
@@ -65,6 +66,7 @@ def test_path_collision_summary_matches_detailed_report_arrays():
     assert np.allclose(summary["samples"], detailed["samples"])
     assert np.allclose(summary["clearances"], detailed["clearances"])
     assert summary["minimum_clearance"] == detailed["minimum_clearance"]
+    assert not path_collision_free(robot, path, [obstacle], interpolation_step=0.05)
 
 
 def test_segment_distance_and_world_config_support_new_obstacles():

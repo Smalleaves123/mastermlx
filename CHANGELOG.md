@@ -41,6 +41,10 @@
 - Added typed path-level collision summaries that compose batched kinematics
   with compiled collision diagnostics, plus a workcell convenience method.
 - Restored `TextSeq` compatibility with Python 3.9 runtime typing.
+- Added reusable-buffer batch rigid-body mass, gravity, inverse, and forward
+  dynamics APIs based on explicit link inertias.
+- Added a robotics scaling profile for AABB broad-phase behavior, hit-buffer
+  capacity, allocation reuse, and batch dynamics.
 - Added model-level joint position limits, clipping and violation diagnostics,
   projected constrained IK, and URDF joint-limit import.
 - Added warm-started batch inverse kinematics for position and pose target sequences.

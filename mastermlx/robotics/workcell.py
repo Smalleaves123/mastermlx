@@ -13,7 +13,7 @@ from ..base import BaseExperiment
 from ..planning import rrt_star, smooth
 from .collision import (
     chain_clearance_batch,
-    chain_collision_free_batch,
+    path_collision_free,
     path_collision_report,
     path_collision_summary,
 )
@@ -125,23 +125,13 @@ class RobotWorkcell(BaseExperiment):
         return np.max(np.maximum(lower, upper), axis=-1)
 
     def _collision_free_path(self, path, collision_step=0.05, clearance=0.0):
-        path = np.asarray(path, dtype=float)
-        if path.ndim != 2 or path.shape[0] < 1 or path.shape[1] != self.n_joints:
-            raise ValueError("path must have shape (n_points, n_joints)")
-        collision_step = float(collision_step)
-        clearance = float(clearance)
-        if collision_step <= 0.0 or not np.isfinite(collision_step):
-            raise ValueError("collision_step must be a positive finite value")
-        if clearance < 0.0 or not np.isfinite(clearance):
-            raise ValueError("clearance must be a non-negative finite value")
-        samples: list[np.ndarray] = []
-        for start, end in zip(path[:-1], path[1:]):
-            count = max(1, int(np.ceil(np.linalg.norm(end - start) / collision_step)))
-            samples.extend(start + alpha * (end - start) for alpha in np.linspace(0.0, 1.0, count + 1))
-        samples.append(path[-1])
-        points = self.robot.frame_positions_batch(np.asarray(samples, dtype=float))
-        points = points[:, :, :2] if points.shape[2] >= 2 else points
-        return bool(np.all(chain_collision_free_batch(points, self.world.obstacles, clearance=clearance)))
+        return path_collision_free(
+            self.robot,
+            path,
+            self.world.obstacles,
+            clearance=clearance,
+            interpolation_step=collision_step,
+        )
 
     def _collision_free_edge(self, start, end, collision_step, clearance):
         return self._collision_free_path(
@@ -155,6 +145,18 @@ class RobotWorkcell(BaseExperiment):
             self.robot,
             joint_path,
             self.world.obstacles,
+            link_radius=link_radius,
+            interpolation_step=interpolation_step,
+        )
+
+    def path_collision_free(self, joint_path, *, clearance=0.0, link_radius=0.0, interpolation_step=0.05):
+        """Return whether a joint-space path satisfies an obstacle clearance."""
+
+        return path_collision_free(
+            self.robot,
+            joint_path,
+            self.world.obstacles,
+            clearance=clearance,
             link_radius=link_radius,
             interpolation_step=interpolation_step,
         )

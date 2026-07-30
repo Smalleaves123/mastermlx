@@ -14,6 +14,17 @@ from .kinematics import (
     inverse_kinematics_batch,
 )
 from .constraints import check_joint_limits, clip_joint_values, joint_limit_violation, validate_joint_limits
+from .dynamics import (
+    LinkInertia,
+    coriolis_forces_batch,
+    forward_dynamics_batch,
+    gravity_forces,
+    gravity_forces_batch,
+    inverse_dynamics_batch,
+    mass_matrix,
+    mass_matrix_batch,
+    normalize_link_inertias,
+)
 from .jacobian import geometric_jacobian, geometric_jacobian_batch
 from .results import RobotResult
 from .urdf_parser import parse_urdf, urdf_to_dh_chain
@@ -29,10 +40,12 @@ class RobotModel:
     base: np.ndarray | None = None
     tool: np.ndarray | None = None
     joint_limits: np.ndarray | None = None
+    link_inertias: tuple[LinkInertia, ...] | None = None
 
     def __post_init__(self):
         self.links = [link if isinstance(link, DHLink) else DHLink(**link) for link in self.links]
         self.joint_limits = validate_joint_limits(self.joint_limits, len(self.links))
+        self.link_inertias = normalize_link_inertias(self.link_inertias, len(self.links))
 
     @property
     def n_joints(self):
@@ -82,7 +95,7 @@ class RobotModel:
         return joint_limit_violation(values, self.joint_limits)
 
     @classmethod
-    def from_urdf(cls, xml_text, *, name=None, base_link=None, tip_link=None):
+    def from_urdf(cls, xml_text, *, name=None, base_link=None, tip_link=None, link_inertias=None):
         links, joint_limits = urdf_to_dh_chain(
             xml_text,
             base_link=base_link,
@@ -92,10 +105,12 @@ class RobotModel:
         if name is None:
             parsed_links, _ = parse_urdf(xml_text)
             name = "robot" if not parsed_links else parsed_links[0].name
-        return cls(links=links, name=name, joint_limits=joint_limits)
+        return cls(links=links, name=name, joint_limits=joint_limits, link_inertias=link_inertias)
 
     @classmethod
-    def from_dh(cls, links, *, name="robot", base=None, tool=None, joint_limits=None):
+    def from_dh(
+        cls, links, *, name="robot", base=None, tool=None, joint_limits=None, link_inertias=None
+    ):
         """Build a robot model from DH links or link-like dictionaries."""
 
         return cls(
@@ -104,6 +119,7 @@ class RobotModel:
             base=base,
             tool=tool,
             joint_limits=joint_limits,
+            link_inertias=link_inertias,
         )
 
     def fk(self, joint_values=None, return_all=False):
@@ -160,6 +176,113 @@ class RobotModel:
         """Evaluate end-effector positions for a batch of configurations."""
 
         return self.fk_batch(joint_values)[:, :3, 3]
+
+    def mass_matrix(self, joint_values=None):
+        """Return the joint-space mass matrix at one configuration."""
+
+        if joint_values is None:
+            joint_values = self.default_joint_values()
+        else:
+            joint_values = self.validate_joint_values(
+                joint_values, check_limits=self.joint_limits is not None
+            )
+        return mass_matrix(self.links, self.link_inertias, joint_values, base=self.base)
+
+    def mass_matrix_batch(self, joint_values, *, output=None):
+        """Return mass matrices for a batch of joint configurations."""
+
+        values = self.validate_joint_values(
+            joint_values, batch=True, check_limits=self.joint_limits is not None
+        )
+        return mass_matrix_batch(self.links, self.link_inertias, values, base=self.base, output=output)
+
+    def gravity_forces(self, joint_values=None, *, gravity=(0.0, 0.0, -9.81)):
+        """Return gravity holding torques at one configuration."""
+
+        if joint_values is None:
+            joint_values = self.default_joint_values()
+        else:
+            joint_values = self.validate_joint_values(
+                joint_values, check_limits=self.joint_limits is not None
+            )
+        return gravity_forces(
+            self.links, self.link_inertias, joint_values, gravity=gravity, base=self.base
+        )
+
+    def gravity_forces_batch(self, joint_values, *, gravity=(0.0, 0.0, -9.81), output=None):
+        """Return gravity holding torques for a configuration batch."""
+
+        values = self.validate_joint_values(
+            joint_values, batch=True, check_limits=self.joint_limits is not None
+        )
+        return gravity_forces_batch(
+            self.links, self.link_inertias, values, gravity=gravity, base=self.base, output=output
+        )
+
+    def coriolis_forces_batch(self, joint_values, joint_velocities, *, output=None):
+        """Return finite-difference Coriolis and centrifugal force batches."""
+
+        values = self.validate_joint_values(joint_values, batch=True)
+        velocities = self.validate_joint_values(joint_velocities, batch=True)
+        if velocities.shape != values.shape:
+            raise ValueError("joint_velocities must have the same shape as joint_values")
+        return coriolis_forces_batch(
+            self.links, self.link_inertias, values, velocities, base=self.base, output=output
+        )
+
+    def inverse_dynamics_batch(
+        self,
+        joint_values,
+        joint_velocities,
+        joint_accelerations,
+        *,
+        gravity=(0.0, 0.0, -9.81),
+        include_coriolis=False,
+        output=None,
+    ):
+        """Return torques for batched joint acceleration targets."""
+
+        values = self.validate_joint_values(joint_values, batch=True)
+        velocities = self.validate_joint_values(joint_velocities, batch=True)
+        accelerations = self.validate_joint_values(joint_accelerations, batch=True)
+        return inverse_dynamics_batch(
+            self.links,
+            self.link_inertias,
+            values,
+            velocities,
+            accelerations,
+            gravity=gravity,
+            base=self.base,
+            include_coriolis=include_coriolis,
+            output=output,
+        )
+
+    def forward_dynamics_batch(
+        self,
+        joint_values,
+        joint_velocities,
+        joint_torques,
+        *,
+        gravity=(0.0, 0.0, -9.81),
+        include_coriolis=False,
+        output=None,
+    ):
+        """Return accelerations generated by batched joint torques."""
+
+        values = self.validate_joint_values(joint_values, batch=True)
+        velocities = self.validate_joint_values(joint_velocities, batch=True)
+        torques = self.validate_joint_values(joint_torques, batch=True)
+        return forward_dynamics_batch(
+            self.links,
+            self.link_inertias,
+            values,
+            velocities,
+            torques,
+            gravity=gravity,
+            base=self.base,
+            include_coriolis=include_coriolis,
+            output=output,
+        )
 
     def jacobian_batch(self, joint_values):
         """Evaluate geometric Jacobians for a batch of configurations."""

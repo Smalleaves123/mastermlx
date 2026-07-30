@@ -31,13 +31,38 @@ class RobotExperiment:
         self.name = self.robot.name if name is None else str(name)
 
     @classmethod
-    def from_dh(cls, links, *, name="robot", base=None, tool=None, joint_limits=None, pose_estimator=None):
-        robot = RobotModel.from_dh(links, name=name, base=base, tool=tool, joint_limits=joint_limits)
+    def from_dh(
+        cls,
+        links,
+        *,
+        name="robot",
+        base=None,
+        tool=None,
+        joint_limits=None,
+        link_inertias=None,
+        pose_estimator=None,
+    ):
+        robot = RobotModel.from_dh(
+            links,
+            name=name,
+            base=base,
+            tool=tool,
+            joint_limits=joint_limits,
+            link_inertias=link_inertias,
+        )
         return cls(robot, pose_estimator=pose_estimator, name=name)
 
     @classmethod
-    def from_urdf(cls, xml_text, *, name=None, base_link=None, tip_link=None, pose_estimator=None):
-        robot = RobotModel.from_urdf(xml_text, name=name, base_link=base_link, tip_link=tip_link)
+    def from_urdf(
+        cls, xml_text, *, name=None, base_link=None, tip_link=None, link_inertias=None, pose_estimator=None
+    ):
+        robot = RobotModel.from_urdf(
+            xml_text,
+            name=name,
+            base_link=base_link,
+            tip_link=tip_link,
+            link_inertias=link_inertias,
+        )
         return cls(robot, pose_estimator=pose_estimator, name=robot.name if name is None else name)
 
     @property
