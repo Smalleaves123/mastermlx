@@ -45,6 +45,7 @@ def test_cpp_dynamics_matches_numpy_and_reuses_outputs():
         reference_mass = robot.mass_matrix_batch(values)
         reference_gravity = robot.gravity_forces_batch(values, gravity=gravity)
         reference_torque = robot.inverse_dynamics_batch(values, velocities, accelerations, gravity=gravity)
+        reference_coriolis_forces = robot.coriolis_forces_batch(values, velocities)
         reference_forward = robot.forward_dynamics_batch(
             values, velocities, reference_torque, gravity=gravity
         )
@@ -56,12 +57,14 @@ def test_cpp_dynamics_matches_numpy_and_reuses_outputs():
         mass_output = np.empty_like(reference_mass)
         gravity_output = np.empty_like(reference_gravity)
         torque_output = np.empty_like(reference_torque)
+        coriolis_output = np.empty_like(reference_torque)
         forward_output = np.empty_like(reference_forward)
         mass = robot.mass_matrix_batch(values, output=mass_output)
         forces = robot.gravity_forces_batch(values, gravity=gravity, output=gravity_output)
         torque = robot.inverse_dynamics_batch(
             values, velocities, accelerations, gravity=gravity, output=torque_output
         )
+        coriolis = robot.coriolis_forces_batch(values, velocities, output=coriolis_output)
         forward = robot.forward_dynamics_batch(
             values, velocities, torque, gravity=gravity, output=forward_output
         )
@@ -74,10 +77,12 @@ def test_cpp_dynamics_matches_numpy_and_reuses_outputs():
     assert mass is mass_output
     assert forces is gravity_output
     assert torque is torque_output
+    assert coriolis is coriolis_output
     assert forward is forward_output
     assert np.allclose(mass, reference_mass, atol=1e-12)
     assert np.allclose(forces, reference_gravity, atol=1e-12)
     assert np.allclose(torque, reference_torque, atol=1e-12)
+    assert np.allclose(coriolis, reference_coriolis_forces, atol=1e-10)
     assert np.allclose(forward, reference_forward, atol=1e-12)
     assert np.allclose(with_coriolis, reference_coriolis, atol=1e-10)
 

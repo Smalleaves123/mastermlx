@@ -253,10 +253,10 @@ def coriolis_forces_batch(
 ):
     """Return Coriolis and centrifugal forces from mass-matrix derivatives.
 
-    This finite-difference reference implementation is intended for model
-    validation and moderate batch sizes.  High-rate loops can disable this
-    term in :func:`inverse_dynamics_batch` until a recursive compiled kernel
-    is selected for the robot model.
+    The finite-difference formulation provides a reliable reference for the
+    serial DH mass model.  The optional C++ backend evaluates the same
+    derivatives and Christoffel contraction without Python-level per-joint
+    dispatch.
     """
 
     links, inertias = _normalized_inputs(links, link_inertias)
@@ -269,6 +269,16 @@ def coriolis_forces_batch(
         raise ValueError("epsilon must be a positive finite value")
     samples, joints = values.shape
     result = _output_buffer(output, values.shape, "output")
+    cpp = _load_cpp_dynamics(get_backend())
+    if cpp is not None and callable(getattr(cpp, "coriolis_forces_batch_dh", None)):
+        cpp.coriolis_forces_batch_dh(
+            *_cpp_dynamics_arguments(links, inertias, values),
+            np.ascontiguousarray(velocities, dtype=float),
+            base,
+            epsilon,
+            result,
+        )
+        return result
     derivatives = np.empty((samples, joints, joints, joints), dtype=float)
     for coordinate in range(joints):
         delta = np.zeros_like(values)

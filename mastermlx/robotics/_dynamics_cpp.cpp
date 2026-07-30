@@ -414,6 +414,89 @@ static py::array_t<double> inverse_dynamics_batch_dh(
     return output;
 }
 
+static py::array_t<double> coriolis_forces_batch_dh(
+    Vector a_, Vector alpha_, Vector d_, Vector theta_, JointTypes joint_type_, Vector offset_,
+    Vector masses_, Batch center_of_mass_, Batch inertias_, Batch q_, Batch qd_, py::object base,
+    double epsilon, py::object requested_output) {
+    const auto a = a_.request();
+    const auto alpha = alpha_.request();
+    const auto d = d_.request();
+    const auto theta = theta_.request();
+    const auto joint_type = joint_type_.request();
+    const auto offset = offset_.request();
+    const auto masses = masses_.request();
+    const auto center_of_mass = center_of_mass_.request();
+    const auto inertias = inertias_.request();
+    const auto q = q_.request();
+    const auto qd = qd_.request();
+    validate_inputs(a, alpha, d, theta, joint_type, offset, masses, center_of_mass, inertias, q);
+    if (qd.ndim != 2 || qd.shape[0] != q.shape[0] || qd.shape[1] != q.shape[1]) {
+        throw std::invalid_argument("qd must have the same shape as q");
+    }
+    if (!std::isfinite(epsilon) || epsilon <= 0.0) {
+        throw std::invalid_argument("epsilon must be a positive finite value");
+    }
+    require_finite(static_cast<const double*>(qd.ptr), qd.size, "qd");
+    const Transform base_transform = read_transform(base);
+    const py::ssize_t samples = q.shape[0];
+    const py::ssize_t joints = a.shape[0];
+    auto output = output_array(requested_output, {samples, joints}, "output");
+    auto* output_data = static_cast<double*>(output.request().ptr);
+    {
+        py::gil_scoped_release release;
+        parallel_rows(samples, joints * joints * joints, [&](py::ssize_t begin, py::ssize_t end) {
+            std::vector<double> plus(static_cast<std::size_t>(joints));
+            std::vector<double> minus(static_cast<std::size_t>(joints));
+            std::vector<double> plus_matrix(static_cast<std::size_t>(joints * joints));
+            std::vector<double> minus_matrix(static_cast<std::size_t>(joints * joints));
+            std::vector<double> derivatives(static_cast<std::size_t>(joints * joints * joints));
+            for (py::ssize_t sample = begin; sample < end; ++sample) {
+                const double* configuration = static_cast<const double*>(q.ptr) + sample * joints;
+                for (py::ssize_t coordinate = 0; coordinate < joints; ++coordinate) {
+                    std::copy(configuration, configuration + joints, plus.begin());
+                    std::copy(configuration, configuration + joints, minus.begin());
+                    plus[coordinate] += epsilon;
+                    minus[coordinate] -= epsilon;
+                    mass_and_gravity_single(
+                        static_cast<const double*>(a.ptr), static_cast<const double*>(alpha.ptr),
+                        static_cast<const double*>(d.ptr), static_cast<const double*>(theta.ptr),
+                        static_cast<const std::int8_t*>(joint_type.ptr), static_cast<const double*>(offset.ptr),
+                        static_cast<const double*>(masses.ptr), static_cast<const double*>(center_of_mass.ptr),
+                        static_cast<const double*>(inertias.ptr), plus.data(), joints, base_transform,
+                        nullptr, plus_matrix.data(), nullptr);
+                    mass_and_gravity_single(
+                        static_cast<const double*>(a.ptr), static_cast<const double*>(alpha.ptr),
+                        static_cast<const double*>(d.ptr), static_cast<const double*>(theta.ptr),
+                        static_cast<const std::int8_t*>(joint_type.ptr), static_cast<const double*>(offset.ptr),
+                        static_cast<const double*>(masses.ptr), static_cast<const double*>(center_of_mass.ptr),
+                        static_cast<const double*>(inertias.ptr), minus.data(), joints, base_transform,
+                        nullptr, minus_matrix.data(), nullptr);
+                    for (py::ssize_t element = 0; element < joints * joints; ++element) {
+                        derivatives[(coordinate * joints * joints) + element] =
+                            (plus_matrix[element] - minus_matrix[element]) / (2.0 * epsilon);
+                    }
+                }
+                const double* velocity = static_cast<const double*>(qd.ptr) + sample * joints;
+                for (py::ssize_t row = 0; row < joints; ++row) {
+                    double force = 0.0;
+                    for (py::ssize_t first = 0; first < joints; ++first) {
+                        for (py::ssize_t second = 0; second < joints; ++second) {
+                            const double coefficient = 0.5 * (
+                                derivatives[(second * joints + row) * joints + first]
+                                + derivatives[(first * joints + row) * joints + second]
+                                - derivatives[(row * joints + first) * joints + second]
+                            );
+                            force += coefficient * velocity[first] * velocity[second];
+                        }
+                    }
+                    output_data[sample * joints + row] = force;
+                }
+            }
+        });
+    }
+    return output;
+}
+
 static py::tuple mass_and_gravity_batch_dh(
     Vector a_, Vector alpha_, Vector d_, Vector theta_, JointTypes joint_type_, Vector offset_,
     Vector masses_, Batch center_of_mass_, Batch inertias_, Batch q_, Vector gravity_, py::object base,
@@ -476,6 +559,12 @@ PYBIND11_MODULE(_dynamics_cpp, m) {
         py::arg("a"), py::arg("alpha"), py::arg("d"), py::arg("theta"), py::arg("joint_type"),
         py::arg("offset"), py::arg("masses"), py::arg("center_of_mass"), py::arg("inertias"),
         py::arg("q"), py::arg("qdd"), py::arg("gravity"), py::arg("base") = py::none(),
+        py::arg("output") = py::none());
+    m.def(
+        "coriolis_forces_batch_dh", &coriolis_forces_batch_dh,
+        py::arg("a"), py::arg("alpha"), py::arg("d"), py::arg("theta"), py::arg("joint_type"),
+        py::arg("offset"), py::arg("masses"), py::arg("center_of_mass"), py::arg("inertias"),
+        py::arg("q"), py::arg("qd"), py::arg("base") = py::none(), py::arg("epsilon") = 1e-6,
         py::arg("output") = py::none());
     m.def(
         "mass_and_gravity_batch_dh", &mass_and_gravity_batch_dh,
