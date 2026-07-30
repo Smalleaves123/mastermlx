@@ -19,6 +19,7 @@ from mastermlx.robotics import (
     compose_transform_batch,
     homogeneous_transform,
     interpolate_pose_batch,
+    path_collision_summary,
     robotics_backend_report,
     trajectory_peaks_batch,
     sample_joint_trajectory_segments,
@@ -94,6 +95,9 @@ def main():
     )
     pose_alphas = np.linspace(0.0, 1.0, configurations.shape[0])
     trajectory_metrics = rng.normal(0.0, 0.5, size=(configurations.shape[0], robot.n_joints, 3))
+    collision_path = np.linspace(
+        [np.pi / 2.0, 0.0], [-np.pi / 2.0, 0.0], num=33, dtype=float
+    )
     print(f"Robot backend requested: {get_backend()}")
     print(f"Robot backend capabilities: {robotics_backend_report()}")
     old = get_backend()
@@ -124,6 +128,14 @@ def main():
                     broadphase_obstacles,
                     clearance=0.0,
                     link_radius=0.02,
+                )
+            )
+            path_summary_time, path_summary = bench(
+                lambda: path_collision_summary(
+                    planning_robot,
+                    collision_path,
+                    planning_world.obstacles,
+                    interpolation_step=0.05,
                 )
             )
             compose_time, composed = bench(lambda: compose_transform_batch(transform_pairs))
@@ -184,6 +196,7 @@ def main():
                 f"collision_summary={summary_time:.5f}s ({summary['minimum_clearance'].shape})  "
                 f"collision_details={details_time:.5f}s ({details['hit_kind'].shape})  "
                 f"broadphase={broadphase_time:.5f}s ({free.shape})  "
+                f"path_collision={path_summary_time:.5f}s ({path_summary['clearances'].shape})  "
                 f"compose_batch={compose_time:.5f}s ({composed.shape})  "
                 f"pose_interp={interpolate_time:.5f}s ({interpolated_poses.shape})  "
                 f"kinematic_metrics_batch={metrics_time:.5f}s ({metrics['condition_number'].shape})  "

@@ -11,7 +11,12 @@ import numpy as np
 
 from ..base import BaseExperiment
 from ..planning import rrt_star, smooth
-from .collision import chain_clearance_batch, chain_collision_free_batch, path_collision_report
+from .collision import (
+    chain_clearance_batch,
+    chain_collision_free_batch,
+    path_collision_report,
+    path_collision_summary,
+)
 from .constraints import validate_joint_limits
 from .model import RobotModel
 from .results import JointTrajectory, RobotResult
@@ -141,6 +146,17 @@ class RobotWorkcell(BaseExperiment):
     def _collision_free_edge(self, start, end, collision_step, clearance):
         return self._collision_free_path(
             np.vstack([start, end]), collision_step=collision_step, clearance=clearance
+        )
+
+    def path_collision_summary(self, joint_path, *, link_radius=0.0, interpolation_step=0.05):
+        """Return compiled batch collision diagnostics for a joint-space path."""
+
+        return path_collision_summary(
+            self.robot,
+            joint_path,
+            self.world.obstacles,
+            link_radius=link_radius,
+            interpolation_step=interpolation_step,
         )
 
     def solve_tcp_path(

@@ -35,6 +35,7 @@ development model.
   - C++ AABB broad-phase collision filtering for workcell path checks
   - C++ typed batch collision summaries for minimum clearance and closest elements
   - C++ typed batch collision details with reusable hit and closest-element buffers
+  - Path-level collision summaries composed from compiled kinematic and geometry batches
   - C++ quintic retiming with velocity, acceleration, and jerk limits
   - C++ batch piecewise trajectory sampling with reusable output buffers
   - C++ batch trajectory peak diagnostics with reusable output buffers

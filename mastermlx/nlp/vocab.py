@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
-from typing import Any, cast
+from typing import Any, Optional, cast
 
 from .tok import SimpleTokenizer
 
@@ -108,10 +108,10 @@ class TextSeq:
             max_len = max((len(seq) for seq in seqs), default=0)
             pad = SeqPad(max_len, pad_id=self.vocab_.stoi_[self.pad])
         else:
-            stored_pad = cast(SeqPad | None, self.pad_)
+            stored_pad = cast(Optional[SeqPad], self.pad_)
             if stored_pad is None:
                 raise RuntimeError("TextSeq padding is not initialized")
-            pad = cast(SeqPad, stored_pad)
+            pad = stored_pad
         return np.stack([pad(seq) for seq in seqs], axis=0)
 
     def fit_transform(self, texts, y=None):

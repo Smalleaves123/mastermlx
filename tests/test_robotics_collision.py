@@ -6,6 +6,7 @@ from mastermlx.robotics import (
     RobotModel,
     SphereObstacle,
     path_collision_report,
+    path_collision_summary,
     robot_collision_report,
     segment_distance,
 )
@@ -48,6 +49,22 @@ def test_path_collision_report_interpolates_joint_edges():
     assert report["collision"]
     assert report["first_collision_index"] is not None
     assert report["n_samples"] > path.shape[0]
+
+
+def test_path_collision_summary_matches_detailed_report_arrays():
+    robot = _robot()
+    obstacle = SphereObstacle((1.5, 0.0), 0.15)
+    path = np.array([[np.pi / 2.0, 0.0], [-np.pi / 2.0, 0.0]])
+
+    detailed = path_collision_report(robot, path, [obstacle], interpolation_step=0.05)
+    summary = path_collision_summary(robot, path, [obstacle], interpolation_step=0.05)
+
+    assert summary["collision"] == detailed["collision"]
+    assert summary["first_collision_index"] == detailed["first_collision_index"]
+    assert summary["n_samples"] == detailed["n_samples"]
+    assert np.allclose(summary["samples"], detailed["samples"])
+    assert np.allclose(summary["clearances"], detailed["clearances"])
+    assert summary["minimum_clearance"] == detailed["minimum_clearance"]
 
 
 def test_segment_distance_and_world_config_support_new_obstacles():

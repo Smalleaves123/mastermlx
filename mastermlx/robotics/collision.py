@@ -634,6 +634,61 @@ def robot_collision_report(robot, joint_values=None, obstacles: Iterable[object]
     return chain_collision_report(robot.positions(joint_values), obstacles, link_radius=link_radius)
 
 
+def _interpolate_joint_path(path, interpolation_step):
+    samples = []
+    for index, q in enumerate(path):
+        if index:
+            previous = path[index - 1]
+            count = max(1, int(np.ceil(np.linalg.norm(q - previous) / interpolation_step)))
+            for alpha in np.linspace(0.0, 1.0, count + 1)[1:-1]:
+                samples.append(previous + alpha * (q - previous))
+        samples.append(q)
+    return np.asarray(samples, dtype=float)
+
+
+def path_collision_summary(
+    robot,
+    joint_path,
+    obstacles: Iterable[object],
+    *,
+    link_radius=0.0,
+    interpolation_step=0.05,
+):
+    """Return batched collision diagnostics along an interpolated joint path.
+
+    This lightweight alternative to :func:`path_collision_report` keeps the
+    per-sample results as typed arrays and routes kinematics and collision
+    summaries through their optional compiled batch kernels.
+    """
+
+    path = np.asarray(joint_path, dtype=float)
+    if path.ndim != 2 or path.shape[0] < 1 or path.shape[1] != robot.n_joints:
+        raise ValueError("joint_path must have shape (n_points, n_joints)")
+    if not np.all(np.isfinite(path)):
+        raise ValueError("joint_path must contain only finite values")
+    interpolation_step = float(interpolation_step)
+    if interpolation_step <= 0.0 or not np.isfinite(interpolation_step):
+        raise ValueError("interpolation_step must be a positive finite value")
+
+    samples = _interpolate_joint_path(path, interpolation_step)
+    points = robot.frame_positions_batch(samples)
+    summary = chain_collision_summary_batch(points, obstacles, link_radius=link_radius)
+    clearances = summary["minimum_clearance"]
+    collision_indices = np.flatnonzero(summary["collision"])
+    finite = clearances[np.isfinite(clearances)]
+    return RobotResult({
+        "collision": bool(collision_indices.size),
+        "minimum_clearance": float("inf") if finite.size == 0 else float(np.min(finite)),
+        "first_collision_index": None if collision_indices.size == 0 else int(collision_indices[0]),
+        "n_samples": samples.shape[0],
+        "samples": samples,
+        "clearances": clearances,
+        "closest_kind": summary["closest_kind"],
+        "closest_index": summary["closest_index"],
+        "closest_obstacle_index": summary["closest_obstacle_index"],
+    })
+
+
 def path_collision_report(
     robot,
     joint_path,
@@ -653,15 +708,9 @@ def path_collision_report(
     if interpolation_step <= 0.0 or not np.isfinite(interpolation_step):
         raise ValueError("interpolation_step must be a positive finite value")
 
-    samples = []
+    obstacles = list(obstacles)
+    samples = _interpolate_joint_path(path, interpolation_step)
     reports = []
-    for index, q in enumerate(path):
-        if index:
-            previous = path[index - 1]
-            count = max(1, int(np.ceil(np.linalg.norm(q - previous) / interpolation_step)))
-            for alpha in np.linspace(0.0, 1.0, count + 1)[1:-1]:
-                samples.append(previous + alpha * (q - previous))
-        samples.append(q)
     for q in samples:
         reports.append(robot_collision_report(robot, q, obstacles, link_radius=link_radius))
     clearances = np.asarray([report["minimum_clearance"] for report in reports], dtype=float)
@@ -672,8 +721,8 @@ def path_collision_report(
         "collision": any(report["collision"] for report in reports),
         "minimum_clearance": minimum,
         "first_collision_index": first_collision,
-        "n_samples": len(samples),
-        "samples": np.asarray(samples, dtype=float),
+        "n_samples": samples.shape[0],
+        "samples": samples,
         "clearances": clearances,
         "reports": reports,
     })
@@ -688,6 +737,7 @@ __all__ = [
     "chain_collision_summary_batch",
     "SphereObstacle",
     "chain_collision_report",
+    "path_collision_summary",
     "path_collision_report",
     "point_obstacle_clearance",
     "point_segment_distance",

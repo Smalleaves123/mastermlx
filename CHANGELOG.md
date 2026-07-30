@@ -38,6 +38,9 @@
   output buffers, including explicit truncation reporting for bounded memory.
 - Added C++ piecewise trajectory sampling with reusable time, position,
   velocity, and acceleration output buffers.
+- Added typed path-level collision summaries that compose batched kinematics
+  with compiled collision diagnostics, plus a workcell convenience method.
+- Restored `TextSeq` compatibility with Python 3.9 runtime typing.
 - Added model-level joint position limits, clipping and violation diagnostics,
   projected constrained IK, and URDF joint-limit import.
 - Added warm-started batch inverse kinematics for position and pose target sequences.

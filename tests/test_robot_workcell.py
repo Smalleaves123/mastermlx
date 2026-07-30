@@ -64,6 +64,18 @@ def test_workcell_uses_rrt_when_direct_path_is_blocked():
     assert workcell._collision_free_path(path)
 
 
+def test_workcell_path_collision_summary_uses_batched_chain_queries():
+    workcell = _workcell()
+    workcell.world.add_obstacle((1.5, 0.0), 0.15)
+    path = np.array([[np.pi / 2.0, 0.0], [-np.pi / 2.0, 0.0]])
+
+    summary = workcell.path_collision_summary(path, interpolation_step=0.05)
+
+    assert summary["collision"]
+    assert summary["first_collision_index"] is not None
+    assert summary["n_samples"] > path.shape[0]
+
+
 def test_workcell_parallel_planning_is_seed_deterministic():
     workcell = _workcell()
     workcell.world.add_obstacle((1.5, 0.0), 0.15)
