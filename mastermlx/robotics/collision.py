@@ -373,6 +373,142 @@ def chain_collision_summary_batch(
     })
 
 
+_COLLISION_DETAILS_KEYS = (
+    "minimum_clearance",
+    "collision",
+    "closest_kind",
+    "closest_index",
+    "closest_obstacle_index",
+    "hit_count",
+    "hit_truncated",
+    "hit_kind",
+    "hit_index",
+    "hit_obstacle_index",
+    "hit_clearance",
+)
+
+
+def _collision_details_buffers(output, samples, max_hits):
+    shapes = {
+        "minimum_clearance": ((samples,), float),
+        "collision": ((samples,), bool),
+        "closest_kind": ((samples,), np.int8),
+        "closest_index": ((samples,), np.int64),
+        "closest_obstacle_index": ((samples,), np.int64),
+        "hit_count": ((samples,), np.int64),
+        "hit_truncated": ((samples,), bool),
+        "hit_kind": ((samples, max_hits), np.int8),
+        "hit_index": ((samples, max_hits), np.int64),
+        "hit_obstacle_index": ((samples, max_hits), np.int64),
+        "hit_clearance": ((samples, max_hits), float),
+    }
+    if output is None:
+        return {
+            key: np.empty(shape, dtype=dtype) for key, (shape, dtype) in shapes.items()
+        }
+    if not isinstance(output, dict):
+        raise ValueError("output must be a mapping of named contiguous NumPy arrays")
+    buffers = {}
+    for key, (shape, dtype) in shapes.items():
+        value = output.get(key)
+        if (
+            not isinstance(value, np.ndarray)
+            or value.dtype != np.dtype(dtype)
+            or not value.flags.c_contiguous
+            or value.shape != shape
+        ):
+            raise ValueError(f"output[{key!r}] must be a contiguous {np.dtype(dtype)} array with shape {shape}")
+        buffers[key] = value
+    return buffers
+
+
+def chain_collision_details_batch(
+    points, obstacles, *, link_radius=0.0, box_samples=25, max_hits=None, output=None
+):
+    """Return typed detailed collision data for a batch of chains.
+
+    Hit arrays have shape ``(n_samples, max_hits)`` and store point/segment
+    kind codes (1/2), element indices, obstacle indices, and signed
+    clearances.  ``hit_count`` is the total number of hits; when the supplied
+    capacity is too small, only the prefix is stored and ``hit_truncated`` is
+    true.  ``output`` may contain all named arrays to reuse their storage.
+    """
+
+    points = np.asarray(points, dtype=float)
+    if points.ndim != 3 or points.shape[0] < 1 or points.shape[1] < 1 or points.shape[2] < 1:
+        raise ValueError("points must have shape (n_samples, n_points, n_dims)")
+    if not np.all(np.isfinite(points)):
+        raise ValueError("points must contain only finite values")
+    link_radius = float(link_radius)
+    if link_radius < 0.0 or not np.isfinite(link_radius):
+        raise ValueError("link_radius must be a non-negative finite value")
+    box_samples = int(box_samples)
+    if box_samples < 2:
+        raise ValueError("box_samples must be at least 2")
+    obstacles = list(obstacles)
+    maximum_hits = len(obstacles) * (2 * points.shape[1] - 1)
+    if max_hits is None:
+        max_hits = maximum_hits
+    max_hits = int(max_hits)
+    if max_hits < 0:
+        raise ValueError("max_hits must be non-negative")
+    buffers = _collision_details_buffers(output, points.shape[0], max_hits)
+
+    packed = _pack_obstacles(obstacles, points.shape[2])
+    cpp = _load_cpp_collision(get_backend())
+    if packed is not None and cpp is not None and callable(
+        getattr(cpp, "chain_collision_details_batch", None)
+    ):
+        types, dims, params = packed
+        values = cpp.chain_collision_details_batch(
+            np.ascontiguousarray(points),
+            types,
+            dims,
+            params,
+            link_radius,
+            box_samples,
+            max_hits,
+            buffers["minimum_clearance"],
+            buffers["collision"],
+            buffers["closest_kind"],
+            buffers["closest_index"],
+            buffers["closest_obstacle_index"],
+            buffers["hit_count"],
+            buffers["hit_truncated"],
+            buffers["hit_kind"],
+            buffers["hit_index"],
+            buffers["hit_obstacle_index"],
+            buffers["hit_clearance"],
+        )
+        return RobotResult(dict(zip(_COLLISION_DETAILS_KEYS, values)))
+
+    kind_codes = {"point": 1, "segment": 2}
+    buffers["hit_kind"].fill(0)
+    buffers["hit_index"].fill(-1)
+    buffers["hit_obstacle_index"].fill(-1)
+    buffers["hit_clearance"].fill(np.inf)
+    reports = [chain_collision_report(chain, obstacles, link_radius=link_radius) for chain in points]
+    for sample, report in enumerate(reports):
+        closest = report["closest"]
+        buffers["minimum_clearance"][sample] = report["minimum_clearance"]
+        buffers["collision"][sample] = report["collision"]
+        buffers["closest_kind"][sample] = 0 if closest["kind"] is None else kind_codes[closest["kind"]]
+        buffers["closest_index"][sample] = -1 if closest["index"] is None else closest["index"]
+        buffers["closest_obstacle_index"][sample] = (
+            -1 if closest["obstacle_index"] is None else closest["obstacle_index"]
+        )
+        buffers["hit_count"][sample] = len(report["hits"])
+        buffers["hit_truncated"][sample] = len(report["hits"]) > max_hits
+        for slot, hit in enumerate(report["hits"][:max_hits]):
+            buffers["hit_kind"][sample, slot] = kind_codes[hit["kind"]]
+            buffers["hit_index"][sample, slot] = (
+                hit["point_index"] if hit["kind"] == "point" else hit["segment_index"]
+            )
+            buffers["hit_obstacle_index"][sample, slot] = hit["obstacle_index"]
+            buffers["hit_clearance"][sample, slot] = hit["clearance"]
+    return RobotResult(buffers)
+
+
 def point_obstacle_clearance(point, obstacle):
     """Return signed point clearance to an obstacle.
 
@@ -548,6 +684,7 @@ __all__ = [
     "CapsuleObstacle",
     "chain_clearance_batch",
     "chain_collision_free_batch",
+    "chain_collision_details_batch",
     "chain_collision_summary_batch",
     "SphereObstacle",
     "chain_collision_report",

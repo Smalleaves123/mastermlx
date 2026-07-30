@@ -13,6 +13,7 @@ from mastermlx.robotics import (
     RobotModel,
     SphereObstacle,
     chain_clearance_batch,
+    chain_collision_details_batch,
     chain_collision_free_batch,
     chain_collision_summary_batch,
     compose_transform_batch,
@@ -113,6 +114,9 @@ def main():
             summary_time, summary = bench(
                 lambda: chain_collision_summary_batch(chain_points, obstacles, link_radius=0.02)
             )
+            details_time, details = bench(
+                lambda: chain_collision_details_batch(chain_points, obstacles, link_radius=0.02)
+            )
             broadphase_time, free = bench(
                 lambda: chain_collision_free_batch(
                     chain_points,
@@ -170,6 +174,7 @@ def main():
                 f"velocity={velocity_time:.5f}s ({velocity.shape})  "
                 f"clearance_batch={clearance_time:.5f}s ({clearances.shape})  "
                 f"collision_summary={summary_time:.5f}s ({summary['minimum_clearance'].shape})  "
+                f"collision_details={details_time:.5f}s ({details['hit_kind'].shape})  "
                 f"broadphase={broadphase_time:.5f}s ({free.shape})  "
                 f"compose_batch={compose_time:.5f}s ({composed.shape})  "
                 f"pose_interp={interpolate_time:.5f}s ({interpolated_poses.shape})  "

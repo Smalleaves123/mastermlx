@@ -34,6 +34,7 @@ development model.
   - C++ batched sphere/box/capsule clearance for workcell safety reports
   - C++ AABB broad-phase collision filtering for workcell path checks
   - C++ typed batch collision summaries for minimum clearance and closest elements
+  - C++ typed batch collision details with reusable hit and closest-element buffers
   - C++ quintic retiming with velocity, acceleration, and jerk limits
   - C++ batch trajectory peak diagnostics with reusable output buffers
   - C++ batch position IK with damped least-squares and warm-start support
@@ -90,8 +91,9 @@ Suggested kernels:
 
 For robotics, the next C++ candidates should be chosen in this order:
 
-1. Full detailed collision reports with reusable hit/closest output buffers.
-2. C++ batch trajectory sampling with reusable time/position buffers.
+1. C++ batch trajectory sampling with reusable time/position buffers.
+2. Profile the compiled robotics kernels on larger workcell workloads and tune
+   allocation and broad-phase policies where measurements justify it.
 
 Each candidate should expose a small typed-array contract, retain the current
 Python implementation as a fallback, and be admitted only when a workload

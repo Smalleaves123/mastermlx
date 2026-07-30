@@ -34,6 +34,8 @@
   pools for RRT/RRT* edge queries in robot workcells.
 - Added typed C++ batch collision summaries and reusable-buffer trajectory peak
   diagnostics for safety reports.
+- Added typed C++ batch collision details with reusable hit and closest-element
+  output buffers, including explicit truncation reporting for bounded memory.
 - Added model-level joint position limits, clipping and violation diagnostics,
   projected constrained IK, and URDF joint-limit import.
 - Added warm-started batch inverse kinematics for position and pose target sequences.

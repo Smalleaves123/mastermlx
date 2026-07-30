@@ -7,6 +7,7 @@ from mastermlx.robotics import (
     CapsuleObstacle,
     SphereObstacle,
     chain_clearance_batch,
+    chain_collision_details_batch,
     chain_collision_free_batch,
     chain_collision_summary_batch,
     chain_collision_report,
@@ -126,3 +127,63 @@ def test_cpp_collision_summary_matches_detailed_reports():
     assert np.array_equal(summary["closest_kind"], expected_kinds)
     assert np.array_equal(summary["closest_index"], expected_indices)
     assert np.array_equal(summary["closest_obstacle_index"], expected_obstacles)
+
+
+def test_cpp_collision_details_match_hit_reports_and_reuse_buffers():
+    cpp = _load_cpp_collision("auto")
+    if cpp is None or not hasattr(cpp, "chain_collision_details_batch"):
+        pytest.skip("C++ collision details extension is unavailable")
+    points = np.array(
+        [
+            [[0.0, 0.0], [0.8, 0.0], [1.6, 0.0]],
+            [[0.0, 2.0], [0.8, 2.0], [1.6, 2.0]],
+        ]
+    )
+    obstacles = _obstacles()
+    old = get_backend()
+    try:
+        set_backend("numpy")
+        reference = [chain_collision_report(chain, obstacles, link_radius=0.03) for chain in points]
+        set_backend("auto")
+        details = chain_collision_details_batch(points, obstacles, link_radius=0.03)
+    finally:
+        set_backend(old)
+
+    assert np.array_equal(details["hit_count"], [len(item["hits"]) for item in reference])
+    assert not np.any(details["hit_truncated"])
+    for sample, report in enumerate(reference):
+        hits = report["hits"]
+        assert np.array_equal(
+            details["hit_kind"][sample, : len(hits)],
+            [{"point": 1, "segment": 2}[hit["kind"]] for hit in hits],
+        )
+        assert np.array_equal(
+            details["hit_index"][sample, : len(hits)],
+            [hit.get("point_index", hit.get("segment_index")) for hit in hits],
+        )
+        assert np.array_equal(
+            details["hit_obstacle_index"][sample, : len(hits)],
+            [hit["obstacle_index"] for hit in hits],
+        )
+        assert np.allclose(
+            details["hit_clearance"][sample, : len(hits)],
+            [hit["clearance"] for hit in hits],
+        )
+
+    capacity = 1
+    output = {
+        "minimum_clearance": np.empty(points.shape[0]),
+        "collision": np.empty(points.shape[0], dtype=bool),
+        "closest_kind": np.empty(points.shape[0], dtype=np.int8),
+        "closest_index": np.empty(points.shape[0], dtype=np.int64),
+        "closest_obstacle_index": np.empty(points.shape[0], dtype=np.int64),
+        "hit_count": np.empty(points.shape[0], dtype=np.int64),
+        "hit_truncated": np.empty(points.shape[0], dtype=bool),
+        "hit_kind": np.empty((points.shape[0], capacity), dtype=np.int8),
+        "hit_index": np.empty((points.shape[0], capacity), dtype=np.int64),
+        "hit_obstacle_index": np.empty((points.shape[0], capacity), dtype=np.int64),
+        "hit_clearance": np.empty((points.shape[0], capacity)),
+    }
+    reused = chain_collision_details_batch(points, obstacles, max_hits=capacity, output=output)
+    assert reused["hit_kind"] is output["hit_kind"]
+    assert np.all(reused["hit_truncated"] == (reused["hit_count"] > capacity))
