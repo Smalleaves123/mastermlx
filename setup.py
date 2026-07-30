@@ -92,6 +92,13 @@ cpp_exts = [
         language="c++",
     ),
     Extension(
+        "mastermlx.robotics._ik_cpp",
+        ["mastermlx/robotics/_ik_cpp.cpp"],
+        include_dirs=inc_dirs,
+        extra_compile_args=["-O3"],
+        language="c++",
+    ),
+    Extension(
         "mastermlx.graphs._graph_cpp",
         ["mastermlx/graphs/_graph_cpp.cpp"],
         include_dirs=inc_dirs,

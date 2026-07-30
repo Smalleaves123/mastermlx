@@ -57,6 +57,8 @@ def main():
     ]
     workcell = RobotWorkcell(robot, SimpleWorld(robot))
     retime_path = configurations[:32]
+    ik_targets = robot.positions_batch(configurations[:64])
+    ik_seeds = np.zeros((ik_targets.shape[0], robot.n_joints), dtype=float)
     print(f"Robot backend requested: {get_backend()}")
     print(f"Robot backend capabilities: {robotics_backend_report()}")
     old = get_backend()
@@ -84,6 +86,15 @@ def main():
                     num_samples_per_segment=21,
                 )
             )
+            ik_time, ik_solutions = bench(
+                lambda: robot.ik_batch(
+                    ik_targets,
+                    joint_values=ik_seeds,
+                    warm_start=False,
+                    max_iter=50,
+                    damping=1e-3,
+                )
+            )
             print(
                 f"{backend:>5}  fk_batch={fk_time:.5f}s ({poses.shape})  "
                 f"positions_batch={positions_time:.5f}s ({positions.shape})  "
@@ -91,7 +102,8 @@ def main():
                 f"velocity_batch={velocity_batch_time:.5f}s ({velocity_batch.shape})  "
                 f"velocity={velocity_time:.5f}s ({velocity.shape})  "
                 f"clearance_batch={clearance_time:.5f}s ({clearances.shape})  "
-                f"retime={retime_time:.5f}s ({retimed['position'].shape})"
+                f"retime={retime_time:.5f}s ({retimed['position'].shape})  "
+                f"ik_batch={ik_time:.5f}s ({ik_solutions.shape})"
             )
     finally:
         set_backend(old)

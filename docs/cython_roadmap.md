@@ -33,6 +33,7 @@ development model.
   - C++ batched forward kinematics and geometric Jacobians selected by `auto`
   - C++ batched sphere/box/capsule clearance for workcell safety reports
   - C++ quintic retiming with velocity, acceleration, and jerk limits
+  - C++ batch position IK with damped least-squares and warm-start support
 
 ## Next priority batches
 

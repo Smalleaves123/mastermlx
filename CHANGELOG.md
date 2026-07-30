@@ -156,3 +156,4 @@ Initial public release of `mastermlx`.
 - Added an optional C++ backend for batched DH forward kinematics and geometric Jacobians; `auto` selects it when compiled.
 - Added an optional C++ batched collision-clearance backend for sphere, box, and capsule workcell obstacles.
 - Added an optional C++ quintic trajectory-retiming backend with velocity, acceleration, and jerk limits.
+- Added an optional C++ batch position-IK backend with damped least-squares, limits, and warm starts.

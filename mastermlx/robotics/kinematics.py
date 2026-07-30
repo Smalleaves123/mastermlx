@@ -41,6 +41,20 @@ def _load_cpp_kinematics(backend=None):
         return None
 
 
+@lru_cache(maxsize=3)
+def _load_cpp_ik(backend=None):
+    """Load the optional C++ batch position-IK kernel for the auto backend."""
+
+    if backend is None:
+        backend = get_backend()
+    if backend != "auto":
+        return None
+    try:
+        return importlib.import_module("mastermlx.robotics._ik_cpp")
+    except ImportError:
+        return None
+
+
 def robotics_backend_report() -> dict[str, str | bool]:
     """Report availability and selection of compiled robotics kernels."""
 
@@ -51,6 +65,7 @@ def robotics_backend_report() -> dict[str, str | bool]:
 
     cpp_collision = _load_cpp_collision(requested)
     cpp_retiming = _load_cpp_retiming(requested)
+    cpp_ik = _load_cpp_ik(requested)
     cython = _cy_forward_kinematics_batch_dh is not None
     if requested == "numpy":
         active = "numpy"
@@ -66,6 +81,7 @@ def robotics_backend_report() -> dict[str, str | bool]:
         "cpp_kinematics": cpp is not None,
         "cpp_collision": cpp_collision is not None,
         "cpp_retiming": cpp_retiming is not None,
+        "cpp_ik": cpp_ik is not None,
         "cython_kinematics": cython,
     }
 
@@ -444,6 +460,7 @@ def inverse_kinematics_batch(
 
     n_targets = normalized_targets.shape[0]
     n_joints = len(links)
+    joint_limits = validate_joint_limits(joint_limits, n_joints)
     seeds = None
     if joint_values is not None:
         seeds = np.asarray(joint_values, dtype=float)
@@ -459,6 +476,35 @@ def inverse_kinematics_batch(
             raise ValueError("joint_values must be a vector or a per-target matrix")
         if not np.all(np.isfinite(seeds)):
             raise ValueError("joint_values must contain only finite values")
+
+    cpp = _load_cpp_ik(get_backend())
+    if normalized_targets.ndim == 2 and cpp is not None and callable(
+        getattr(cpp, "inverse_kinematics_position_batch_dh", None)
+    ):
+        if seeds is not None:
+            check_joint_limits(seeds, joint_limits)
+        links, a, alpha, d, theta, joint_type, offset = _pack_links_cached(links)
+        return np.asarray(
+            cpp.inverse_kinematics_position_batch_dh(
+                a,
+                alpha,
+                d,
+                theta,
+                joint_type,
+                offset,
+                np.ascontiguousarray(normalized_targets, dtype=float),
+                None if seeds is None else np.ascontiguousarray(seeds, dtype=float),
+                base=base,
+                tool=tool,
+                joint_limits=joint_limits,
+                max_iter=int(max_iter),
+                tol=float(tol),
+                damping=float(damping),
+                step_size=float(step_size),
+                warm_start=bool(warm_start),
+            ),
+            dtype=float,
+        )
 
     solutions = np.empty((n_targets, n_joints), dtype=float)
     previous = None if seeds is None or seeds.ndim == 2 else seeds
