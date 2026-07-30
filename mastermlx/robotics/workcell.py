@@ -9,6 +9,7 @@ from pathlib import Path
 
 import numpy as np
 
+from ..base import BaseExperiment
 from ..planning import rrt_star, smooth
 from .collision import path_collision_report
 from .constraints import validate_joint_limits
@@ -65,7 +66,7 @@ def _slerp(first, second, alpha):
     return (weights[0] * first + weights[1] * second) / np.sin(angle)
 
 
-class RobotWorkcell:
+class RobotWorkcell(BaseExperiment):
     """Compose kinematics, collision planning, retiming, and virtual tracking.
 
     The workcell uses :class:`~mastermlx.sim.SimpleWorld`, so obstacle checks
@@ -76,6 +77,7 @@ class RobotWorkcell:
     def __init__(self, robot, world=None, name=None, joint_limits=None):
         from ..sim.world import SimpleWorld
 
+        super().__init__()
         if not isinstance(robot, RobotModel):
             raise TypeError("robot must be a RobotModel")
         if world is None:
@@ -409,7 +411,7 @@ class RobotWorkcell:
             tracking_kwargs = {} if tracking_kwargs is None else dict(tracking_kwargs)
             tracking = self.simulate_tracking(trajectory, **tracking_kwargs)
         safety = self.safety_report(trajectory, tracking=tracking, clearance_margin=clearance)
-        return RobotResult({
+        result = RobotResult({
             "path": path,
             "trajectory": trajectory,
             "tracking": tracking,
@@ -417,6 +419,9 @@ class RobotWorkcell:
             "collision_report": collision,
             "safety_report": safety,
         })
+        self._store_report(safety)
+        self._store_artifact("motion", result)
+        return result
 
     def plan_tcp_task(self, targets, q_start, bounds=None, *, ik_kwargs=None, **planning_kwargs):
         """Plan a complete TCP task from continuous IK through collision-free motion."""

@@ -6,6 +6,8 @@ from typing import Any
 
 import numpy as np
 
+from ..base import BaseResult
+
 
 class SignalMonitor:
     """Run streaming feature extraction and event detection as one workflow.
@@ -46,7 +48,7 @@ class SignalMonitor:
         else:
             n_frames = 0
         self.frames_seen_ += n_frames
-        return {"features": features, "events": events}
+        return BaseResult({"features": features, "events": events})
 
     def push(self, chunk):
         """Process one raw signal chunk and return newly produced results."""
@@ -70,7 +72,7 @@ class SignalMonitor:
     def state(self) -> dict[str, Any]:
         """Return lightweight monitoring state for logging or dashboards."""
 
-        return {"frames_seen": int(self.frames_seen_), "has_detector": self.detector is not None}
+        return BaseResult({"frames_seen": int(self.frames_seen_), "has_detector": self.detector is not None})
 
 
 __all__ = ["SignalMonitor"]

@@ -1,8 +1,12 @@
 from __future__ import annotations
 
-import numpy as np
-import matplotlib.pyplot as plt
 from types import SimpleNamespace
+
+import numpy as np
+
+from ..utils.validation import check_1d_array, check_2d_array
+
+plt = None
 
 try:  # Optional dependency.
     import seaborn as sns
@@ -14,13 +18,25 @@ try:  # Optional dependency.
 except ModuleNotFoundError:  # pragma: no cover - fallback path
     px = None
 
-from ..utils.validation import check_1d_array, check_2d_array
+
+def _pyplot():
+    global plt
+    if plt is None:
+        try:
+            import matplotlib.pyplot as pyplot
+        except ModuleNotFoundError as exc:  # pragma: no cover - optional dependency path
+            raise ModuleNotFoundError(
+                "matplotlib is required for plotting helpers; install mastermlx[viz]"
+            ) from exc
+        plt = pyplot
+    return plt
 
 
 def _prepare_ax(ax=None, figsize=(6, 4)):
     if ax is not None:
         return ax, ax.figure
-    fig, ax = plt.subplots(figsize=figsize)
+    pyplot = _pyplot()
+    fig, ax = pyplot.subplots(figsize=figsize)
     return ax, fig
 
 
@@ -103,7 +119,7 @@ def plot_scatter_2d(X, y=None, ax=None, title="2D scatter", palette="deep"):
             ax.legend(title="Class", loc="best")
         else:
             labels = np.unique(y)
-            cmap = plt.get_cmap("tab10")
+            cmap = _pyplot().get_cmap("tab10")
             for idx, label in enumerate(labels):
                 mask = y == label
                 ax.scatter(X[mask, 0], X[mask, 1], s=40, alpha=0.85, color=cmap(idx), label=str(label))

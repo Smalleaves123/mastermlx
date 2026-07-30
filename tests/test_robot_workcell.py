@@ -194,3 +194,5 @@ def test_workcell_plan_motion_returns_planning_trajectory_and_reports():
     assert result["trajectory"].n_joints == 2
     assert result["tracking"]["actual"].shape == result["tracking"]["reference"].shape
     assert not result["safety_report"]["reference_collision"]
+    assert workcell.report_ is result["safety_report"]
+    assert workcell.artifacts_["motion"] is result

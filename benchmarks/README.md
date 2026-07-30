@@ -8,6 +8,7 @@ This directory contains the first executable benchmark entry points for `masterm
 - `bench_accel.py` measures the optional compiled backend against NumPy fallbacks
 - `bench_tabular.py` focuses on the tabular workflow introduced by `TabularExperiment`
 - `bench_signal.py` focuses on the signal-processing stack, including pipelines, streaming, detection, and `SignalExperiment`
+- `bench_workflows.py` runs a fast smoke benchmark for tabular readiness, signal health, and robot workcell reports
 - `bench_graphs.py` compares Python and optional C++ kernels on CSR graph traversal, shortest paths, and analysis
 - `bench_robotics.py` compares NumPy and Cython paths for batched robot kinematics and velocity mapping
 - `bench_neural.py` compares NumPy and compiled paths for recurrent layers, Conv1D packing, IIR filtering, and ridge extraction
@@ -21,6 +22,7 @@ python benchmarks/bench_models.py
 python benchmarks/bench_accel.py
 python benchmarks/bench_tabular.py
 python benchmarks/bench_signal.py
+python benchmarks/bench_workflows.py
 python benchmarks/bench_graphs.py
 python benchmarks/bench_robotics.py
 PYTHONPATH=. python benchmarks/bench_neural.py

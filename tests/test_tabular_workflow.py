@@ -1,7 +1,7 @@
 import numpy as np
 
 from mastermlx import LogisticRegression, StandardScaler, LinearRegression
-from mastermlx.tabular import TabularExperiment, compare_tabular_models
+from mastermlx.tabular import DataReadinessReport, TabularExperiment, compare_tabular_models
 from mastermlx.tabular.workflow import TabularExperiment as WorkflowExperiment
 
 
@@ -91,3 +91,18 @@ def test_tabular_experiment_report_combines_quality_drift_and_calibration():
     assert report["drift"]["columns"][0]["mean_diff"] > 0.0
     assert report["performance"]["accuracy"] >= 0.5
     assert set(report["performance"]["calibration"]) == {"brier_score", "ece", "mce"}
+    assert report.performance["accuracy"] >= 0.5
+
+
+def test_data_readiness_report_combines_quality_drift_and_export(tmp_path):
+    X_ref = np.array([[0.0], [0.1], [0.2], [0.3]])
+    X_new = np.array([[0.5], [0.6], [0.7], [np.nan]])
+
+    readiness = DataReadinessReport().fit(X_ref)
+    report = readiness.run(X_new)
+    path = readiness.export_report(tmp_path / "readiness.json")
+
+    assert report.status == "review"
+    assert "missing_values" in report.issues
+    assert report.quality["n_rows"] == X_new.shape[0]
+    assert path.is_file()

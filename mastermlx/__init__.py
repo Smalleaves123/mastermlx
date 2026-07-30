@@ -3,6 +3,7 @@
 from .version import __version__
 from .config import get_backend, set_backend
 
+from .base import *  # noqa: F401,F403
 from .anomaly import *  # noqa: F401,F403
 from .bandits import *  # noqa: F401,F403
 from .data import *  # noqa: F401,F403
@@ -37,6 +38,7 @@ from .clustering import *  # noqa: F401,F403  # overrides BayesGMM/VGMM with clu
 from .utils import create_rng, log_sum_exp, set_seed
 
 from . import anomaly as _anomaly
+from . import base as _base
 from . import bandits as _bandits
 from . import clustering as _clustering
 from . import data as _data
@@ -75,6 +77,7 @@ def _extend_unique(names, items):
 
 
 __all__ = ["__version__", "get_backend", "set_backend", "create_rng", "set_seed", "log_sum_exp"]
+_extend_unique(__all__, _base.__all__)
 _extend_unique(__all__, _anomaly.__all__)
 _extend_unique(__all__, _bandits.__all__)
 _extend_unique(__all__, _data.__all__)

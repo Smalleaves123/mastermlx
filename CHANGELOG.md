@@ -9,6 +9,14 @@
 
 ## Unreleased
 
+- Added shared `BaseResult`, `BaseReport`, and `BaseExperiment` helpers for workflow outputs and JSON/CSV report exports.
+- Added `DataReadinessReport` for business-facing tabular quality, drift, and data-contract readiness checks.
+- Added `SignalHealthExperiment` for signal health scoring with optional windowed vibration-feature trends.
+- Split visualization dependencies into a `viz` optional extra while keeping development installs fully featured.
+- Added business workflow, API policy, and maintenance guidance docs.
+- Split CI into quick workflow checks, full test matrix, NumPy fallback, compiled parity, quality, and benchmark-smoke jobs.
+- Added copy-and-run tabular readiness and signal health examples.
+- Added a business workflow smoke benchmark covering tabular readiness, signal health, and robot workcell planning.
 - Added condition-monitoring signal APIs for quality reports, vibration
   features, and feature-transformer integration with signal experiments.
 - Added windowed vibration feature extraction and threshold-based signal health

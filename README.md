@@ -36,6 +36,16 @@ For development:
 pip install -e ".[dev,compare]"
 ```
 
+For plotting helpers and visual examples, install the optional visualization
+extra:
+
+```bash
+pip install "mastermlx[viz]"
+```
+
+The core package depends only on NumPy; plotting and comparison baselines are
+kept as optional extras.
+
 ## Quick Example
 
 ```python
@@ -55,7 +65,7 @@ print(mlx.entropy(np.array([0.2, 0.3, 0.5])))
 ```
 
 For copy-and-run tutorials covering robotics and core ML APIs, see the
-[public examples](example/README.md).
+[public examples](examples/README.md).
 
 ## Highlights
 
@@ -63,6 +73,18 @@ For copy-and-run tutorials covering robotics and core ML APIs, see the
 - NLP: vectorizers, tokenizers, vocab builders, language models
 - RL and bandits: Q-learning, DQN, REINFORCE, UCB, Thompson sampling, and more
 - Math tools: metrics, kernels, distributions, statistical tests, calibration, outlier detection, and time-series helpers
+
+## Business workflows
+
+- `DataReadinessReport` for schema, quality, drift, and contract checks
+- `SignalHealthExperiment` for sensor health scoring and vibration monitoring
+- `RobotWorkcell.plan_motion()` for collision-aware planning, retiming, tracking, and safety reports
+
+For the recommended use cases and workflow conventions, see:
+
+- [`docs/business_use_cases.md`](docs/business_use_cases.md)
+- [`docs/workflows.md`](docs/workflows.md)
+- [`docs/api_policy.md`](docs/api_policy.md)
 
 ## Benchmarks
 

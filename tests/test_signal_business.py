@@ -6,6 +6,7 @@ from mastermlx.signal import (
     MFCCTransformer,
     NormalizeSignalTransformer,
     SignalExperiment,
+    SignalHealthExperiment,
     SignalMonitor,
     SignalPipeline,
     OnlineCUSUMDetector,
@@ -133,6 +134,9 @@ def test_signal_experiment_runs_end_to_end():
     assert pred.shape == y[20:].shape
     assert experiment.summary()["task"] == "classification"
     assert experiment.score(X[:20], y[:20]) >= 0.0
+    report = experiment.report(X[:5], y[:5])
+    assert report.summary["task"] == "classification"
+    assert report.features["shape"][0] == 5
 
 
 def test_compare_signal_models_returns_leaderboard():
@@ -156,3 +160,25 @@ def test_compare_signal_models_returns_leaderboard():
     assert result["leaderboard"]
     assert result["best_name"] in {"logreg_a", "logreg_b"}
     assert all(scores.shape == (5,) for scores in result["cv_scores"].values())
+    assert result.best_score >= 0.0
+
+
+def test_signal_health_experiment_reports_windowed_health(tmp_path):
+    sample_rate = 1000
+    t = np.arange(512, dtype=float) / sample_rate
+    signal = np.sin(2 * np.pi * 50 * t)
+    experiment = SignalHealthExperiment(
+        sample_rate=sample_rate,
+        feature_limits={"rms": (0.1, 2.0)},
+        bands=[(0, 100), (100, 300)],
+        window_length=128,
+        hop_length=64,
+    )
+
+    report = experiment.run(signal)
+    path = experiment.export_report(tmp_path / "signal_health.json")
+
+    assert report.summary["status"] == "healthy"
+    assert report.assessment["health_score"] == 100.0
+    assert report.windows["features"].shape[0] > 0
+    assert path.is_file()

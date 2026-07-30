@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
 
+from mastermlx.base import BaseExperiment, BaseReport, BaseResult
 from mastermlx.linear_models import LinearRegression, LogisticRegression
 from mastermlx.preprocessing import Pipeline, PolynomialFeatures, StandardScaler
 from mastermlx.utils import (
@@ -133,3 +134,28 @@ def test_estimator_state_can_be_saved_and_restored(tmp_path):
 
     assert np.allclose(restored.predict([[3.0]]), expected)
     assert restored.state_dict()["n_features_in_"] == 1
+
+
+def test_base_result_exports_json_safe_reports(tmp_path):
+    result = BaseResult({"array": np.array([1.0, 2.0]), "nested": {"value": np.float64(3.0)}})
+    assert result.array.shape == (2,)
+    assert result.as_dict(json_safe=True) == {"array": [1.0, 2.0], "nested": {"value": 3.0}}
+
+    json_path = tmp_path / "report.json"
+    csv_path = tmp_path / "report.csv"
+    text = result.to_json(json_path)
+    result.to_csv(csv_path)
+
+    assert '"array"' in text
+    assert json_path.is_file()
+    assert csv_path.is_file()
+
+
+def test_base_experiment_stores_and_exports_reports(tmp_path):
+    experiment = BaseExperiment()
+    report = experiment._store_report(BaseReport({"status": "ready"}))
+    path = experiment.export_report(tmp_path / "report.json")
+
+    assert report.status == "ready"
+    assert path.is_file()
+    assert experiment.artifacts_.report_json == path

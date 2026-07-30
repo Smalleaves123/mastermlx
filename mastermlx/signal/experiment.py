@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
+from ..base import BaseExperiment, BaseReport, BaseResult
 from ..data.search import GridSearchCV, RandomizedSearchCV
 from ..data.model_selection import cross_val_score
 from ..preprocessing import Pipeline as PreprocessingPipeline
@@ -203,7 +204,7 @@ class SignalFeatureTransformer:
         return self
 
 
-class SignalExperiment:
+class SignalExperiment(BaseExperiment):
     """High-level workflow for raw signals, feature extraction, search, and scoring."""
 
     def __init__(
@@ -223,6 +224,7 @@ class SignalExperiment:
         random_state=None,
         task="classification",
     ):
+        super().__init__()
         self.model = model
         self.signal_transform = signal_transform
         self.feature_aggregator = feature_aggregator
@@ -333,9 +335,29 @@ class SignalExperiment:
         pipe = self._require_fitted()
         return pipe.score(_prepare_signal_batch_input(X), y)
 
+    def report(self, X=None, y=None):
+        """Return a compact feature and performance report."""
+
+        self._require_fitted()
+        result = {
+            "summary": self.summary(),
+            "features": None,
+            "performance": None,
+        }
+        if X is not None:
+            features = self.transform_features(X)
+            result["features"] = {
+                "shape": tuple(features.shape),
+                "mean": np.mean(features, axis=0).tolist() if features.size else [],
+                "std": np.std(features, axis=0).tolist() if features.size else [],
+            }
+        if X is not None and y is not None:
+            result["performance"] = {"score": float(self.score(X, y))}
+        return self._store_report(BaseReport(result))
+
     def summary(self):
         self._require_fitted()
-        return {
+        return BaseResult({
             "task": self.task,
             "search": self.search,
             "best_params": self.best_params_,
@@ -343,7 +365,7 @@ class SignalExperiment:
             "model": self.model.__class__.__name__,
             "has_signal_transform": self.signal_transform is not None,
             "flatten_output": self.flatten_output,
-        }
+        })
 
 
 def compare_signal_models(
@@ -403,13 +425,13 @@ def compare_signal_models(
             best_experiment = experiment
 
     leaderboard.sort(key=lambda item: item[1], reverse=True)
-    return {
+    return BaseResult({
         "leaderboard": leaderboard,
         "best_name": best_name,
         "best_score": best_score,
         "best_experiment": best_experiment,
         "cv_scores": cv_scores,
-    }
+    })
 
 
 __all__ = [

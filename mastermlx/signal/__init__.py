@@ -125,6 +125,7 @@ from .systems import (
 )
 from .experiment import SignalExperiment, SignalFeatureTransformer, compare_signal_models
 from .condition import (
+    SignalHealthExperiment,
     SignalHealthMonitor,
     VibrationFeatureTransformer,
     assess_signal_health,
@@ -276,6 +277,7 @@ __all__ = [
     "SlidingWindowStream",
     "StreamingFeatureExtractor",
     "SignalMonitor",
+    "SignalHealthExperiment",
     "SignalHealthMonitor",
     "VibrationFeatureTransformer",
     "assess_signal_health",

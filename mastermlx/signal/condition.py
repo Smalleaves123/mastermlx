@@ -5,6 +5,7 @@ from __future__ import annotations
 import numpy as np
 from collections.abc import Mapping
 
+from ..base import BaseExperiment, BaseReport, BaseResult
 from .features import rms_energy, spectral_bandwidth, spectral_centroid, zero_crossing_rate
 from .fourier import band_energy, dominant_frequency
 
@@ -362,7 +363,7 @@ class SignalHealthMonitor:
         return [self.assess(signal) for signal in values]
 
     def get_params(self, deep=True):
-        return {
+        return BaseResult({
             "sample_rate": self.sample_rate,
             "feature_limits": self.feature_limits,
             "bands": self.bands,
@@ -370,7 +371,7 @@ class SignalHealthMonitor:
             "window": self.window,
             "saturation_level": self.saturation_level,
             "frame_length": self.frame_length,
-        }
+        })
 
     def set_params(self, **params):
         for key, value in params.items():
@@ -452,7 +453,81 @@ class VibrationFeatureTransformer:
         return self
 
 
+class SignalHealthExperiment(BaseExperiment):
+    """Business workflow for sensor health and condition-monitoring reports."""
+
+    def __init__(
+        self,
+        sample_rate,
+        feature_limits=None,
+        bands=None,
+        n_fft=None,
+        window="hann",
+        saturation_level=None,
+        frame_length=None,
+        window_length=None,
+        hop_length=None,
+    ):
+        super().__init__()
+        self.monitor = SignalHealthMonitor(
+            sample_rate=sample_rate,
+            feature_limits=feature_limits,
+            bands=bands,
+            n_fft=n_fft,
+            window=window,
+            saturation_level=saturation_level,
+            frame_length=frame_length,
+        )
+        self.window_length = None if window_length is None else int(window_length)
+        self.hop_length = None if hop_length is None else int(hop_length)
+
+    def run(self, signal):
+        assessment = self.monitor.assess(signal)
+        windows = None
+        if self.window_length is not None:
+            windows = windowed_vibration_features(
+                signal,
+                sample_rate=self.monitor.sample_rate,
+                window_length=self.window_length,
+                hop_length=self.hop_length,
+                bands=self.monitor.bands,
+                n_fft=self.monitor.n_fft,
+                window=self.monitor.window,
+                frame_length=self.monitor.frame_length,
+            )
+            matrix = windows["features"]
+            trend = {}
+            if matrix.size:
+                for index, name in enumerate(windows["feature_names"]):
+                    trend[str(name)] = {
+                        "mean": float(np.mean(matrix[:, index])),
+                        "max": float(np.max(matrix[:, index])),
+                    }
+            windows = BaseResult({**windows, "trend": trend})
+        report = BaseReport({
+            "summary": {
+                "status": assessment["status"],
+                "health_score": assessment["health_score"],
+                "alerts": assessment["alerts"],
+            },
+            "assessment": assessment,
+            "windows": windows,
+        })
+        return self._store_report(report)
+
+    def assess(self, signal):
+        """Alias for :meth:`run`."""
+
+        return self.run(signal)
+
+    def get_params(self, deep=True):
+        params = self.monitor.get_params(deep=deep)
+        params.update(window_length=self.window_length, hop_length=self.hop_length)
+        return params
+
+
 __all__ = [
+    "SignalHealthExperiment",
     "SignalHealthMonitor",
     "VibrationFeatureTransformer",
     "assess_signal_health",

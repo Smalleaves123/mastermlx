@@ -31,9 +31,6 @@ classifiers = [
 ]
 dependencies = [
   "numpy>=1.26",
-  "matplotlib>=3.8",
-  "seaborn>=0.13",
-  "plotly>=5.20",
 ]
 
 [project.urls]
@@ -46,12 +43,20 @@ compare = [
   "scipy>=1.11",
   "scikit-learn>=1.4",
 ]
+viz = [
+  "matplotlib>=3.8",
+  "seaborn>=0.13",
+  "plotly>=5.20",
+]
 dev = [
   "pytest>=8.0",
   "cython>=3.0",
   "pybind11>=2.10",
   "ruff>=0.12",
   "mypy>=1.10",
+  "matplotlib>=3.8",
+  "seaborn>=0.13",
+  "plotly>=5.20",
 ]
 
 [tool.setuptools]

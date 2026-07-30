@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 import numpy as np
 
+from ..base import BaseResult
 
-class RobotResult(dict[str, Any]):
-    """Dictionary-compatible result with attribute access.
+
+class RobotResult(BaseResult):
+    """Robotics result alias kept for public API compatibility.
 
     Mapping access remains available for compatibility with earlier releases,
     while attribute access makes nested robotics workflows easier to read::
@@ -16,17 +16,6 @@ class RobotResult(dict[str, Any]):
         result["joint_path"]
         result.joint_path
     """
-
-    def __getattr__(self, name: str) -> Any:
-        try:
-            return self[name]
-        except KeyError as exc:
-            raise AttributeError(name) from exc
-
-    def as_dict(self) -> dict[str, Any]:
-        """Return a shallow plain-dictionary view of the result."""
-
-        return dict(self)
 
 
 class JointTrajectory(RobotResult):

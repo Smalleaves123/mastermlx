@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 import mastermlx
-from mastermlx.base import BaseEstimator, Module
+from mastermlx.base import BaseEstimator, BaseExperiment, BaseReport, BaseResult, Module
 from mastermlx.clustering import KMeans
 from mastermlx.neural_net import MLPClassifier, MLPRegressor, Sequential
 from mastermlx.nlp import LDA as NLP_LDA
@@ -23,6 +23,10 @@ def test_core_public_api_remains_available():
         assert "X" in inspect.signature(cls.fit).parameters
     assert hasattr(mastermlx, "get_backend")
     assert hasattr(mastermlx, "set_backend")
+    assert hasattr(BaseResult({"ok": True}), "as_dict")
+    assert issubclass(BaseReport, BaseResult)
+    assert hasattr(BaseExperiment(), "export_report")
+    assert mastermlx.BaseResult is BaseResult
 
 
 def test_checkpoint_signatures_are_stable():

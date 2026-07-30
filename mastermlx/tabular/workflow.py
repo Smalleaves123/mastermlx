@@ -7,6 +7,7 @@ from copy import deepcopy
 import numpy as np
 from typing import Any
 
+from ..base import BaseExperiment, BaseReport, BaseResult
 from ..data.contract import DataContract
 from ..data.evaluation import EvaluationReport
 from ..data.search import GridSearchCV, RandomizedSearchCV
@@ -47,7 +48,7 @@ def _build_pipeline(model, preprocessing):
     return PreprocessingPipeline(steps)
 
 
-class TabularExperiment:
+class TabularExperiment(BaseExperiment):
     """Business-friendly tabular workflow for preprocessing, search, and evaluation."""
 
     def __init__(
@@ -66,6 +67,7 @@ class TabularExperiment:
         task="classification",
         data_contract=None,
     ):
+        super().__init__()
         self.model = model
         self.preprocessing = preprocessing
         self.search = search
@@ -317,11 +319,11 @@ class TabularExperiment:
                 rmse=float(root_mean_squared_error(y_array, prediction)),
             )
         result["performance"] = performance
-        return result
+        return self._store_report(BaseReport(result))
 
     def summary(self):
         self._require_fitted()
-        return {
+        return BaseResult({
             "task": self.task,
             "search": self.search,
             "best_params": self.best_params_,
@@ -329,7 +331,65 @@ class TabularExperiment:
             "model": self.model.__class__.__name__,
             "has_preprocessing": self.preprocessing is not None,
             "has_data_contract": self.data_contract is not None,
-        }
+        })
+
+
+class DataReadinessReport(BaseExperiment):
+    """Assess tabular data readiness before modeling or inference."""
+
+    def __init__(self, data_contract=None, *, low_freq=0.01, outlier=1.5, top=5, bins=10):
+        super().__init__()
+        if data_contract is not None and not isinstance(data_contract, DataContract):
+            raise TypeError("data_contract must be a DataContract")
+        self.data_contract = data_contract
+        self.low_freq = low_freq
+        self.outlier = outlier
+        self.top = top
+        self.bins = int(bins)
+        self.reference_ = None
+        self.target_ = None
+
+    def fit(self, X, y=None):
+        self.reference_ = deepcopy(X)
+        self.target_ = None if y is None else np.asarray(y)
+        if self.data_contract is not None:
+            self.data_contract.fit(X, y)
+        self._store_report(self.run(X, y))
+        return self
+
+    def run(self, X, y=None, *, reference=None):
+        y_array = None if y is None else np.asarray(y)
+        reference = self.reference_ if reference is None else reference
+        quality = quality_report(
+            X,
+            y_array,
+            low_freq=self.low_freq,
+            outlier=self.outlier,
+            top=self.top,
+        )
+        drift = None if reference is None else drift_report(reference, X, bins=self.bins)
+        contract = None if self.data_contract is None else self.data_contract.validate(X)
+        issues = []
+        if quality["missing"]["count"] > 0:
+            issues.append("missing_values")
+        if quality["duplicate_rows"] > 0:
+            issues.append("duplicate_rows")
+        if drift is not None and any(
+            column.get("psi", column.get("tvd", 0.0)) > 0.2 for column in drift["columns"]
+        ):
+            issues.append("distribution_drift")
+        if contract is not None and not contract["valid"]:
+            issues.append("contract_violation")
+        status = "ready" if not issues else "review"
+        report = BaseReport({
+            "status": status,
+            "ready": status == "ready",
+            "issues": tuple(issues),
+            "quality": quality,
+            "drift": drift,
+            "contract": contract,
+        })
+        return self._store_report(report)
 
 
 def compare_tabular_models(models, X, y, preprocessing=None, cv=None, scoring=None, task="classification"):
@@ -363,12 +423,12 @@ def compare_tabular_models(models, X, y, preprocessing=None, cv=None, scoring=No
             best_experiment = experiment
 
     leaderboard.sort(key=lambda item: item[1], reverse=True)
-    return {
+    return BaseResult({
         "leaderboard": leaderboard,
         "best_name": best_name,
         "best_score": best_score,
         "best_experiment": best_experiment,
-    }
+    })
 
 
-__all__ = ["TabularExperiment", "compare_tabular_models"]
+__all__ = ["DataReadinessReport", "TabularExperiment", "compare_tabular_models"]

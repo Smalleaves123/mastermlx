@@ -19,7 +19,7 @@ twine check dist/*
 ## 3. Run tests
 
 ```bash
-pytest tests/
+python -m pytest tests/
 ```
 
 ## 4. Verify install from artifacts
