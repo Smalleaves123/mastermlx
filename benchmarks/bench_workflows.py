@@ -7,10 +7,12 @@ planning.
 
 from __future__ import annotations
 
+import argparse
 import time
 
 import numpy as np
 
+from mastermlx.base import BaseResult, export_reports
 from mastermlx.data import DataContract
 from mastermlx.robotics import RobotModel, RobotWorkcell
 from mastermlx.signal import SignalHealthExperiment
@@ -34,7 +36,7 @@ def section(title):
     print(f"{'=' * 60}")
 
 
-def benchmark_tabular_readiness():
+def benchmark_tabular_readiness(verbose=True):
     train = np.array(
         [
             [20.0, 0.1],
@@ -59,14 +61,15 @@ def benchmark_tabular_readiness():
     )
     readiness = DataReadinessReport(data_contract=contract).fit(train)
     elapsed, report = bench(lambda: readiness.run(incoming), n_runs=5)
-    print(
-        f"  readiness report        {elapsed:8.5f}s  "
-        f"status={report.status}  issues={len(report.issues)}"
-    )
-    return report
+    if verbose:
+        print(
+            f"  readiness report        {elapsed:8.5f}s  "
+            f"status={report.status}  issues={len(report.issues)}"
+        )
+    return elapsed, report
 
 
-def benchmark_signal_health():
+def benchmark_signal_health(verbose=True):
     sample_rate = 1000
     t = np.arange(2048, dtype=float) / sample_rate
     signal = np.sin(2.0 * np.pi * 50.0 * t) + 0.15 * np.sin(2.0 * np.pi * 180.0 * t)
@@ -79,15 +82,16 @@ def benchmark_signal_health():
     )
     elapsed, report = bench(lambda: experiment.run(signal), n_runs=5)
     n_windows = 0 if report.windows is None else report.windows["features"].shape[0]
-    print(
-        f"  signal health           {elapsed:8.5f}s  "
-        f"status={report.summary['status']}  score={report.summary['health_score']:.1f}  "
-        f"windows={n_windows}"
-    )
-    return report
+    if verbose:
+        print(
+            f"  signal health           {elapsed:8.5f}s  "
+            f"status={report.summary['status']}  score={report.summary['health_score']:.1f}  "
+            f"windows={n_windows}"
+        )
+    return elapsed, report
 
 
-def benchmark_robot_workcell():
+def benchmark_robot_workcell(verbose=True):
     robot = RobotModel.from_dh(
         [
             {"a": 1.0, "alpha": 0.0, "d": 0.0, "theta": 0.0},
@@ -111,26 +115,58 @@ def benchmark_robot_workcell():
         ),
         n_runs=3,
     )
-    print(
-        f"  robot workcell          {elapsed:8.5f}s  "
-        f"waypoints={result.planning_report['n_waypoints']}  "
-        f"duration={result.trajectory.duration:.3f}s"
+    if verbose:
+        print(
+            f"  robot workcell          {elapsed:8.5f}s  "
+            f"waypoints={result.planning_report['n_waypoints']}  "
+            f"duration={result.trajectory.duration:.3f}s"
+        )
+    return elapsed, result
+
+
+def run_workflow_suite(output_dir=None, *, verbose=True):
+    """Run all business workflow smoke checks and optionally export reports."""
+
+    if verbose:
+        section("Tabular Readiness")
+    tabular_time, tabular = benchmark_tabular_readiness(verbose=verbose)
+
+    if verbose:
+        section("Signal Health")
+    signal_time, signal = benchmark_signal_health(verbose=verbose)
+
+    if verbose:
+        section("Robot Workcell")
+    robot_time, robot = benchmark_robot_workcell(verbose=verbose)
+
+    reports = BaseResult(
+        {
+            "tabular_readiness": tabular,
+            "signal_health": signal,
+            "robot_workcell": robot.safety_report,
+        }
     )
-    return result
+    timings = BaseResult(
+        {
+            "tabular_readiness": tabular_time,
+            "signal_health": signal_time,
+            "robot_workcell": robot_time,
+        }
+    )
+    artifacts = None if output_dir is None else export_reports(reports, output_dir)
+    return BaseResult({"reports": reports, "timings": timings, "artifacts": artifacts})
 
 
 def main():
-    section("Tabular Readiness")
-    benchmark_tabular_readiness()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output", help="optional directory for JSON report artifacts")
+    args = parser.parse_args()
 
-    section("Signal Health")
-    benchmark_signal_health()
-
-    section("Robot Workcell")
-    benchmark_robot_workcell()
-
+    result = run_workflow_suite(output_dir=args.output)
     section("Summary")
     print("  Business workflow smoke benchmarks completed.")
+    if result.artifacts is not None:
+        print(f"  reports exported to {result.artifacts.manifest.parent}")
 
 
 if __name__ == "__main__":

@@ -2,7 +2,7 @@ from .estimator import BaseEstimator
 from .transformer import BaseTransformer
 from .layer import BaseLayer
 from .module import Module, Parameter
-from .results import BaseExperiment, BaseReport, BaseResult, to_json_safe
+from .results import BaseExperiment, BaseReport, BaseResult, export_reports, to_json_safe
 
 Est = BaseEstimator
 Trans = BaseTransformer
@@ -20,5 +20,6 @@ __all__ = [
     "Est",
     "Trans",
     "Layer",
+    "export_reports",
     "to_json_safe",
 ]

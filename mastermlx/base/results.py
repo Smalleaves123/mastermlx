@@ -109,4 +109,31 @@ class BaseExperiment:
         return self._store_artifact("report_json", Path(path))
 
 
-__all__ = ["BaseExperiment", "BaseReport", "BaseResult", "to_json_safe"]
+def export_reports(reports, directory, *, manifest_name="manifest.json"):
+    """Export a mapping of report names to JSON files plus a manifest."""
+
+    output_dir = Path(directory)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    artifacts = BaseResult()
+    for name, report in dict(reports).items():
+        safe_name = str(name).strip().replace(" ", "_").replace("/", "_")
+        if not safe_name:
+            raise ValueError("report names must be non-empty")
+        result = report if isinstance(report, BaseResult) else BaseReport(report)
+        path = output_dir / f"{safe_name}.json"
+        result.to_json(path)
+        artifacts[safe_name] = path
+    manifest = BaseReport(
+        {
+            "directory": output_dir,
+            "reports": {name: str(path) for name, path in artifacts.items()},
+            "n_reports": len(artifacts),
+        }
+    )
+    manifest_path = output_dir / manifest_name
+    manifest.to_json(manifest_path)
+    artifacts["manifest"] = manifest_path
+    return artifacts
+
+
+__all__ = ["BaseExperiment", "BaseReport", "BaseResult", "export_reports", "to_json_safe"]

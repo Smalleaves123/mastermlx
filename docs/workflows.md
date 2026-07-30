@@ -24,6 +24,9 @@ artifacts. The shared fields are:
 - `artifacts_` for exported or generated assets
 - `export_report(path)` for JSON output
 
+Use `export_reports({...}, directory)` when a script or CI job needs to export
+several workflow reports with one manifest.
+
 Existing `fit`, `run`, `predict`, and `score` semantics should remain
 domain-specific. The base class is intentionally small so workflows do not
 inherit unnecessary behavior.

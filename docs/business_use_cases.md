@@ -45,4 +45,6 @@ lightweight deployment risk reports.
 ## Workflow Benchmark Smoke Test
 
 Run `python benchmarks/bench_workflows.py` to exercise the three business
-surfaces together and print compact runtime/status summaries.
+surfaces together and print compact runtime/status summaries. Add
+`--output outputs/workflows` to export one JSON report per workflow plus a
+manifest.

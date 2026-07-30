@@ -28,6 +28,12 @@ python benchmarks/bench_robotics.py
 PYTHONPATH=. python benchmarks/bench_neural.py
 ```
 
+`bench_workflows.py` can also export JSON artifacts:
+
+```bash
+python benchmarks/bench_workflows.py --output outputs/workflows
+```
+
 For Cython-backed sections, install the development extras first:
 
 ```bash

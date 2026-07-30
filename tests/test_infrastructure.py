@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from mastermlx.base import BaseExperiment, BaseReport, BaseResult
+from mastermlx.base import BaseExperiment, BaseReport, BaseResult, export_reports
 from mastermlx.linear_models import LinearRegression, LogisticRegression
 from mastermlx.preprocessing import Pipeline, PolynomialFeatures, StandardScaler
 from mastermlx.utils import (
@@ -159,3 +159,17 @@ def test_base_experiment_stores_and_exports_reports(tmp_path):
     assert report.status == "ready"
     assert path.is_file()
     assert experiment.artifacts_.report_json == path
+
+
+def test_export_reports_writes_manifest_and_report_files(tmp_path):
+    artifacts = export_reports(
+        {
+            "quality": BaseReport({"status": "ready"}),
+            "nested report": {"score": np.float64(0.5)},
+        },
+        tmp_path,
+    )
+
+    assert artifacts.manifest.is_file()
+    assert artifacts.quality.is_file()
+    assert artifacts.nested_report.is_file()
