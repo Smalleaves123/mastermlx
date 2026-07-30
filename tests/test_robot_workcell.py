@@ -231,3 +231,29 @@ def test_workcell_plan_motion_returns_planning_trajectory_and_reports():
     assert not result["safety_report"]["reference_collision"]
     assert workcell.report_ is result["safety_report"]
     assert workcell.artifacts_["motion"] is result
+
+
+def test_workcell_plans_pick_and_place_with_time_aligned_gripper_events():
+    workcell = _workcell()
+    q_start = np.array([0.2, -0.1])
+    pick_target = workcell.robot.fk([0.4, -0.3])[:3, 3]
+    place_target = workcell.robot.fk([0.55, -0.45])[:3, 3]
+
+    task = workcell.plan_pick_and_place(
+        pick_target,
+        place_target,
+        q_start,
+        bounds=[[-np.pi, np.pi], [-np.pi, np.pi]],
+        approach_offset=[-0.05, 0.0, 0.0],
+        steps_per_segment=4,
+        ik_kwargs={"max_iter": 300},
+        velocity_limits=0.7,
+    )
+
+    assert np.allclose(task["joint_path"][0], q_start)
+    assert np.allclose(task["trajectory"]["path"], task["joint_path"])
+    assert task["phase_indices"]["pick_grasp"] < task["phase_indices"]["place_release"]
+    assert [event["command"] for event in task["gripper_schedule"]] == ["open", "close", "open"]
+    assert np.all(np.diff([event["time"] for event in task["gripper_schedule"]]) >= 0.0)
+    assert not task["safety_report"]["collision"]
+    assert workcell.artifacts_["pick_and_place"] is task

@@ -57,6 +57,28 @@ def _orientation_error(actual, target):
     return float(np.arccos(cosine))
 
 
+def _tcp_offset(target, offset, name):
+    """Apply a world-frame TCP offset while preserving an optional orientation."""
+
+    target = np.asarray(target, dtype=float)
+    if target.shape == (3,):
+        return target + offset
+    if target.shape == (4, 4):
+        result = target.copy()
+        result[:3, 3] += offset
+        return result
+    raise ValueError(f"{name} must be a finite 3-vector or 4x4 transform")
+
+
+def _task_offset(values, name):
+    values = np.asarray(values, dtype=float).reshape(-1)
+    if values.shape != (3,) or not np.all(np.isfinite(values)):
+        raise ValueError(f"{name} must be a finite 3-vector")
+    if np.linalg.norm(values) == 0.0:
+        raise ValueError(f"{name} must be non-zero")
+    return values
+
+
 class RobotWorkcell(BaseExperiment):
     """Compose kinematics, collision planning, retiming, and virtual tracking.
 
@@ -452,6 +474,160 @@ class RobotWorkcell(BaseExperiment):
             current = goal
         path = np.concatenate(segments, axis=0)
         return RobotResult({"ik": ik_result, "joint_path": path})
+
+    def plan_pick_and_place(
+        self,
+        pick_target,
+        place_target,
+        q_start,
+        bounds=None,
+        *,
+        approach_offset,
+        retreat_offset=None,
+        steps_per_segment=10,
+        ik_kwargs=None,
+        position_tolerance=1e-4,
+        orientation_tolerance=1e-3,
+        planner="rrt",
+        smooth_path=True,
+        shortcut_attempts=100,
+        collision_step=0.05,
+        clearance=0.0,
+        workers=1,
+        velocity_limits=1.0,
+        acceleration_limits=None,
+        jerk_limits=None,
+        retime_kwargs=None,
+        gripper_open=1.0,
+        gripper_closed=0.0,
+        **planner_kwargs,
+    ):
+        """Plan a collision-aware pick-and-place cycle with gripper events.
+
+        ``approach_offset`` and ``retreat_offset`` are world-frame vectors
+        from the grasp or release TCP target.  The robot follows Cartesian
+        paths while approaching and retracting; the loaded transfer between
+        the two safe approach poses uses the configured joint-space planner.
+        The returned trajectory has a time-aligned ``gripper_schedule`` for
+        execution adapters.
+        """
+
+        pick_target = np.asarray(pick_target, dtype=float)
+        place_target = np.asarray(place_target, dtype=float)
+        if pick_target.shape not in {(3,), (4, 4)} or not np.all(np.isfinite(pick_target)):
+            raise ValueError("pick_target must be a finite 3-vector or 4x4 transform")
+        if place_target.shape not in {(3,), (4, 4)} or not np.all(np.isfinite(place_target)):
+            raise ValueError("place_target must be a finite 3-vector or 4x4 transform")
+        if pick_target.shape != place_target.shape:
+            raise ValueError("pick_target and place_target must have the same shape")
+        approach_offset = _task_offset(approach_offset, "approach_offset")
+        if retreat_offset is None:
+            retreat_offset = approach_offset
+        else:
+            retreat_offset = _task_offset(retreat_offset, "retreat_offset")
+        gripper_open = float(gripper_open)
+        gripper_closed = float(gripper_closed)
+        if not np.isfinite(gripper_open) or not np.isfinite(gripper_closed):
+            raise ValueError("gripper values must be finite")
+
+        pick_approach = _tcp_offset(pick_target, approach_offset, "pick_target")
+        pick_retreat = _tcp_offset(pick_target, retreat_offset, "pick_target")
+        place_approach = _tcp_offset(place_target, approach_offset, "place_target")
+        place_retreat = _tcp_offset(place_target, retreat_offset, "place_target")
+        cartesian_kwargs = {
+            "steps_per_segment": steps_per_segment,
+            "ik_kwargs": ik_kwargs,
+            "position_tolerance": position_tolerance,
+            "orientation_tolerance": orientation_tolerance,
+            "collision_step": collision_step,
+            "clearance": clearance,
+        }
+        pick_task = self.plan_cartesian_task(
+            [pick_approach, pick_target, pick_retreat], q_start, **cartesian_kwargs
+        )
+        place_approach_ik = self.solve_tcp_path(
+            [place_approach],
+            pick_task["joint_path"][-1],
+            ik_kwargs=ik_kwargs,
+            position_tolerance=position_tolerance,
+            orientation_tolerance=orientation_tolerance,
+        )
+        transfer_path = self.plan_joint_path(
+            pick_task["joint_path"][-1],
+            place_approach_ik["joint_targets"][-1],
+            bounds,
+            planner=planner,
+            smooth_path=smooth_path,
+            shortcut_attempts=shortcut_attempts,
+            collision_step=collision_step,
+            clearance=clearance,
+            workers=workers,
+            **planner_kwargs,
+        )
+        place_task = self.plan_cartesian_task(
+            [place_target, place_retreat], transfer_path[-1], **cartesian_kwargs
+        )
+        joint_path = np.concatenate(
+            [pick_task["joint_path"], transfer_path[1:], place_task["joint_path"][1:]], axis=0
+        )
+        retime_kwargs = {} if retime_kwargs is None else dict(retime_kwargs)
+        trajectory = self.retime_joint_path(
+            joint_path,
+            velocity_limits=velocity_limits,
+            acceleration_limits=acceleration_limits,
+            jerk_limits=jerk_limits,
+            **retime_kwargs,
+        )
+
+        steps = int(steps_per_segment)
+        pick_approach_index = steps
+        pick_grasp_index = 2 * steps
+        pick_retreat_index = 3 * steps
+        place_approach_index = pick_task["joint_path"].shape[0] - 1 + transfer_path.shape[0] - 1
+        place_release_index = place_approach_index + steps
+        place_retreat_index = place_release_index + steps
+        waypoint_time = np.concatenate([[0.0], np.cumsum(trajectory["durations"])])
+        phase_indices = {
+            "pick_approach": pick_approach_index,
+            "pick_grasp": pick_grasp_index,
+            "pick_retreat": pick_retreat_index,
+            "place_approach": place_approach_index,
+            "place_release": place_release_index,
+            "place_retreat": place_retreat_index,
+        }
+        gripper_schedule = [
+            {"time": 0.0, "path_index": 0, "command": "open", "value": gripper_open},
+            {
+                "time": float(waypoint_time[pick_grasp_index]),
+                "path_index": pick_grasp_index,
+                "command": "close",
+                "value": gripper_closed,
+            },
+            {
+                "time": float(waypoint_time[place_release_index]),
+                "path_index": place_release_index,
+                "command": "open",
+                "value": gripper_open,
+            },
+        ]
+        safety = self.safety_report(trajectory, clearance_margin=clearance)
+        result = RobotResult({
+            "pick_target": pick_target.copy(),
+            "place_target": place_target.copy(),
+            "approach_offset": approach_offset.copy(),
+            "retreat_offset": retreat_offset.copy(),
+            "pick_task": pick_task,
+            "transfer_path": transfer_path,
+            "place_task": place_task,
+            "joint_path": joint_path,
+            "trajectory": trajectory,
+            "phase_indices": phase_indices,
+            "gripper_schedule": gripper_schedule,
+            "safety_report": safety,
+        })
+        self._store_report(safety)
+        self._store_artifact("pick_and_place", result)
+        return result
 
     def retime_joint_path(
         self,

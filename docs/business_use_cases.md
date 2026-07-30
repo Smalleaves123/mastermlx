@@ -30,6 +30,12 @@ Use `RobotWorkcell.plan_motion()` for offline motion checks:
 Good fits include offline programming demos, path feasibility checks, and
 robotics interview or portfolio walkthroughs.
 
+For material-handling cycles, use `RobotWorkcell.plan_pick_and_place()` with
+world-frame approach and retreat offsets. It preserves Cartesian contact
+motions, plans the loaded transfer through the workcell, retimes the full
+cycle, and returns time-aligned open/close gripper events for an execution
+adapter.
+
 ## Tabular Data Readiness
 
 Use `DataReadinessReport` before training or inference:
