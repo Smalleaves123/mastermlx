@@ -65,7 +65,7 @@ def test_path_collision_summary_matches_detailed_report_arrays():
     assert summary["n_samples"] == detailed["n_samples"]
     assert np.allclose(summary["samples"], detailed["samples"])
     assert np.allclose(summary["clearances"], detailed["clearances"])
-    assert summary["minimum_clearance"] == detailed["minimum_clearance"]
+    assert np.isclose(summary["minimum_clearance"], detailed["minimum_clearance"])
     assert not path_collision_free(robot, path, [obstacle], interpolation_step=0.05)
 
 

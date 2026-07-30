@@ -61,10 +61,12 @@ def robotics_backend_report() -> dict[str, str | bool]:
     requested = get_backend()
     cpp = _load_cpp_kinematics(requested)
     from .collision import _load_cpp_collision
+    from .dynamics import _load_cpp_dynamics
     from .trajectory import _load_cpp_retiming
     from .transforms import _load_cpp_transforms
 
     cpp_collision = _load_cpp_collision(requested)
+    cpp_dynamics = _load_cpp_dynamics(requested)
     cpp_retiming = _load_cpp_retiming(requested)
     cpp_ik = _load_cpp_ik(requested)
     cpp_transforms = _load_cpp_transforms(requested)
@@ -82,6 +84,7 @@ def robotics_backend_report() -> dict[str, str | bool]:
         "active": active,
         "cpp_kinematics": cpp is not None,
         "cpp_collision": cpp_collision is not None,
+        "cpp_dynamics": cpp_dynamics is not None,
         "cpp_collision_broadphase": cpp_collision is not None
         and callable(getattr(cpp_collision, "chain_collision_free_batch", None)),
         "cpp_retiming": cpp_retiming is not None,

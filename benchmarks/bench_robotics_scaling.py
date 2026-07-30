@@ -116,16 +116,27 @@ def main():
         print(f"  bounded slots={bounded_capacity:4d}  time={bounded_time:.5f}s  peak={bounded_peak / 1e6:.2f} MB")
         print(f"  reused  slots={bounded_capacity:4d}  time={reused_time:.5f}s  peak={reused_peak / 1e6:.2f} MB")
 
-        mass_time, _ = _measure(lambda: robot.mass_matrix_batch(configurations))
-        torque_time, _ = _measure(
-            lambda: robot.inverse_dynamics_batch(
-                configurations,
-                np.zeros_like(configurations),
-                np.full_like(configurations, 0.2),
-            )
+        velocities = np.zeros_like(configurations)
+        accelerations = np.full_like(configurations, 0.2)
+        set_backend("numpy")
+        numpy_mass_time, _ = _measure(lambda: robot.mass_matrix_batch(configurations))
+        numpy_torque_time, _ = _measure(
+            lambda: robot.inverse_dynamics_batch(configurations, velocities, accelerations)
+        )
+        set_backend("auto")
+        auto_mass_time, _ = _measure(lambda: robot.mass_matrix_batch(configurations))
+        auto_torque_time, _ = _measure(
+            lambda: robot.inverse_dynamics_batch(configurations, velocities, accelerations)
         )
         print("Batched dynamics (2000 x 7-DOF configurations):")
-        print(f"  mass_matrix={mass_time:.5f}s  inverse_dynamics={torque_time:.5f}s")
+        print(
+            f"  mass_matrix  numpy={numpy_mass_time:.5f}s  auto={auto_mass_time:.5f}s  "
+            f"speedup={numpy_mass_time / auto_mass_time:.2f}x"
+        )
+        print(
+            f"  inverse_dynamics  numpy={numpy_torque_time:.5f}s  auto={auto_torque_time:.5f}s  "
+            f"speedup={numpy_torque_time / auto_torque_time:.2f}x"
+        )
     finally:
         set_backend(old)
 

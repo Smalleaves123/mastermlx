@@ -8,10 +8,27 @@ future recursive Newton-Euler compiled kernel is introduced.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
+import importlib
 
 import numpy as np
 
-from .kinematics import _coerce_link, forward_kinematics
+from ..config import get_backend
+from .kinematics import _coerce_link, _pack_links_cached, forward_kinematics
+
+
+@lru_cache(maxsize=3)
+def _load_cpp_dynamics(backend=None):
+    """Load the optional C++ rigid-body dynamics kernels for ``auto``."""
+
+    if backend is None:
+        backend = get_backend()
+    if backend != "auto":
+        return None
+    try:
+        return importlib.import_module("mastermlx.robotics._dynamics_cpp")
+    except ImportError:
+        return None
 
 
 @dataclass(frozen=True)
@@ -99,6 +116,20 @@ def _output_buffer(output, shape, name):
     return output
 
 
+def _packed_dynamics_inputs(links, inertias):
+    """Pack immutable DH and inertial data for the optional C++ kernel."""
+
+    _, a, alpha, d, theta, joint_type, offset = _pack_links_cached(links)
+    masses = np.asarray([inertia.mass for inertia in inertias], dtype=float)
+    center_of_mass = np.asarray([inertia.center_of_mass for inertia in inertias], dtype=float)
+    inertia_matrices = np.asarray([inertia.inertia for inertia in inertias], dtype=float)
+    return a, alpha, d, theta, joint_type, offset, masses, center_of_mass, inertia_matrices
+
+
+def _cpp_dynamics_arguments(links, inertias, values):
+    return (*_packed_dynamics_inputs(links, inertias), np.ascontiguousarray(values, dtype=float))
+
+
 def _body_jacobians(links, frames, body_index, inertia):
     n_joints = len(links)
     transform = np.asarray(frames[body_index + 1], dtype=float)
@@ -152,6 +183,10 @@ def mass_matrix_batch(links, link_inertias, joint_values, *, base=None, output=N
     links, inertias = _normalized_inputs(links, link_inertias)
     values = _joint_batch(joint_values, len(links), "joint_values")
     result = _output_buffer(output, (values.shape[0], len(links), len(links)), "output")
+    cpp = _load_cpp_dynamics(get_backend())
+    if cpp is not None and callable(getattr(cpp, "mass_matrix_batch_dh", None)):
+        cpp.mass_matrix_batch_dh(*_cpp_dynamics_arguments(links, inertias, values), base, result)
+        return result
     for index, configuration in enumerate(values):
         result[index] = _mass_matrix_single(links, inertias, configuration, base=base)
     return result
@@ -187,6 +222,12 @@ def gravity_forces_batch(links, link_inertias, joint_values, *, gravity=(0.0, 0.
     if gravity.shape != (3,) or not np.all(np.isfinite(gravity)):
         raise ValueError("gravity must be a finite 3-vector")
     result = _output_buffer(output, values.shape, "output")
+    cpp = _load_cpp_dynamics(get_backend())
+    if cpp is not None and callable(getattr(cpp, "gravity_forces_batch_dh", None)):
+        cpp.gravity_forces_batch_dh(
+            *_cpp_dynamics_arguments(links, inertias, values), gravity, base, result
+        )
+        return result
     for index, configuration in enumerate(values):
         result[index] = _gravity_single(links, inertias, configuration, gravity, base=base)
     return result
@@ -272,11 +313,21 @@ def inverse_dynamics_batch(
     gravity = np.asarray(gravity, dtype=float).reshape(-1)
     if gravity.shape != (3,) or not np.all(np.isfinite(gravity)):
         raise ValueError("gravity must be a finite 3-vector")
-    for index, configuration in enumerate(values):
-        matrix, gravity_term = _mass_and_gravity_single(
-            links, inertias, configuration, gravity, base=base
+    cpp = _load_cpp_dynamics(get_backend())
+    if cpp is not None and callable(getattr(cpp, "inverse_dynamics_batch_dh", None)):
+        cpp.inverse_dynamics_batch_dh(
+            *_cpp_dynamics_arguments(links, inertias, values),
+            np.ascontiguousarray(accelerations, dtype=float),
+            gravity,
+            base,
+            result,
         )
-        result[index] = matrix @ accelerations[index] + gravity_term
+    else:
+        for index, configuration in enumerate(values):
+            matrix, gravity_term = _mass_and_gravity_single(
+                links, inertias, configuration, gravity, base=base
+            )
+            result[index] = matrix @ accelerations[index] + gravity_term
     if include_coriolis and np.any(velocities):
         result += coriolis_forces_batch(links, inertias, values, velocities, base=base)
     return result
@@ -308,11 +359,18 @@ def forward_dynamics_batch(
         raise ValueError("gravity must be a finite 3-vector")
     matrices = np.empty((values.shape[0], len(links), len(links)), dtype=float)
     rhs = np.empty_like(values)
-    for index, configuration in enumerate(values):
-        matrices[index], gravity_term = _mass_and_gravity_single(
-            links, inertias, configuration, gravity, base=base
+    cpp = _load_cpp_dynamics(get_backend())
+    if cpp is not None and callable(getattr(cpp, "mass_and_gravity_batch_dh", None)):
+        cpp.mass_and_gravity_batch_dh(
+            *_cpp_dynamics_arguments(links, inertias, values), gravity, base, matrices, rhs
         )
-        rhs[index] = torques[index] - gravity_term
+        rhs[:] = torques - rhs
+    else:
+        for index, configuration in enumerate(values):
+            matrices[index], gravity_term = _mass_and_gravity_single(
+                links, inertias, configuration, gravity, base=base
+            )
+            rhs[index] = torques[index] - gravity_term
     if include_coriolis and np.any(velocities):
         rhs -= coriolis_forces_batch(links, inertias, values, velocities, base=base)
     for index, matrix in enumerate(matrices):
