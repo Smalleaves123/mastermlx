@@ -138,16 +138,37 @@ def sample_joint_trajectory(q0, qf, duration, num_samples=100, kind="quintic"):
     return times, np.asarray(positions), np.asarray(velocities), np.asarray(accelerations)
 
 
-def sample_joint_trajectory_segments(q_waypoints, durations, num_samples_per_segment=100, kind="quintic"):
-    """Sample a piecewise joint trajectory across multiple segments."""
+def _trajectory_output_buffers(output, total_samples, n_joints):
+    shapes = {
+        "time": ((total_samples,), float),
+        "position": ((total_samples, n_joints), float),
+        "velocity": ((total_samples, n_joints), float),
+        "acceleration": ((total_samples, n_joints), float),
+    }
+    if output is None:
+        return {
+            key: np.empty(shape, dtype=dtype) for key, (shape, dtype) in shapes.items()
+        }
+    if not isinstance(output, dict):
+        raise ValueError("output must be a mapping of named contiguous NumPy arrays")
+    buffers = {}
+    for key, (shape, dtype) in shapes.items():
+        value = output.get(key)
+        if (
+            not isinstance(value, np.ndarray)
+            or value.dtype != np.dtype(dtype)
+            or not value.flags.c_contiguous
+            or value.shape != shape
+        ):
+            raise ValueError(f"output[{key!r}] must be a contiguous float64 array with shape {shape}")
+        buffers[key] = value
+    return buffers
 
-    if get_backend() != "numpy" and _cy_sample_joint_trajectory_segments is not None:
-        return _cy_sample_joint_trajectory_segments(
-            q_waypoints,
-            durations,
-            int(num_samples_per_segment),
-            kind=kind,
-        )
+
+def sample_joint_trajectory_segments(
+    q_waypoints, durations, num_samples_per_segment=100, kind="quintic", *, output=None
+):
+    """Sample a piecewise joint trajectory across multiple segments."""
 
     q_waypoints = np.asarray(q_waypoints, dtype=float)
     durations = np.asarray(durations, dtype=float).reshape(-1)
@@ -157,36 +178,64 @@ def sample_joint_trajectory_segments(q_waypoints, durations, num_samples_per_seg
         raise ValueError("q_waypoints must contain at least two waypoints")
     if durations.size != q_waypoints.shape[0] - 1:
         raise ValueError("durations must have one entry per segment")
+    if not np.all(np.isfinite(q_waypoints)) or not np.all(np.isfinite(durations)):
+        raise ValueError("q_waypoints and durations must contain only finite values")
+    if np.any(durations <= 0.0):
+        raise ValueError("durations must be positive")
+    num_samples_per_segment = int(num_samples_per_segment)
+    if num_samples_per_segment < 1:
+        raise ValueError("num_samples_per_segment must be at least 1")
+    if kind not in {"cubic", "quintic"}:
+        raise ValueError("kind must be 'cubic' or 'quintic'")
 
-    times = []
-    positions = []
-    velocities = []
-    accelerations = []
+    segments = durations.size
+    total_samples = num_samples_per_segment + (segments - 1) * (num_samples_per_segment - 1)
+    buffers = _trajectory_output_buffers(output, total_samples, q_waypoints.shape[1])
+
+    cpp = _load_cpp_retiming(get_backend())
+    if cpp is not None and callable(getattr(cpp, "sample_joint_trajectory_segments", None)):
+        values = cpp.sample_joint_trajectory_segments(
+            np.ascontiguousarray(q_waypoints),
+            np.ascontiguousarray(durations),
+            num_samples_per_segment,
+            kind,
+            buffers["time"],
+            buffers["position"],
+            buffers["velocity"],
+            buffers["acceleration"],
+        )
+        return tuple(values)
+
+    if get_backend() != "numpy" and _cy_sample_joint_trajectory_segments is not None:
+        values = _cy_sample_joint_trajectory_segments(
+            q_waypoints, durations, num_samples_per_segment, kind=kind
+        )
+        for key, value in zip(buffers, values):
+            buffers[key][...] = value
+        return tuple(buffers.values())
+
+    times = buffers["time"]
+    positions = buffers["position"]
+    velocities = buffers["velocity"]
+    accelerations = buffers["acceleration"]
+    output_index = 0
     offset = 0.0
     for idx in range(durations.size):
-        seg_times, seg_pos, seg_vel, seg_acc = sample_joint_trajectory(
-            q_waypoints[idx],
-            q_waypoints[idx + 1],
-            durations[idx],
-            num_samples=num_samples_per_segment,
-            kind=kind,
-        )
-        if idx > 0:
-            seg_times = seg_times[1:]
-            seg_pos = seg_pos[1:]
-            seg_vel = seg_vel[1:]
-            seg_acc = seg_acc[1:]
-        times.append(seg_times + offset)
-        positions.append(seg_pos)
-        velocities.append(seg_vel)
-        accelerations.append(seg_acc)
+        duration = durations[idx]
+        for sample in range(num_samples_per_segment):
+            if idx > 0 and sample == 0:
+                continue
+            t = 0.0 if num_samples_per_segment == 1 else sample * duration / (num_samples_per_segment - 1)
+            q, qd, qdd = joint_trajectory(
+                q_waypoints[idx], q_waypoints[idx + 1], duration, t, kind=kind
+            )
+            times[output_index] = t + offset
+            positions[output_index] = q
+            velocities[output_index] = qd
+            accelerations[output_index] = qdd
+            output_index += 1
         offset += float(durations[idx])
-    return (
-        np.concatenate(times, axis=0),
-        np.concatenate(positions, axis=0),
-        np.concatenate(velocities, axis=0),
-        np.concatenate(accelerations, axis=0),
-    )
+    return times, positions, velocities, accelerations
 
 
 def plan_joint_path(q_start, q_goal, num_waypoints=11, via_points=None):

@@ -92,6 +92,121 @@ static py::array_t<double> trajectory_peaks_batch(
     return output;
 }
 
+static py::array_t<double> trajectory_output(
+    py::object requested,
+    const std::vector<py::ssize_t>& shape,
+    const char* name) {
+    if (requested.is_none()) {
+        return py::array_t<double>(py::array::ShapeContainer(shape));
+    }
+    auto output = py::array_t<double, py::array::c_style>::ensure(requested);
+    if (!output) {
+        throw std::invalid_argument(std::string(name) + " must be a contiguous float64 NumPy array");
+    }
+    const auto info = output.request();
+    if (info.ndim != static_cast<py::ssize_t>(shape.size())) {
+        throw std::invalid_argument(std::string(name) + " has the wrong number of dimensions");
+    }
+    for (std::size_t index = 0; index < shape.size(); ++index) {
+        if (info.shape[index] != shape[index]) {
+            throw std::invalid_argument(std::string(name) + " has the wrong shape");
+        }
+    }
+    return output;
+}
+
+static py::tuple sample_joint_trajectory_segments(
+    Matrix waypoints_, Vector durations_, py::ssize_t samples_per_segment,
+    const std::string& kind, py::object requested_time, py::object requested_position,
+    py::object requested_velocity, py::object requested_acceleration) {
+    const auto waypoints = waypoints_.request();
+    const auto durations = durations_.request();
+    if (waypoints.ndim != 2 || waypoints.shape[0] < 2 || waypoints.shape[1] < 1) {
+        throw std::invalid_argument("q_waypoints must have shape (n_waypoints, n_joints)");
+    }
+    if (durations.ndim != 1 || durations.shape[0] != waypoints.shape[0] - 1) {
+        throw std::invalid_argument("durations must have one entry per segment");
+    }
+    if (samples_per_segment < 1) {
+        throw std::invalid_argument("num_samples_per_segment must be at least 1");
+    }
+    if (kind != "cubic" && kind != "quintic") {
+        throw std::invalid_argument("kind must be 'cubic' or 'quintic'");
+    }
+    const bool cubic = kind == "cubic";
+    const py::ssize_t segments = waypoints.shape[0] - 1;
+    const py::ssize_t joints = waypoints.shape[1];
+    const py::ssize_t total_samples = samples_per_segment
+        + (segments - 1) * (samples_per_segment - 1);
+    const auto* waypoint_data = static_cast<const double*>(waypoints.ptr);
+    const auto* duration_data = static_cast<const double*>(durations.ptr);
+    require_finite(waypoint_data, waypoints.size, "q_waypoints");
+    require_finite(duration_data, durations.size, "durations");
+    for (py::ssize_t segment = 0; segment < segments; ++segment) {
+        if (duration_data[segment] <= 0.0) {
+            throw std::invalid_argument("durations must be positive");
+        }
+    }
+
+    auto times = trajectory_output(
+        requested_time, std::vector<py::ssize_t>{total_samples}, "time");
+    const auto matrix_shape = std::vector<py::ssize_t>{total_samples, joints};
+    auto positions = trajectory_output(requested_position, matrix_shape, "position");
+    auto velocities = trajectory_output(requested_velocity, matrix_shape, "velocity");
+    auto accelerations = trajectory_output(requested_acceleration, matrix_shape, "acceleration");
+    auto* time_data = static_cast<double*>(times.request().ptr);
+    auto* position_data = static_cast<double*>(positions.request().ptr);
+    auto* velocity_data = static_cast<double*>(velocities.request().ptr);
+    auto* acceleration_data = static_cast<double*>(accelerations.request().ptr);
+
+    {
+        py::gil_scoped_release release;
+        py::ssize_t output_index = 0;
+        double time_offset = 0.0;
+        for (py::ssize_t segment = 0; segment < segments; ++segment) {
+            const double duration = duration_data[segment];
+            const double* start = waypoint_data + segment * joints;
+            const double* end = start + joints;
+            for (py::ssize_t sample = 0; sample < samples_per_segment; ++sample) {
+                if (segment > 0 && sample == 0) {
+                    continue;
+                }
+                const double tau = samples_per_segment == 1
+                    ? 0.0
+                    : static_cast<double>(sample) / static_cast<double>(samples_per_segment - 1);
+                const double tau2 = tau * tau;
+                const double tau3 = tau2 * tau;
+                double s = 0.0;
+                double ds = 0.0;
+                double dds = 0.0;
+                if (cubic) {
+                    s = 3.0 * tau2 - 2.0 * tau3;
+                    ds = (6.0 * tau - 6.0 * tau2) / duration;
+                    dds = (6.0 - 12.0 * tau) / (duration * duration);
+                } else {
+                    const double tau4 = tau3 * tau;
+                    const double tau5 = tau4 * tau;
+                    s = 10.0 * tau3 - 15.0 * tau4 + 6.0 * tau5;
+                    ds = (30.0 * tau2 - 60.0 * tau3 + 30.0 * tau4) / duration;
+                    dds = (60.0 * tau - 180.0 * tau2 + 120.0 * tau3)
+                        / (duration * duration);
+                }
+                time_data[output_index] = time_offset + tau * duration;
+                for (py::ssize_t joint = 0; joint < joints; ++joint) {
+                    const double delta = end[joint] - start[joint];
+                    const py::ssize_t offset = output_index * joints + joint;
+                    position_data[offset] = start[joint] + s * delta;
+                    velocity_data[offset] = ds * delta;
+                    acceleration_data[offset] = dds * delta;
+                }
+                ++output_index;
+            }
+            time_offset += duration;
+        }
+    }
+    return py::make_tuple(times, positions, velocities, accelerations);
+}
+
 static py::tuple retime_quintic_path(
     Matrix path_,
     Vector velocity_limits_,
@@ -224,4 +339,10 @@ PYBIND11_MODULE(_retiming_cpp, m) {
     m.def(
         "trajectory_peaks_batch", &trajectory_peaks_batch,
         py::arg("values"), py::arg("output") = py::none());
+    m.def(
+        "sample_joint_trajectory_segments", &sample_joint_trajectory_segments,
+        py::arg("q_waypoints"), py::arg("durations"),
+        py::arg("num_samples_per_segment") = 100, py::arg("kind") = "quintic",
+        py::arg("time") = py::none(), py::arg("position") = py::none(),
+        py::arg("velocity") = py::none(), py::arg("acceleration") = py::none());
 }

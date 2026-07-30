@@ -21,6 +21,7 @@ from mastermlx.robotics import (
     interpolate_pose_batch,
     robotics_backend_report,
     trajectory_peaks_batch,
+    sample_joint_trajectory_segments,
 )
 from mastermlx.robotics import RobotWorkcell
 from mastermlx.sim import SimpleWorld
@@ -157,6 +158,13 @@ def main():
                     num_samples_per_segment=21,
                 )
             )
+            sample_time, sampled = bench(
+                lambda: sample_joint_trajectory_segments(
+                    retime_path,
+                    np.full(retime_path.shape[0] - 1, 0.1),
+                    num_samples_per_segment=21,
+                )
+            )
             ik_time, ik_solutions = bench(
                 lambda: robot.ik_batch(
                     ik_targets,
@@ -182,6 +190,7 @@ def main():
                 f"trajectory_peaks={peaks_time:.5f}s ({peaks.shape})  "
                 f"planning_workers={planning_time:.5f}s ({planning_path.shape})  "
                 f"retime={retime_time:.5f}s ({retimed['position'].shape})  "
+                f"trajectory_sample={sample_time:.5f}s ({sampled[1].shape})  "
                 f"ik_batch={ik_time:.5f}s ({ik_solutions.shape})"
             )
     finally:

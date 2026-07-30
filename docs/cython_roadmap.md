@@ -36,6 +36,7 @@ development model.
   - C++ typed batch collision summaries for minimum clearance and closest elements
   - C++ typed batch collision details with reusable hit and closest-element buffers
   - C++ quintic retiming with velocity, acceleration, and jerk limits
+  - C++ batch piecewise trajectory sampling with reusable output buffers
   - C++ batch trajectory peak diagnostics with reusable output buffers
   - C++ batch position IK with damped least-squares and warm-start support
   - C++ batched transform composition and pose interpolation with reusable output buffers

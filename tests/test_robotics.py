@@ -192,6 +192,38 @@ def test_sample_joint_trajectory_segments_are_continuous():
     assert np.allclose(times[4], 1.66666667, atol=1e-8)
 
 
+def test_sample_joint_trajectory_segments_support_reusable_output_buffers():
+    waypoints = np.array([[0.0, 0.0], [1.0, 1.0], [2.0, 0.0]])
+    shape = (7, 2)
+    output = {
+        "time": np.empty(7),
+        "position": np.empty(shape),
+        "velocity": np.empty(shape),
+        "acceleration": np.empty(shape),
+    }
+    result = sample_joint_trajectory_segments(
+        waypoints, [1.0, 2.0], num_samples_per_segment=4, output=output
+    )
+    assert result[0] is output["time"]
+    assert result[1] is output["position"]
+    assert np.allclose(result[1][0], waypoints[0])
+    assert np.allclose(result[1][-1], waypoints[-1])
+
+
+def test_sample_joint_trajectory_segments_backend_parity():
+    waypoints = np.array([[0.0, 0.0], [1.0, -0.5], [2.0, 0.25]])
+    durations = np.array([0.75, 1.25])
+    old = get_backend()
+    try:
+        set_backend("numpy")
+        expected = sample_joint_trajectory_segments(waypoints, durations, 9, kind="cubic")
+        set_backend("auto")
+        actual = sample_joint_trajectory_segments(waypoints, durations, 9, kind="cubic")
+    finally:
+        set_backend(old)
+    assert all(np.allclose(left, right, atol=1e-12) for left, right in zip(actual, expected))
+
+
 def test_plan_joint_path_and_smoothing_reduce_kinks():
     q0 = np.array([0.0, 0.0])
     qf = np.array([2.0, 1.0])
