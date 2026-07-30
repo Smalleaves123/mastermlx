@@ -15,7 +15,7 @@ from .collision import chain_clearance_batch, path_collision_report
 from .constraints import validate_joint_limits
 from .model import RobotModel
 from .results import JointTrajectory, RobotResult
-from .trajectory import sample_joint_trajectory_segments
+from .trajectory import _retime_quintic_path_compiled, sample_joint_trajectory_segments
 from .transforms import homogeneous_transform, matrix_to_quaternion, quaternion_to_matrix
 
 
@@ -465,30 +465,42 @@ class RobotWorkcell(BaseExperiment):
         if jerk_limits is not None:
             jerk_limits = _limits(jerk_limits, self.n_joints, "jerk_limits")
 
-        duration_values: list[float] = []
-        for delta in np.abs(np.diff(path, axis=0)):
-            candidates = [_QUINTIC_MAX_VELOCITY * delta / velocity_limits]
-            if acceleration_limits is not None:
-                candidates.append(np.sqrt(_QUINTIC_MAX_ACCELERATION * delta / acceleration_limits))
-            if jerk_limits is not None:
-                candidates.append(np.cbrt(_QUINTIC_MAX_JERK * delta / jerk_limits))
-            duration_values.append(max(minimum_duration, float(np.max(np.concatenate(candidates)))))
-        durations = np.asarray(duration_values, dtype=float)
-        time, position, velocity, acceleration = sample_joint_trajectory_segments(
+        compiled = _retime_quintic_path_compiled(
             path,
-            durations,
-            num_samples_per_segment=samples,
-            kind="quintic",
+            velocity_limits,
+            acceleration_limits,
+            jerk_limits,
+            samples,
+            minimum_duration,
         )
+        if compiled is None:
+            duration_values: list[float] = []
+            for delta in np.abs(np.diff(path, axis=0)):
+                candidates = [_QUINTIC_MAX_VELOCITY * delta / velocity_limits]
+                if acceleration_limits is not None:
+                    candidates.append(np.sqrt(_QUINTIC_MAX_ACCELERATION * delta / acceleration_limits))
+                if jerk_limits is not None:
+                    candidates.append(np.cbrt(_QUINTIC_MAX_JERK * delta / jerk_limits))
+                duration_values.append(max(minimum_duration, float(np.max(np.concatenate(candidates)))))
+            durations = np.asarray(duration_values, dtype=float)
+            time, position, velocity, acceleration = sample_joint_trajectory_segments(
+                path,
+                durations,
+                num_samples_per_segment=samples,
+                kind="quintic",
+            )
 
-        starts = np.concatenate([[0.0], np.cumsum(durations[:-1])])
-        segment_indices = np.searchsorted(starts, time, side="right") - 1
-        segment_indices = np.clip(segment_indices, 0, durations.size - 1)
-        tau = (time - starts[segment_indices]) / durations[segment_indices]
-        tau = np.clip(tau, 0.0, 1.0)
-        delta = path[1:] - path[:-1]
-        jerk_scale = (60.0 - 360.0 * tau + 360.0 * tau**2) / durations[segment_indices] ** 3
-        jerk = jerk_scale[:, None] * delta[segment_indices]
+            delta = path[1:] - path[:-1]
+            jerk_parts = []
+            for segment, duration in enumerate(durations):
+                tau = np.linspace(0.0, 1.0, samples)
+                if segment > 0:
+                    tau = tau[1:]
+                jerk_scale = (60.0 - 360.0 * tau + 360.0 * tau**2) / duration**3
+                jerk_parts.append(jerk_scale[:, None] * delta[segment])
+            jerk = np.concatenate(jerk_parts, axis=0)
+        else:
+            time, position, velocity, acceleration, jerk, durations = compiled
         return JointTrajectory(
             time=time,
             position=position,

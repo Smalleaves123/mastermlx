@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from functools import lru_cache
+import importlib
+
 import numpy as np
 
 from ..config import get_backend
@@ -12,6 +15,41 @@ except ImportError:  # pragma: no cover - fallback when Cython extensions are un
     _cy_sample_joint_trajectory = None
     _cy_sample_joint_trajectory_segments = None
     _cy_smooth_joint_path = None
+
+
+@lru_cache(maxsize=3)
+def _load_cpp_retiming(backend=None):
+    """Load the optional C++ quintic retiming kernel for the auto backend."""
+
+    if backend is None:
+        backend = get_backend()
+    if backend != "auto":
+        return None
+    try:
+        return importlib.import_module("mastermlx.robotics._retiming_cpp")
+    except ImportError:
+        return None
+
+
+def _retime_quintic_path_compiled(
+    path, velocity_limits, acceleration_limits, jerk_limits, num_samples_per_segment, minimum_duration
+):
+    """Return compiled retiming arrays when the optional C++ kernel is available."""
+
+    cpp = _load_cpp_retiming(get_backend())
+    if cpp is None or not callable(getattr(cpp, "retime_quintic_path", None)):
+        return None
+    return tuple(
+        np.asarray(value, dtype=float)
+        for value in cpp.retime_quintic_path(
+            np.ascontiguousarray(path, dtype=float),
+            np.ascontiguousarray(velocity_limits, dtype=float),
+            None if acceleration_limits is None else np.ascontiguousarray(acceleration_limits, dtype=float),
+            None if jerk_limits is None else np.ascontiguousarray(jerk_limits, dtype=float),
+            int(num_samples_per_segment),
+            float(minimum_duration),
+        )
+    )
 
 
 def _normalize_time(t, duration):

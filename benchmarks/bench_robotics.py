@@ -15,6 +15,8 @@ from mastermlx.robotics import (
     chain_clearance_batch,
     robotics_backend_report,
 )
+from mastermlx.robotics import RobotWorkcell
+from mastermlx.sim import SimpleWorld
 
 
 def bench(fn, n_runs=3):
@@ -53,6 +55,8 @@ def main():
         BoxObstacle((0.9, -0.2), (1.1, 0.2)),
         CapsuleObstacle((0.0, 0.6), (1.8, 0.6), 0.05),
     ]
+    workcell = RobotWorkcell(robot, SimpleWorld(robot))
+    retime_path = configurations[:32]
     print(f"Robot backend requested: {get_backend()}")
     print(f"Robot backend capabilities: {robotics_backend_report()}")
     old = get_backend()
@@ -71,13 +75,23 @@ def main():
             clearance_time, clearances = bench(
                 lambda: chain_clearance_batch(chain_points, obstacles, link_radius=0.02)
             )
+            retime_time, retimed = bench(
+                lambda: workcell.retime_joint_path(
+                    retime_path,
+                    velocity_limits=0.8,
+                    acceleration_limits=1.5,
+                    jerk_limits=8.0,
+                    num_samples_per_segment=21,
+                )
+            )
             print(
                 f"{backend:>5}  fk_batch={fk_time:.5f}s ({poses.shape})  "
                 f"positions_batch={positions_time:.5f}s ({positions.shape})  "
                 f"jacobian_batch={jacobian_time:.5f}s ({jacobians.shape})  "
                 f"velocity_batch={velocity_batch_time:.5f}s ({velocity_batch.shape})  "
                 f"velocity={velocity_time:.5f}s ({velocity.shape})  "
-                f"clearance_batch={clearance_time:.5f}s ({clearances.shape})"
+                f"clearance_batch={clearance_time:.5f}s ({clearances.shape})  "
+                f"retime={retime_time:.5f}s ({retimed['position'].shape})"
             )
     finally:
         set_backend(old)
