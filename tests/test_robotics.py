@@ -23,6 +23,7 @@ from mastermlx.robotics import (
     quintic_time_scaling,
     sample_joint_trajectory,
     sample_joint_trajectory_segments,
+    trajectory_peaks_batch,
     urdf_to_dh_chain,
     transform_points,
     rot_x,
@@ -157,6 +158,14 @@ def test_sample_joint_trajectory_shapes():
     assert accelerations.shape == (5, 3)
     assert np.allclose(positions[0], q0)
     assert np.allclose(positions[-1], qf)
+
+
+def test_trajectory_peaks_batch_supports_reusable_output_buffers():
+    values = np.arange(30.0).reshape(5, 3, 2) - 10.0
+    output = np.empty((2, 3), dtype=float)
+    result = trajectory_peaks_batch(values, output=output)
+    assert result is output
+    assert np.allclose(result, np.max(np.abs(values), axis=0).T)
 
 
 def test_sample_joint_trajectory_segments_are_continuous():

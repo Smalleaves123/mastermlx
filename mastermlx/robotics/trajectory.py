@@ -52,6 +52,33 @@ def _retime_quintic_path_compiled(
     )
 
 
+def trajectory_peaks_batch(values, *, output=None):
+    """Return maximum absolute trajectory values per metric and joint."""
+
+    values = np.asarray(values, dtype=float)
+    if values.ndim != 3 or min(values.shape) < 1:
+        raise ValueError("values must have shape (n_samples, n_joints, n_metrics)")
+    if not np.all(np.isfinite(values)):
+        raise ValueError("values must contain only finite values")
+    shape = (values.shape[2], values.shape[1])
+    if output is None:
+        result = np.empty(shape, dtype=float)
+    elif isinstance(output, np.ndarray) and output.dtype == np.dtype(float) and output.flags.c_contiguous:
+        if output.shape != shape:
+            raise ValueError(f"output must have shape {shape}")
+        result = output
+    else:
+        raise ValueError("output must be a contiguous float64 NumPy array")
+
+    cpp = _load_cpp_retiming(get_backend())
+    if cpp is not None and callable(getattr(cpp, "trajectory_peaks_batch", None)):
+        return np.asarray(
+            cpp.trajectory_peaks_batch(np.ascontiguousarray(values), result), dtype=float
+        )
+    result[...] = np.max(np.abs(values), axis=0).T
+    return result
+
+
 def _normalize_time(t, duration):
     duration = float(duration)
     if duration <= 0:

@@ -299,6 +299,80 @@ def chain_collision_free_batch(
     )
 
 
+def chain_collision_summary_batch(
+    points, obstacles, *, link_radius=0.0, box_samples=25
+):
+    """Return typed collision summaries for each chain in a batch.
+
+    The closest kind is encoded as ``0`` for none, ``1`` for a point, and
+    ``2`` for a segment.  Indices are ``-1`` when no obstacle is present.
+    """
+
+    points = np.asarray(points, dtype=float)
+    if points.ndim != 3 or points.shape[0] < 1 or points.shape[1] < 1 or points.shape[2] < 1:
+        raise ValueError("points must have shape (n_samples, n_points, n_dims)")
+    if not np.all(np.isfinite(points)):
+        raise ValueError("points must contain only finite values")
+    link_radius = float(link_radius)
+    if link_radius < 0.0 or not np.isfinite(link_radius):
+        raise ValueError("link_radius must be a non-negative finite value")
+    box_samples = int(box_samples)
+    if box_samples < 2:
+        raise ValueError("box_samples must be at least 2")
+    obstacles = list(obstacles)
+    if not obstacles:
+        samples = points.shape[0]
+        return RobotResult({
+            "minimum_clearance": np.full(samples, np.inf, dtype=float),
+            "collision": np.zeros(samples, dtype=bool),
+            "closest_kind": np.zeros(samples, dtype=np.int8),
+            "closest_index": np.full(samples, -1, dtype=np.int64),
+            "closest_obstacle_index": np.full(samples, -1, dtype=np.int64),
+        })
+
+    packed = _pack_obstacles(obstacles, points.shape[2])
+    cpp = _load_cpp_collision(get_backend())
+    if packed is not None and cpp is not None and callable(
+        getattr(cpp, "chain_collision_summary_batch", None)
+    ):
+        types, dims, params = packed
+        clearances, collisions, kinds, indices, obstacle_indices = cpp.chain_collision_summary_batch(
+            np.ascontiguousarray(points), types, dims, params, link_radius, box_samples
+        )
+        return RobotResult({
+            "minimum_clearance": np.asarray(clearances, dtype=float),
+            "collision": np.asarray(collisions, dtype=bool),
+            "closest_kind": np.asarray(kinds, dtype=np.int8),
+            "closest_index": np.asarray(indices, dtype=np.int64),
+            "closest_obstacle_index": np.asarray(obstacle_indices, dtype=np.int64),
+        })
+
+    reports = [chain_collision_report(chain, obstacles, link_radius=link_radius) for chain in points]
+    kind_codes = {None: 0, "point": 1, "segment": 2}
+    return RobotResult({
+        "minimum_clearance": np.asarray(
+            [report["minimum_clearance"] for report in reports], dtype=float
+        ),
+        "collision": np.asarray([report["collision"] for report in reports], dtype=bool),
+        "closest_kind": np.asarray(
+            [kind_codes[report["closest"]["kind"]] for report in reports], dtype=np.int8
+        ),
+        "closest_index": np.asarray(
+            [report["closest"]["index"] if report["closest"]["index"] is not None else -1 for report in reports],
+            dtype=np.int64,
+        ),
+        "closest_obstacle_index": np.asarray(
+            [
+                report["closest"]["obstacle_index"]
+                if report["closest"]["obstacle_index"] is not None
+                else -1
+                for report in reports
+            ],
+            dtype=np.int64,
+        ),
+    })
+
+
 def point_obstacle_clearance(point, obstacle):
     """Return signed point clearance to an obstacle.
 
@@ -474,6 +548,7 @@ __all__ = [
     "CapsuleObstacle",
     "chain_clearance_batch",
     "chain_collision_free_batch",
+    "chain_collision_summary_batch",
     "SphereObstacle",
     "chain_collision_report",
     "path_collision_report",

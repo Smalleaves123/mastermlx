@@ -14,10 +14,12 @@ from mastermlx.robotics import (
     SphereObstacle,
     chain_clearance_batch,
     chain_collision_free_batch,
+    chain_collision_summary_batch,
     compose_transform_batch,
     homogeneous_transform,
     interpolate_pose_batch,
     robotics_backend_report,
+    trajectory_peaks_batch,
 )
 from mastermlx.robotics import RobotWorkcell
 from mastermlx.sim import SimpleWorld
@@ -89,6 +91,7 @@ def main():
         [1.0, 0.5, 0.2],
     )
     pose_alphas = np.linspace(0.0, 1.0, configurations.shape[0])
+    trajectory_metrics = rng.normal(0.0, 0.5, size=(configurations.shape[0], robot.n_joints, 3))
     print(f"Robot backend requested: {get_backend()}")
     print(f"Robot backend capabilities: {robotics_backend_report()}")
     old = get_backend()
@@ -107,6 +110,9 @@ def main():
             clearance_time, clearances = bench(
                 lambda: chain_clearance_batch(chain_points, obstacles, link_radius=0.02)
             )
+            summary_time, summary = bench(
+                lambda: chain_collision_summary_batch(chain_points, obstacles, link_radius=0.02)
+            )
             broadphase_time, free = bench(
                 lambda: chain_collision_free_batch(
                     chain_points,
@@ -122,6 +128,7 @@ def main():
             metrics_time, metrics = bench(
                 lambda: robot.kinematic_metrics_batch(configurations, translational=True)
             )
+            peaks_time, peaks = bench(lambda: trajectory_peaks_batch(trajectory_metrics))
             planning_time, planning_path = bench(
                 lambda: planning_workcell.plan_joint_path(
                     [np.pi / 2.0, 0.0],
@@ -162,10 +169,12 @@ def main():
                 f"velocity_batch={velocity_batch_time:.5f}s ({velocity_batch.shape})  "
                 f"velocity={velocity_time:.5f}s ({velocity.shape})  "
                 f"clearance_batch={clearance_time:.5f}s ({clearances.shape})  "
+                f"collision_summary={summary_time:.5f}s ({summary['minimum_clearance'].shape})  "
                 f"broadphase={broadphase_time:.5f}s ({free.shape})  "
                 f"compose_batch={compose_time:.5f}s ({composed.shape})  "
                 f"pose_interp={interpolate_time:.5f}s ({interpolated_poses.shape})  "
                 f"kinematic_metrics_batch={metrics_time:.5f}s ({metrics['condition_number'].shape})  "
+                f"trajectory_peaks={peaks_time:.5f}s ({peaks.shape})  "
                 f"planning_workers={planning_time:.5f}s ({planning_path.shape})  "
                 f"retime={retime_time:.5f}s ({retimed['position'].shape})  "
                 f"ik_batch={ik_time:.5f}s ({ik_solutions.shape})"

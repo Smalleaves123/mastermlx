@@ -32,6 +32,8 @@
   NumPy SVD, reducing Python loops in long safety reports.
 - Added C++ batched chain-frame positions and deterministic bounded worker
   pools for RRT/RRT* edge queries in robot workcells.
+- Added typed C++ batch collision summaries and reusable-buffer trajectory peak
+  diagnostics for safety reports.
 - Added model-level joint position limits, clipping and violation diagnostics,
   projected constrained IK, and URDF joint-limit import.
 - Added warm-started batch inverse kinematics for position and pose target sequences.

@@ -8,6 +8,7 @@ from mastermlx.robotics import (
     SphereObstacle,
     chain_clearance_batch,
     chain_collision_free_batch,
+    chain_collision_summary_batch,
     chain_collision_report,
     robotics_backend_report,
 )
@@ -85,3 +86,43 @@ def test_cpp_broadphase_matches_exact_clearance_thresholds():
             chain_collision_free_batch(points, obstacles, clearance=threshold, link_radius=0.03),
             expected,
         )
+
+
+def test_cpp_collision_summary_matches_detailed_reports():
+    cpp = _load_cpp_collision("auto")
+    if cpp is None or not hasattr(cpp, "chain_collision_summary_batch"):
+        pytest.skip("C++ collision summary extension is unavailable")
+    points = np.array(
+        [
+            [[0.0, 0.0], [0.8, 0.0], [1.6, 0.0]],
+            [[0.0, 2.0], [0.8, 2.0], [1.6, 2.0]],
+        ]
+    )
+    obstacles = _obstacles()
+    old = get_backend()
+    try:
+        set_backend("numpy")
+        reference = [
+            chain_collision_report(chain, obstacles, link_radius=0.03) for chain in points
+        ]
+        set_backend("auto")
+        summary = chain_collision_summary_batch(points, obstacles, link_radius=0.03)
+    finally:
+        set_backend(old)
+
+    assert np.allclose(summary["minimum_clearance"], [item["minimum_clearance"] for item in reference])
+    assert np.array_equal(summary["collision"], [item["collision"] for item in reference])
+    expected_kinds = [{None: 0, "point": 1, "segment": 2}[item["closest"]["kind"]] for item in reference]
+    expected_indices = [
+        item["closest"]["index"] if item["closest"]["index"] is not None else -1
+        for item in reference
+    ]
+    expected_obstacles = [
+        item["closest"]["obstacle_index"]
+        if item["closest"]["obstacle_index"] is not None
+        else -1
+        for item in reference
+    ]
+    assert np.array_equal(summary["closest_kind"], expected_kinds)
+    assert np.array_equal(summary["closest_index"], expected_indices)
+    assert np.array_equal(summary["closest_obstacle_index"], expected_obstacles)

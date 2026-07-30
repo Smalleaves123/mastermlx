@@ -37,6 +37,7 @@ from .collision import (
     SphereObstacle,
     chain_clearance_batch,
     chain_collision_free_batch,
+    chain_collision_summary_batch,
     chain_collision_report,
     path_collision_report,
     point_obstacle_clearance,
@@ -54,6 +55,7 @@ from .trajectory import (
     quintic_time_scaling,
     sample_joint_trajectory,
     sample_joint_trajectory_segments,
+    trajectory_peaks_batch,
 )
 from .model import RobotModel
 from .results import JointTrajectory, RobotResult
@@ -71,6 +73,7 @@ __all__ = [
     "chain_collision_report",
     "chain_clearance_batch",
     "chain_collision_free_batch",
+    "chain_collision_summary_batch",
     "check_joint_limits",
     "chain_positions",
     "chain_positions_batch",
@@ -119,6 +122,7 @@ __all__ = [
     "rot_z",
     "sample_joint_trajectory",
     "sample_joint_trajectory_segments",
+    "trajectory_peaks_batch",
     "segment_distance",
     "segment_obstacle_clearance",
     "URDFJoint",

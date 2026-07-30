@@ -15,7 +15,7 @@ from .collision import chain_clearance_batch, chain_collision_free_batch, path_c
 from .constraints import validate_joint_limits
 from .model import RobotModel
 from .results import JointTrajectory, RobotResult
-from .trajectory import _retime_quintic_path_compiled, sample_joint_trajectory_segments
+from .trajectory import _retime_quintic_path_compiled, sample_joint_trajectory_segments, trajectory_peaks_batch
 from .transforms import homogeneous_transform, interpolate_pose_batch
 
 
@@ -618,6 +618,7 @@ class RobotWorkcell(BaseExperiment):
             "jerk": None if isinstance(trajectory, np.ndarray) else trajectory.get("jerk_limits"),
         }
         motion_metrics: dict[str, dict[str, object] | None] = {}
+        motion_values = {}
         for name, values, limits in (
             ("velocity", velocity, motion_limits["velocity"]),
             ("acceleration", acceleration, motion_limits["acceleration"]),
@@ -629,7 +630,22 @@ class RobotWorkcell(BaseExperiment):
             values = np.asarray(values, dtype=float)
             if values.shape != position.shape:
                 raise ValueError(f"trajectory {name} must have shape {position.shape}")
-            maximum = np.max(np.abs(values), axis=0)
+            motion_values[name] = values
+
+        motion_maxima = {}
+        if motion_values:
+            names = list(motion_values)
+            stacked = np.stack([motion_values[name] for name in names], axis=2)
+            maxima = trajectory_peaks_batch(stacked)
+            motion_maxima = {name: maxima[index] for index, name in enumerate(names)}
+        for name, values, limits in (
+            (name, motion_values.get(name), motion_limits[name])
+            for name in ("velocity", "acceleration", "jerk")
+        ):
+            if values is None:
+                motion_metrics[name] = None
+                continue
+            maximum = motion_maxima[name]
             violation = None if limits is None else bool(np.any(maximum > np.asarray(limits) + 1e-12))
             motion_metrics[name] = {
                 "maximum_by_joint": maximum.tolist(),
@@ -668,9 +684,11 @@ class RobotWorkcell(BaseExperiment):
             "maximum_joint_limit_violation": None
             if self.joint_limits is None
             else float(np.max(limit_violation)),
-            "max_velocity": None if velocity is None else float(np.max(np.abs(velocity))),
-            "max_acceleration": None if acceleration is None else float(np.max(np.abs(acceleration))),
-            "max_jerk": None if jerk is None else float(np.max(np.abs(jerk))),
+            "max_velocity": None if velocity is None else float(np.max(motion_maxima["velocity"])),
+            "max_acceleration": None
+            if acceleration is None
+            else float(np.max(motion_maxima["acceleration"])),
+            "max_jerk": None if jerk is None else float(np.max(motion_maxima["jerk"])),
             "motion_limits": motion_metrics,
             "motion_limit_violation": motion_violation,
             "minimum_position_manipulability": float(np.min(manipulabilities)),

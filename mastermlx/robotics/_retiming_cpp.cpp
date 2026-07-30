@@ -44,6 +44,54 @@ static Vector optional_limits(py::handle value, py::ssize_t joints, const char* 
     return limits;
 }
 
+static py::array_t<double> peaks_output(
+    py::object requested, py::ssize_t metrics, py::ssize_t joints) {
+    if (requested.is_none()) {
+        return py::array_t<double>(
+            py::array::ShapeContainer(std::vector<py::ssize_t>{metrics, joints}));
+    }
+    auto output = py::array_t<double, py::array::c_style>::ensure(requested);
+    if (!output) {
+        throw std::invalid_argument("output must be a contiguous float64 NumPy array");
+    }
+    const auto info = output.request();
+    if (info.ndim != 2 || info.shape[0] != metrics || info.shape[1] != joints) {
+        throw std::invalid_argument("output must have shape (n_metrics, n_joints)");
+    }
+    return output;
+}
+
+static py::array_t<double> trajectory_peaks_batch(
+    Matrix values_, py::object requested_output) {
+    const auto values = values_.request();
+    if (values.ndim != 3 || values.shape[0] < 1 || values.shape[1] < 1 || values.shape[2] < 1) {
+        throw std::invalid_argument("values must have shape (n_samples, n_joints, n_metrics)");
+    }
+    const auto* value_data = static_cast<const double*>(values.ptr);
+    require_finite(value_data, values.size, "values");
+    const py::ssize_t samples = values.shape[0];
+    const py::ssize_t joints = values.shape[1];
+    const py::ssize_t metrics = values.shape[2];
+    auto output = peaks_output(requested_output, metrics, joints);
+    auto* output_data = static_cast<double*>(output.request().ptr);
+
+    {
+        py::gil_scoped_release release;
+        for (py::ssize_t metric = 0; metric < metrics; ++metric) {
+            for (py::ssize_t joint = 0; joint < joints; ++joint) {
+                double maximum = 0.0;
+                for (py::ssize_t sample = 0; sample < samples; ++sample) {
+                    const double value = std::abs(
+                        value_data[(sample * joints + joint) * metrics + metric]);
+                    maximum = std::max(maximum, value);
+                }
+                output_data[metric * joints + joint] = maximum;
+            }
+        }
+    }
+    return output;
+}
+
 static py::tuple retime_quintic_path(
     Matrix path_,
     Vector velocity_limits_,
@@ -173,4 +221,7 @@ PYBIND11_MODULE(_retiming_cpp, m) {
         py::arg("path"), py::arg("velocity_limits"),
         py::arg("acceleration_limits") = py::none(), py::arg("jerk_limits") = py::none(),
         py::arg("num_samples_per_segment") = 101, py::arg("minimum_duration") = 1e-3);
+    m.def(
+        "trajectory_peaks_batch", &trajectory_peaks_batch,
+        py::arg("values"), py::arg("output") = py::none());
 }
