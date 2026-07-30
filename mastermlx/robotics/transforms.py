@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from functools import lru_cache
+import importlib
+
 import numpy as np
 
 from ..config import get_backend
@@ -16,6 +19,20 @@ except ImportError:  # pragma: no cover - fallback when Cython extensions are un
     _cy_matrix_to_quaternion = None
     _cy_quaternion_to_matrix = None
     _cy_transform_points = None
+
+
+@lru_cache(maxsize=3)
+def _load_cpp_transforms(backend=None):
+    """Load optional C++ batch transform helpers for the auto backend."""
+
+    if backend is None:
+        backend = get_backend()
+    if backend != "auto":
+        return None
+    try:
+        return importlib.import_module("mastermlx.robotics._transforms_cpp")
+    except ImportError:
+        return None
 
 
 def _as_vector3(v):
@@ -175,6 +192,92 @@ def compose_transform(*transforms):
             raise ValueError(f"Expected a 4x4 transform, got {Ti.shape}")
         T = T @ Ti
     return T
+
+
+def _output_buffer(output, shape):
+    if output is None:
+        return np.empty(shape, dtype=float)
+    if not isinstance(output, np.ndarray) or output.dtype != np.dtype(float) or not output.flags.c_contiguous:
+        raise ValueError("output must be a contiguous float64 NumPy array")
+    if output.shape != shape:
+        raise ValueError(f"output must have shape {shape}")
+    return output
+
+
+def compose_transform_batch(transforms, *, output=None):
+    """Compose a stack of transform chains, optionally reusing ``output``.
+
+    ``transforms`` has shape ``(n_samples, n_transforms, 4, 4)`` and each
+    sample is multiplied from left to right, matching :func:`compose_transform`.
+    """
+
+    transforms = np.asarray(transforms, dtype=float)
+    if transforms.ndim != 4 or transforms.shape[1] < 1 or transforms.shape[2:] != (4, 4):
+        raise ValueError("transforms must have shape (n_samples, n_transforms, 4, 4)")
+    if transforms.shape[0] < 1 or not np.all(np.isfinite(transforms)):
+        raise ValueError("transforms must be non-empty and finite")
+    result = _output_buffer(output, (transforms.shape[0], 4, 4))
+    cpp = _load_cpp_transforms(get_backend())
+    if cpp is not None and callable(getattr(cpp, "compose_transform_batch", None)):
+        return np.asarray(
+            cpp.compose_transform_batch(np.ascontiguousarray(transforms), result), dtype=float
+        )
+    result[...] = np.eye(4, dtype=float)
+    for index, chain in enumerate(transforms):
+        for transform in chain:
+            result[index] = result[index] @ transform
+    return result
+
+
+def _slerp(first, second, alpha):
+    first = np.asarray(first, dtype=float).reshape(4)
+    second = np.asarray(second, dtype=float).reshape(4)
+    dot = float(np.dot(first, second))
+    if dot < 0.0:
+        second = -second
+        dot = -dot
+    if dot > 0.9995:
+        value = first + float(alpha) * (second - first)
+        return value / np.linalg.norm(value)
+    angle = np.arccos(np.clip(dot, -1.0, 1.0))
+    weights = np.sin((1.0 - float(alpha)) * angle), np.sin(float(alpha) * angle)
+    return (weights[0] * first + weights[1] * second) / np.sin(angle)
+
+
+def interpolate_pose_batch(start, end, alphas, *, output=None):
+    """Interpolate one pair of poses at multiple fractions.
+
+    Translation is linear and orientation uses quaternion SLERP.  The result
+    has shape ``(n_alphas, 4, 4)`` and can be written into ``output``.
+    """
+
+    start = np.asarray(start, dtype=float)
+    end = np.asarray(end, dtype=float)
+    alphas = np.asarray(alphas, dtype=float).reshape(-1)
+    if start.shape != (4, 4) or end.shape != (4, 4):
+        raise ValueError("start and end must have shape (4, 4)")
+    if alphas.size < 1 or not np.all(np.isfinite(np.concatenate((start.ravel(), end.ravel(), alphas)))):
+        raise ValueError("start, end, and alphas must be non-empty and finite")
+    result = _output_buffer(output, (alphas.size, 4, 4))
+    cpp = _load_cpp_transforms(get_backend())
+    if cpp is not None and callable(getattr(cpp, "interpolate_pose_batch", None)):
+        return np.asarray(
+            cpp.interpolate_pose_batch(
+                np.ascontiguousarray(start),
+                np.ascontiguousarray(end),
+                np.ascontiguousarray(alphas),
+                result,
+            ),
+            dtype=float,
+        )
+    first = matrix_to_quaternion(start[:3, :3])
+    second = matrix_to_quaternion(end[:3, :3])
+    for index, alpha in enumerate(alphas):
+        result[index] = homogeneous_transform(
+            quaternion_to_matrix(_slerp(first, second, alpha)),
+            start[:3, 3] + alpha * (end[:3, 3] - start[:3, 3]),
+        )
+    return result
 
 
 def transform_points(T, points):

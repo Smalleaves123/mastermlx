@@ -16,7 +16,7 @@ from .constraints import validate_joint_limits
 from .model import RobotModel
 from .results import JointTrajectory, RobotResult
 from .trajectory import _retime_quintic_path_compiled, sample_joint_trajectory_segments
-from .transforms import homogeneous_transform, matrix_to_quaternion, quaternion_to_matrix
+from .transforms import homogeneous_transform, interpolate_pose_batch
 
 
 _QUINTIC_MAX_VELOCITY = 1.875
@@ -50,20 +50,6 @@ def _orientation_error(actual, target):
     rotation = target[:3, :3] @ actual[:3, :3].T
     cosine = np.clip((np.trace(rotation) - 1.0) / 2.0, -1.0, 1.0)
     return float(np.arccos(cosine))
-
-
-def _slerp(first, second, alpha):
-    first = np.asarray(first, dtype=float).reshape(4)
-    second = np.asarray(second, dtype=float).reshape(4)
-    dot = float(np.dot(first, second))
-    if dot < 0.0:
-        second = -second
-        dot = -dot
-    if dot > 0.9995:
-        return (first + float(alpha) * (second - first)) / np.linalg.norm(first + float(alpha) * (second - first))
-    angle = np.arccos(np.clip(dot, -1.0, 1.0))
-    weights = np.sin((1.0 - float(alpha)) * angle), np.sin(float(alpha) * angle)
-    return (weights[0] * first + weights[1] * second) / np.sin(angle)
 
 
 class RobotWorkcell(BaseExperiment):
@@ -259,15 +245,8 @@ class RobotWorkcell(BaseExperiment):
                 for alpha in np.linspace(0.0, 1.0, steps_per_segment + 1)[1:]:
                     interpolated.append(start_position + alpha * (target - start_position))
             else:
-                start_position = current_pose[:3, 3]
-                start_quaternion = matrix_to_quaternion(current_pose[:3, :3])
-                target_quaternion = matrix_to_quaternion(target[:3, :3])
-                for alpha in np.linspace(0.0, 1.0, steps_per_segment + 1)[1:]:
-                    pose = homogeneous_transform(
-                        quaternion_to_matrix(_slerp(start_quaternion, target_quaternion, alpha)),
-                        start_position + alpha * (target[:3, 3] - start_position),
-                    )
-                    interpolated.append(pose)
+                alphas = np.linspace(0.0, 1.0, steps_per_segment + 1)[1:]
+                interpolated.extend(interpolate_pose_batch(current_pose, target, alphas))
             current_pose = target if target.shape == (4, 4) else homogeneous_transform(current_pose[:3, :3], target)
 
         ik_result = self.solve_tcp_path(

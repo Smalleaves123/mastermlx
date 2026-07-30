@@ -14,6 +14,9 @@ from mastermlx.robotics import (
     SphereObstacle,
     chain_clearance_batch,
     chain_collision_free_batch,
+    compose_transform_batch,
+    homogeneous_transform,
+    interpolate_pose_batch,
     robotics_backend_report,
 )
 from mastermlx.robotics import RobotWorkcell
@@ -61,6 +64,21 @@ def main():
     retime_path = configurations[:32]
     ik_targets = robot.positions_batch(configurations[:64])
     ik_seeds = np.zeros((ik_targets.shape[0], robot.n_joints), dtype=float)
+    transform_pairs = np.asarray(
+        [
+            [
+                homogeneous_transform(np.eye(3), [0.1, 0.0, 0.0]),
+                homogeneous_transform(np.eye(3), [0.0, 0.2, 0.0]),
+            ]
+        ]
+        * configurations.shape[0]
+    )
+    pose_start = homogeneous_transform(np.eye(3), [0.0, 0.0, 0.0])
+    pose_end = homogeneous_transform(
+        np.array([[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]),
+        [1.0, 0.5, 0.2],
+    )
+    pose_alphas = np.linspace(0.0, 1.0, configurations.shape[0])
     print(f"Robot backend requested: {get_backend()}")
     print(f"Robot backend capabilities: {robotics_backend_report()}")
     old = get_backend()
@@ -86,6 +104,10 @@ def main():
                     clearance=0.0,
                     link_radius=0.02,
                 )
+            )
+            compose_time, composed = bench(lambda: compose_transform_batch(transform_pairs))
+            interpolate_time, interpolated_poses = bench(
+                lambda: interpolate_pose_batch(pose_start, pose_end, pose_alphas)
             )
             retime_time, retimed = bench(
                 lambda: workcell.retime_joint_path(
@@ -113,6 +135,8 @@ def main():
                 f"velocity={velocity_time:.5f}s ({velocity.shape})  "
                 f"clearance_batch={clearance_time:.5f}s ({clearances.shape})  "
                 f"broadphase={broadphase_time:.5f}s ({free.shape})  "
+                f"compose_batch={compose_time:.5f}s ({composed.shape})  "
+                f"pose_interp={interpolate_time:.5f}s ({interpolated_poses.shape})  "
                 f"retime={retime_time:.5f}s ({retimed['position'].shape})  "
                 f"ik_batch={ik_time:.5f}s ({ik_solutions.shape})"
             )

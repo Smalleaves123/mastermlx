@@ -35,6 +35,7 @@ development model.
   - C++ AABB broad-phase collision filtering for workcell path checks
   - C++ quintic retiming with velocity, acceleration, and jerk limits
   - C++ batch position IK with damped least-squares and warm-start support
+  - C++ batched transform composition and pose interpolation with reusable output buffers
 
 ## Next priority batches
 
@@ -84,9 +85,8 @@ Suggested kernels:
 
 For robotics, the next C++ candidates should be chosen in this order:
 
-1. Transform composition and pose interpolation with reusable output buffers.
-2. Batch trajectory diagnostics and reusable output buffers.
-3. Parallel planning queries with bounded, deterministic worker pools.
+1. Batch trajectory diagnostics and reusable output buffers.
+2. Parallel planning queries with bounded, deterministic worker pools.
 
 Each candidate should expose a small typed-array contract, retain the current
 Python implementation as a fallback, and be admitted only when a workload

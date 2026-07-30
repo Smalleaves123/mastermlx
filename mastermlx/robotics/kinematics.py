@@ -62,10 +62,12 @@ def robotics_backend_report() -> dict[str, str | bool]:
     cpp = _load_cpp_kinematics(requested)
     from .collision import _load_cpp_collision
     from .trajectory import _load_cpp_retiming
+    from .transforms import _load_cpp_transforms
 
     cpp_collision = _load_cpp_collision(requested)
     cpp_retiming = _load_cpp_retiming(requested)
     cpp_ik = _load_cpp_ik(requested)
+    cpp_transforms = _load_cpp_transforms(requested)
     cython = _cy_forward_kinematics_batch_dh is not None
     if requested == "numpy":
         active = "numpy"
@@ -84,6 +86,7 @@ def robotics_backend_report() -> dict[str, str | bool]:
         and callable(getattr(cpp_collision, "chain_collision_free_batch", None)),
         "cpp_retiming": cpp_retiming is not None,
         "cpp_ik": cpp_ik is not None,
+        "cpp_transforms": cpp_transforms is not None,
         "cython_kinematics": cython,
     }
 

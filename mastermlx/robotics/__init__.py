@@ -2,8 +2,10 @@
 
 from .transforms import (
     compose_transform,
+    compose_transform_batch,
     euler_to_matrix,
     homogeneous_transform,
+    interpolate_pose_batch,
     invert_transform,
     matrix_to_euler,
     matrix_to_quaternion,
@@ -71,6 +73,7 @@ __all__ = [
     "check_joint_limits",
     "chain_positions",
     "compose_transform",
+    "compose_transform_batch",
     "cubic_time_scaling",
     "clip_joint_values",
     "dh_transform",
@@ -81,6 +84,7 @@ __all__ = [
     "geometric_jacobian",
     "geometric_jacobian_batch",
     "homogeneous_transform",
+    "interpolate_pose_batch",
     "invert_transform",
     "inverse_kinematics",
     "inverse_kinematics_batch",

@@ -1,12 +1,16 @@
 import numpy as np
 
+from mastermlx import get_backend, set_backend
 from mastermlx.robotics import (
     DHLink,
+    compose_transform_batch,
     cubic_time_scaling,
     invert_transform,
     forward_kinematics,
     geometric_jacobian,
+    homogeneous_transform,
     inverse_kinematics,
+    interpolate_pose_batch,
     joint_trajectory,
     plan_joint_path,
     plan_joint_trajectory,
@@ -21,6 +25,7 @@ from mastermlx.robotics import (
     sample_joint_trajectory_segments,
     urdf_to_dh_chain,
     transform_points,
+    rot_x,
     rot_z,
 )
 
@@ -52,6 +57,47 @@ def test_transform_points_and_inverse_transform():
     back = transform_points(inv, out)
     assert np.allclose(out, np.array([[1.0, 3.0, 3.0], [0.0, 2.0, 3.0]]))
     assert np.allclose(back, pts)
+
+
+def test_transform_batches_support_reusable_output_buffers():
+    first = homogeneous_transform(rot_z(0.3), [1.0, 0.0, 0.0])
+    second = homogeneous_transform(rot_z(-0.2), [0.0, 2.0, 0.0])
+    transforms = np.asarray([[first, second], [second, first]])
+    output = np.empty((2, 4, 4), dtype=float)
+    result = compose_transform_batch(transforms, output=output)
+    assert result is output
+    assert np.allclose(result, [first @ second, second @ first])
+
+
+def test_pose_interpolation_uses_linear_translation_and_slerp():
+    start = homogeneous_transform(rot_x(0.2), [0.0, 1.0, 2.0])
+    end = homogeneous_transform(rot_z(np.pi), [3.0, -1.0, 4.0])
+    output = np.empty((5, 4, 4), dtype=float)
+    result = interpolate_pose_batch(start, end, np.linspace(0.0, 1.0, 5), output=output)
+    assert result is output
+    assert np.allclose(result[0], start)
+    assert np.allclose(result[-1], end)
+    assert np.allclose(result[2, :3, 3], [1.5, 0.0, 3.0])
+    assert np.allclose(result[:, 3, :], np.array([0.0, 0.0, 0.0, 1.0]))
+
+
+def test_transform_batches_keep_numpy_backend_parity():
+    first = homogeneous_transform(rot_x(0.2), [1.0, 0.0, 0.0])
+    second = homogeneous_transform(rot_z(-0.7), [0.0, 2.0, 0.0])
+    transforms = np.asarray([[first, second], [second, first]])
+    alphas = np.linspace(0.0, 1.0, 7)
+    old = get_backend()
+    try:
+        set_backend("numpy")
+        expected_composed = compose_transform_batch(transforms)
+        expected_poses = interpolate_pose_batch(first, second, alphas)
+        set_backend("auto")
+        actual_composed = compose_transform_batch(transforms)
+        actual_poses = interpolate_pose_batch(first, second, alphas)
+    finally:
+        set_backend(old)
+    assert np.allclose(actual_composed, expected_composed, atol=1e-12)
+    assert np.allclose(actual_poses, expected_poses, atol=1e-12)
 
 
 def test_forward_kinematics_planar_2r():
