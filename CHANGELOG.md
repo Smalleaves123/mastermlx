@@ -153,3 +153,4 @@ Initial public release of `mastermlx`.
 - Top-level API with classic ML algorithms
 - Math tools for metrics, distance functions, kernels, statistics, and time series
 - Optional C++ and Cython acceleration
+- Added an optional C++ backend for batched DH forward kinematics and geometric Jacobians; `auto` selects it when compiled.

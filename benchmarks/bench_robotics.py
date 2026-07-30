@@ -7,7 +7,7 @@ import time
 import numpy as np
 
 from mastermlx import get_backend, set_backend
-from mastermlx.robotics import RobotModel
+from mastermlx.robotics import RobotModel, robotics_backend_report
 
 
 def bench(fn, n_runs=3):
@@ -41,6 +41,7 @@ def main():
     q = configurations[0]
     qd = rng.normal(0.0, 0.2, size=robot.n_joints)
     print(f"Robot backend requested: {get_backend()}")
+    print(f"Robot backend capabilities: {robotics_backend_report()}")
     old = get_backend()
     try:
         for backend in ("numpy", "auto"):

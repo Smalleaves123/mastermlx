@@ -24,6 +24,7 @@ from .kinematics import (
     forward_kinematics_batch,
     inverse_kinematics,
     inverse_kinematics_batch,
+    robotics_backend_report,
 )
 from .constraints import check_joint_limits, clip_joint_values, joint_limit_violation, validate_joint_limits
 from .jacobian import finite_difference_jacobian, geometric_jacobian, geometric_jacobian_batch, planar_2r_jacobian
@@ -79,6 +80,7 @@ __all__ = [
     "invert_transform",
     "inverse_kinematics",
     "inverse_kinematics_batch",
+    "robotics_backend_report",
     "joint_limit_violation",
     "joint_trajectory",
     "plan_joint_path",

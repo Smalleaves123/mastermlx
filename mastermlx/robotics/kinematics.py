@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
+import importlib
 from typing import Any
 
 import numpy as np
@@ -23,6 +25,42 @@ except ImportError:  # pragma: no cover - fallback when Cython extensions are un
 
 
 _PACKED_LINKS_CACHE: dict[tuple[Any, ...], Any] = {}
+
+
+@lru_cache(maxsize=3)
+def _load_cpp_kinematics(backend=None):
+    """Load the optional C++ batch kernels for the auto backend."""
+
+    if backend is None:
+        backend = get_backend()
+    if backend != "auto":
+        return None
+    try:
+        return importlib.import_module("mastermlx.robotics._kinematics_cpp")
+    except ImportError:
+        return None
+
+
+def robotics_backend_report() -> dict[str, str | bool]:
+    """Report availability and selection of compiled robotics kernels."""
+
+    requested = get_backend()
+    cpp = _load_cpp_kinematics(requested)
+    cython = _cy_forward_kinematics_batch_dh is not None
+    if requested == "numpy":
+        active = "numpy"
+    elif requested == "auto" and cpp is not None:
+        active = "cpp"
+    elif cython:
+        active = "cython"
+    else:
+        active = "numpy"
+    return {
+        "requested": requested,
+        "active": active,
+        "cpp_kinematics": cpp is not None,
+        "cython_kinematics": cython,
+    }
 
 
 @dataclass(frozen=True)
@@ -173,6 +211,14 @@ def forward_kinematics_batch(links, joint_values, base=None, tool=None):
     if not np.all(np.isfinite(q)):
         raise ValueError("joint_values must contain only finite values")
     q = np.ascontiguousarray(q)
+    cpp = _load_cpp_kinematics(get_backend())
+    if cpp is not None and callable(getattr(cpp, "forward_kinematics_batch_dh", None)):
+        return np.asarray(
+            cpp.forward_kinematics_batch_dh(
+                a, alpha, d, theta, joint_type, offset, q, base=base, tool=tool
+            ),
+            dtype=float,
+        )
     if get_backend() != "numpy" and _cy_forward_kinematics_batch_dh is not None:
         return np.asarray(
             _cy_forward_kinematics_batch_dh(
@@ -250,6 +296,14 @@ def _geometric_jacobian_packed(a, alpha, d, theta, joint_type, offset, q, base=N
 
 
 def _geometric_jacobian_batch_packed(a, alpha, d, theta, joint_type, offset, q, base=None, tool=None):
+    cpp = _load_cpp_kinematics(get_backend())
+    if cpp is not None and callable(getattr(cpp, "geometric_jacobian_batch_dh", None)):
+        return np.asarray(
+            cpp.geometric_jacobian_batch_dh(
+                a, alpha, d, theta, joint_type, offset, q, base=base, tool=tool
+            ),
+            dtype=float,
+        )
     if get_backend() != "numpy" and _cy_geometric_jacobian_batch_dh is not None:
         return np.asarray(
             _cy_geometric_jacobian_batch_dh(
