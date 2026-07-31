@@ -95,3 +95,15 @@ def test_world_trajectory_follow():
     assert controls.shape == (3, 2)
     assert np.all(np.isfinite(states))
     assert all(p.shape == (4, 4) for p in poses)
+
+
+def test_lidar_scan_skips_non_circular_obstacles():
+    robot = RobotModel.from_dh(_planar_2r_dh())
+    world = SimpleWorld(robot)
+    world.add_box(lower=(1.0, -0.5), upper=(1.5, 0.5))
+    world.add_capsule(start=(2.0, -0.2), end=(2.0, 0.2), radius=0.1)
+
+    angles, ranges = world.lidar_scan([0.0, 0.0], num_rays=16, max_range=5.0)
+
+    assert angles.shape == (16,)
+    assert np.all(ranges == 5.0)

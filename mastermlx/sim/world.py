@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import json
 from pathlib import Path
+from typing import TypeAlias
 
 import numpy as np
 
@@ -25,12 +26,15 @@ class CircleObstacle:
     radius: float
 
 
+Obstacle: TypeAlias = CircleObstacle | SphereObstacle | BoxObstacle | CapsuleObstacle
+
+
 @dataclass
 class SimpleWorld:
     """Minimal 2D world containing one robot and circular obstacles."""
 
     robot: RobotModel
-    obstacles: list[CircleObstacle] = field(default_factory=list)
+    obstacles: list[Obstacle] = field(default_factory=list)
 
     def add_obstacle(self, center, radius):
         values = tuple(map(float, center))
@@ -111,6 +115,10 @@ class SimpleWorld:
         for i, angle in enumerate(angles):
             direction = np.array([np.cos(angle), np.sin(angle)], dtype=float)
             for obstacle in self.obstacles:
+                if not isinstance(obstacle, (CircleObstacle, SphereObstacle)):
+                    continue
+                if len(obstacle.center) != 2:
+                    continue
                 c = np.asarray(obstacle.center, dtype=float)
                 oc = origin - c
                 b = 2.0 * np.dot(direction, oc)
@@ -129,15 +137,16 @@ class SimpleWorld:
         if points.shape[1] == 2:
             import matplotlib.pyplot as plt
             for obstacle in self.obstacles:
-                if hasattr(obstacle, "center") and len(obstacle.center) == 2:
+                if isinstance(obstacle, (CircleObstacle, SphereObstacle)) and len(obstacle.center) == 2:
                     circle = plt.Circle(obstacle.center, obstacle.radius, fill=False, linestyle="--")
                     ax.add_patch(circle)
-                elif hasattr(obstacle, "lower") and len(obstacle.lower) == 2:
+                elif isinstance(obstacle, BoxObstacle) and len(obstacle.lower) == 2:
                     lower = np.asarray(obstacle.lower, dtype=float)
                     upper = np.asarray(obstacle.upper, dtype=float)
                     rect = plt.Rectangle(
-                        lower,
-                        *(upper - lower),
+                        (float(lower[0]), float(lower[1])),
+                        float(upper[0] - lower[0]),
+                        float(upper[1] - lower[1]),
                         fill=False,
                         linestyle="--",
                     )

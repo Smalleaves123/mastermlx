@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+import logging
+
 import numpy as np
 
 from ..utils.array import batch_iterator
 from ..utils.random import resolve_rng
 from .callbacks import History
+
+
+logger = logging.getLogger(__name__)
 
 
 def run_supervised_training_loop(
@@ -86,9 +91,14 @@ def run_supervised_training_loop(
 
         if verbose:
             if val_loss is None:
-                print(f"epoch={epoch + 1} loss={train_loss:.6f}")
+                logger.info("epoch=%d loss=%.6f", epoch + 1, train_loss)
             else:
-                print(f"epoch={epoch + 1} loss={train_loss:.6f} val_loss={monitor_loss:.6f}")
+                logger.info(
+                    "epoch=%d loss=%.6f val_loss=%.6f",
+                    epoch + 1,
+                    train_loss,
+                    monitor_loss,
+                )
 
         logs = {
             "train_loss": float(train_loss),

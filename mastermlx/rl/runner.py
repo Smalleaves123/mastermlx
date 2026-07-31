@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+import logging
+
 import numpy as np
+
+
+logger = logging.getLogger(__name__)
 
 
 def run_episode(env, agent, max_steps=200, train=True):
@@ -79,7 +84,12 @@ def train_tabular(env, agent, episodes=1000, max_steps=200, verbose=False):
         total = run_episode(env, agent, max_steps=max_steps)
         rewards.append(total)
         if verbose and (ep + 1) % max(1, episodes // 10) == 0:
-            print(f"  ep {ep + 1}/{episodes}  avg_reward={np.mean(rewards[-100:]):.2f}")
+            logger.info(
+                "ep %d/%d avg_reward=%.2f",
+                ep + 1,
+                episodes,
+                np.mean(rewards[-100:]),
+            )
     return rewards
 
 
