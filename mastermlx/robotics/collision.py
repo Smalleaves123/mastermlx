@@ -628,10 +628,33 @@ def chain_collision_report(points, obstacles, *, link_radius=0.0):
     })
 
 
-def robot_collision_report(robot, joint_values=None, obstacles: Iterable[object] = (), *, link_radius=0.0):
+def robot_collision_report(
+    robot,
+    joint_values=None,
+    obstacles: Iterable[object] = (),
+    *,
+    link_radius=0.0,
+    occupancy_grid=None,
+):
     """Return collision diagnostics for a robot model at one configuration."""
 
-    return chain_collision_report(robot.positions(joint_values), obstacles, link_radius=link_radius)
+    frame_positions = getattr(robot, "frame_positions", robot.positions)
+    chain = frame_positions(joint_values)
+    report = chain_collision_report(chain, obstacles, link_radius=link_radius)
+    if occupancy_grid is None:
+        return report
+    occupancy_clearance = occupancy_grid.polyline_minimum_clearance(chain, radius=link_radius)
+    if occupancy_clearance < report["minimum_clearance"]:
+        report["minimum_clearance"] = float(occupancy_clearance)
+        report["closest"] = {
+            "kind": "occupancy",
+            "index": None,
+            "obstacle_index": None,
+            "clearance": float(occupancy_clearance),
+        }
+    report["occupancy_clearance"] = float(occupancy_clearance)
+    report["collision"] = bool(report["collision"] or occupancy_clearance <= 0.0)
+    return report
 
 
 def _interpolate_joint_path(path, interpolation_step):
@@ -666,6 +689,7 @@ def path_collision_free(
     clearance=0.0,
     link_radius=0.0,
     interpolation_step=0.05,
+    occupancy_grid=None,
 ):
     """Return whether every interpolated path sample meets ``clearance``.
 
@@ -675,16 +699,22 @@ def path_collision_free(
 
     samples = _path_samples(robot, joint_path, interpolation_step)
     points = robot.frame_positions_batch(samples)
-    return bool(
-        np.all(
-            chain_collision_free_batch(
-                points,
-                obstacles,
-                clearance=clearance,
-                link_radius=link_radius,
-            )
-        )
+    geometric_free = chain_collision_free_batch(
+        points,
+        obstacles,
+        clearance=clearance,
+        link_radius=link_radius,
     )
+    if occupancy_grid is None:
+        return bool(np.all(geometric_free))
+    occupancy_free = np.asarray(
+        [
+            occupancy_grid.polyline_collision_free(chain, radius=link_radius)
+            for chain in points
+        ],
+        dtype=bool,
+    )
+    return bool(np.all(geometric_free & occupancy_free))
 
 
 def path_collision_summary(
@@ -694,6 +724,7 @@ def path_collision_summary(
     *,
     link_radius=0.0,
     interpolation_step=0.05,
+    occupancy_grid=None,
 ):
     """Return batched collision diagnostics along an interpolated joint path.
 
@@ -706,9 +737,23 @@ def path_collision_summary(
     points = robot.frame_positions_batch(samples)
     summary = chain_collision_summary_batch(points, obstacles, link_radius=link_radius)
     clearances = summary["minimum_clearance"]
+    if occupancy_grid is not None:
+        occupancy_clearances = np.asarray(
+            [
+                occupancy_grid.minimum_clearance(chain, radius=link_radius)
+                for chain in points
+            ],
+            dtype=float,
+        )
+        clearances = np.minimum(clearances, occupancy_clearances)
+        summary["collision"] = np.asarray(summary["collision"], dtype=bool) | (
+            occupancy_clearances <= 0.0
+        )
+    else:
+        occupancy_clearances = None
     collision_indices = np.flatnonzero(summary["collision"])
     finite = clearances[np.isfinite(clearances)]
-    return RobotResult({
+    result = {
         "collision": bool(collision_indices.size),
         "minimum_clearance": float("inf") if finite.size == 0 else float(np.min(finite)),
         "first_collision_index": None if collision_indices.size == 0 else int(collision_indices[0]),
@@ -718,7 +763,10 @@ def path_collision_summary(
         "closest_kind": summary["closest_kind"],
         "closest_index": summary["closest_index"],
         "closest_obstacle_index": summary["closest_obstacle_index"],
-    })
+    }
+    if occupancy_clearances is not None:
+        result["occupancy_clearances"] = occupancy_clearances
+    return RobotResult(result)
 
 
 def path_collision_report(
@@ -728,6 +776,7 @@ def path_collision_report(
     *,
     link_radius=0.0,
     interpolation_step=0.05,
+    occupancy_grid=None,
 ):
     """Return collision and clearance diagnostics along a joint-space path."""
 
@@ -735,7 +784,15 @@ def path_collision_report(
     samples = _path_samples(robot, joint_path, interpolation_step)
     reports = []
     for q in samples:
-        reports.append(robot_collision_report(robot, q, obstacles, link_radius=link_radius))
+        reports.append(
+            robot_collision_report(
+                robot,
+                q,
+                obstacles,
+                link_radius=link_radius,
+                occupancy_grid=occupancy_grid,
+            )
+        )
     clearances = np.asarray([report["minimum_clearance"] for report in reports], dtype=float)
     finite = clearances[np.isfinite(clearances)]
     minimum = float("inf") if finite.size == 0 else float(np.min(finite))

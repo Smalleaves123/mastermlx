@@ -14,6 +14,10 @@ It gives you a broad set of classic ML algorithms, math utilities, and optional 
 - Optional C++ and Cython backends for speed-critical paths
 - Pure Python fallback when compiled extensions are not available
 - Robotics foundations for transforms, kinematics, trajectories, Jacobians, canonical model aliases, and batch evaluation
+- General serial URDF spatial kinematics with arbitrary joint axes, batched FK/Jacobians, and damped task-space IK
+- 3D sphere/box/capsule collision checks and NumPy-only voxel occupancy maps from point clouds
+- Joint-path optimization with curvature, reference-path, joint-limit, and workcell clearance costs
+- Optional MPC trajectory tracking in the virtual joint-space simulator
 - Planar workcell workflow with configurable joint limits, Cartesian task interpolation, pick-and-place cycles with gripper events, clearance-aware paths, constrained retiming, kinematic diagnostics, virtual tracking, and CSV/JSON exports
 - Control foundations for PID, LQR, MPC, and iLQR optimization control
 - Optional C++/Cython acceleration for control, robotics, estimation, distance, kernels, particle filters, and time-series hot paths

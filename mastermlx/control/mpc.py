@@ -226,8 +226,16 @@ class LinearMPC:
         base = Sx @ x
         q = Su.T @ self._qbar @ (base - x_ref_seq.reshape(-1)) - self._rbar @ u_ref_seq.reshape(-1)
         lower, upper = self.u_bounds_
-        lower = -np.inf if lower is None else lower
-        upper = np.inf if upper is None else upper
+        lower = (
+            np.full(m * self.horizon, -np.inf, dtype=float)
+            if lower is None
+            else np.tile(lower, self.horizon)
+        )
+        upper = (
+            np.full(m * self.horizon, np.inf, dtype=float)
+            if upper is None
+            else np.tile(upper, self.horizon)
+        )
         sequence = self._u_sequence.reshape(-1).copy()
         self.qp_converged_ = False
         for iteration in range(1, self.qp_max_iter + 1):

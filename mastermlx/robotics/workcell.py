@@ -20,7 +20,12 @@ from .collision import (
 from .constraints import validate_joint_limits
 from .model import RobotModel
 from .results import JointTrajectory, RobotResult
-from .trajectory import _retime_quintic_path_compiled, sample_joint_trajectory_segments, trajectory_peaks_batch
+from .trajectory import (
+    _retime_quintic_path_compiled,
+    optimize_joint_path as _optimize_joint_path,
+    sample_joint_trajectory_segments,
+    trajectory_peaks_batch,
+)
 from .transforms import homogeneous_transform, interpolate_pose_batch
 
 
@@ -385,6 +390,86 @@ class RobotWorkcell(BaseExperiment):
             raise RuntimeError("planner returned a path that does not satisfy collision checks")
         return path
 
+    def optimize_joint_path(
+        self,
+        joint_path,
+        bounds=None,
+        *,
+        smoothness=1.0,
+        reference_weight=1.0,
+        collision_weight=1.0,
+        max_iter=100,
+        step_size=0.1,
+        tolerance=1e-6,
+        finite_difference_eps=1e-5,
+        clearance=0.0,
+        link_radius=0.0,
+        collision_step=0.05,
+    ):
+        """Optimize a joint path while retaining a collision-safe contract.
+
+        The optimizer minimizes path curvature and a reference-path penalty,
+        with a finite-difference clearance barrier from the workcell. Start
+        and goal configurations remain fixed. The returned result includes the
+        optimized path and a final collision summary; callers should check
+        ``result["collision_free"]`` before executing it.
+        """
+
+        path = np.asarray(joint_path, dtype=float)
+        if path.ndim != 2 or path.shape[0] < 2 or path.shape[1] != self.n_joints:
+            raise ValueError("joint_path must have shape (n_points, n_joints) with at least two points")
+        if not np.all(np.isfinite(path)):
+            raise ValueError("joint_path must contain only finite values")
+        bounds = self._resolve_bounds(bounds)
+        if np.any(path < bounds[:, 0]) or np.any(path > bounds[:, 1]):
+            raise ValueError("joint_path exceeds bounds")
+        clearance = float(clearance)
+        link_radius = float(link_radius)
+        collision_step = float(collision_step)
+        if clearance < 0.0 or link_radius < 0.0 or collision_step <= 0.0:
+            raise ValueError("clearance and link_radius must be non-negative; collision_step must be positive")
+
+        def collision_cost(candidate):
+            summary = self.path_collision_summary(
+                candidate,
+                link_radius=link_radius,
+                interpolation_step=collision_step,
+            )
+            clearances = np.asarray(summary["clearances"], dtype=float)
+            finite = clearances[np.isfinite(clearances)]
+            if finite.size == 0:
+                return 0.0
+            deficit = np.maximum(clearance - finite, 0.0)
+            penetration = np.maximum(-finite, 0.0)
+            return float(np.mean(deficit**2 + 10.0 * penetration**2))
+
+        result = _optimize_joint_path(
+            path,
+            smoothness=smoothness,
+            reference_weight=reference_weight,
+            path_cost=collision_cost,
+            path_cost_weight=collision_weight,
+            joint_limits=bounds,
+            max_iter=max_iter,
+            step_size=step_size,
+            tolerance=tolerance,
+            finite_difference_eps=finite_difference_eps,
+        )
+        optimized = np.asarray(result["path"], dtype=float)
+        collision = self.path_collision_summary(
+            optimized,
+            link_radius=link_radius,
+            interpolation_step=collision_step,
+        )
+        result["collision_free"] = bool(
+            not collision["collision"] and collision["minimum_clearance"] >= clearance
+        )
+        result["minimum_clearance"] = collision["minimum_clearance"]
+        result["collision_summary"] = collision
+        result["bounds"] = bounds
+        result["clearance"] = clearance
+        return result
+
     def plan_motion(
         self,
         q_start,
@@ -403,6 +488,8 @@ class RobotWorkcell(BaseExperiment):
         retime_kwargs=None,
         track=False,
         tracking_kwargs=None,
+        optimize_path=False,
+        optimization_kwargs=None,
         **planner_kwargs,
     ):
         """Plan, retime, and diagnose a joint-space motion in one call."""
@@ -419,6 +506,19 @@ class RobotWorkcell(BaseExperiment):
             workers=workers,
             **planner_kwargs,
         )
+        optimization = None
+        if optimize_path:
+            optimization_kwargs = {} if optimization_kwargs is None else dict(optimization_kwargs)
+            optimization_kwargs.setdefault("clearance", clearance)
+            optimization_kwargs.setdefault("collision_step", collision_step)
+            optimization = self.optimize_joint_path(
+                path,
+                bounds=bounds,
+                **optimization_kwargs,
+            )
+            if not optimization["collision_free"]:
+                raise RuntimeError("trajectory optimizer did not produce a collision-safe path")
+            path = np.asarray(optimization["path"], dtype=float)
         collision = path_collision_report(
             self.robot,
             path,
@@ -435,6 +535,10 @@ class RobotWorkcell(BaseExperiment):
             "clearance_margin": float(clearance),
             "clearance_violation": bool(collision["minimum_clearance"] < float(clearance)),
             "collision_samples": collision["n_samples"],
+            "optimized": optimization is not None,
+            "optimization_final_cost": None
+            if optimization is None
+            else float(optimization["final_cost"]),
         })
 
         retime_kwargs = {} if retime_kwargs is None else dict(retime_kwargs)
@@ -454,6 +558,7 @@ class RobotWorkcell(BaseExperiment):
             "path": path,
             "trajectory": trajectory,
             "tracking": tracking,
+            "optimization": optimization,
             "planning_report": planning_report,
             "collision_report": collision,
             "safety_report": safety,
@@ -707,8 +812,19 @@ class RobotWorkcell(BaseExperiment):
             jerk_limits=None if jerk_limits is None else jerk_limits.copy(),
         )
 
-    def simulate_tracking(self, trajectory, *, gains=(4.0, 0.4), dt=None, damping=0.0, state=None):
-        """Track a retimed or sampled joint trajectory in the virtual controller."""
+    def simulate_tracking(
+        self,
+        trajectory,
+        *,
+        gains=(4.0, 0.4),
+        dt=None,
+        damping=0.0,
+        state=None,
+        controller="pd",
+        mpc_kwargs=None,
+        control_limits=None,
+    ):
+        """Track a trajectory with the legacy PD or optional linear MPC controller."""
 
         if isinstance(trajectory, Mapping):
             reference = np.asarray(trajectory["position"], dtype=float)
@@ -746,13 +862,56 @@ class RobotWorkcell(BaseExperiment):
         else:
             simulation_time = np.arange(reference.shape[0], dtype=float) * dt
 
-        states, poses, controls = self.world.trajectory_follow(
-            reference,
-            gains=gains,
-            dt=dt,
-            damping=damping,
-            state=state,
-        )
+        controller_name = str(controller).lower()
+        if controller_name == "pd":
+            states, poses, controls = self.world.trajectory_follow(
+                reference,
+                gains=gains,
+                dt=dt,
+                damping=damping,
+                state=state,
+            )
+        elif controller_name == "mpc":
+            from ..control import LinearMPC
+            from ..sim.core import SimpleRobotSim
+
+            n_joints = self.n_joints
+            damping = float(damping)
+            if damping < 0.0 or not np.isfinite(damping):
+                raise ValueError("damping must be a non-negative finite value")
+            identity = np.eye(n_joints, dtype=float)
+            damping_factor = 1.0 - dt * damping
+            A = np.block([
+                [identity, dt * damping_factor * identity],
+                [np.zeros((n_joints, n_joints)), damping_factor * identity],
+            ])
+            B = np.vstack([dt**2 * identity, dt * identity])
+            mpc_options = {} if mpc_kwargs is None else dict(mpc_kwargs)
+            mpc_options.setdefault("horizon", max(2, min(20, reference.shape[0] - 1)))
+            mpc_options.setdefault(
+                "Q", np.diag(np.concatenate([np.full(n_joints, 10.0), np.ones(n_joints)]))
+            )
+            mpc_options.setdefault("R", 0.1 * identity)
+            mpc_options.setdefault("Qf", mpc_options["Q"])
+            if control_limits is not None and "u_bounds" not in mpc_options:
+                limits = _limits(control_limits, n_joints, "control_limits")
+                mpc_options["u_bounds"] = (-limits, limits)
+            controller_impl = LinearMPC(A, B, **mpc_options)
+            sim = SimpleRobotSim(self.robot, state=state, dt=dt, damping=damping)
+            states = [sim.state.copy()]
+            poses = [sim.pose()]
+            controls = []
+            for target in reference:
+                target_state = np.concatenate([target, np.zeros(n_joints, dtype=float)])
+                action = controller_impl.control(sim.state, x_ref=target_state)
+                controls.append(action)
+                sim.step(action)
+                states.append(sim.state.copy())
+                poses.append(sim.pose())
+            states = np.asarray(states)
+            controls = np.asarray(controls)
+        else:
+            raise ValueError("controller must be 'pd' or 'mpc'")
         actual = states[1:, : self.n_joints]
         joint_error = actual - reference
         return RobotResult({
@@ -764,6 +923,7 @@ class RobotWorkcell(BaseExperiment):
             "actual": actual,
             "joint_error": joint_error,
             "dt": dt,
+            "controller": controller_name,
         })
 
     def safety_report(self, trajectory, tracking=None, *, clearance_margin=0.0, singularity_threshold=1e-8):

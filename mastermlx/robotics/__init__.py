@@ -64,6 +64,7 @@ from .trajectory import (
     joint_trajectory,
     plan_joint_path,
     plan_joint_trajectory,
+    optimize_joint_path,
     smooth_joint_path,
     quintic_time_scaling,
     sample_joint_trajectory,
@@ -71,11 +72,13 @@ from .trajectory import (
     trajectory_peaks_batch,
 )
 from .model import RobotModel
+from .occupancy import VoxelOccupancyGrid
 from .results import JointTrajectory, RobotResult
 from .experiment import RobotExperiment, compare_robot_models
 from .workcell import RobotWorkcell
 from .state_estimation import PlanarPoseEKF, wrap_angle
-from .urdf_parser import URDFJoint, URDFLink, parse_urdf, urdf_to_dh_chain
+from .urdf_model import URDFRobotModel
+from .urdf_parser import URDFJoint, URDFLink, URDFSerialChain, parse_urdf, urdf_to_dh_chain
 from .visualizer import plot_chain
 
 __all__ = [
@@ -118,6 +121,7 @@ __all__ = [
     "joint_trajectory",
     "plan_joint_path",
     "plan_joint_trajectory",
+    "optimize_joint_path",
     "matrix_to_euler",
     "matrix_to_quaternion",
     "mass_matrix",
@@ -151,6 +155,9 @@ __all__ = [
     "segment_obstacle_clearance",
     "URDFJoint",
     "URDFLink",
+    "URDFRobotModel",
+    "URDFSerialChain",
+    "VoxelOccupancyGrid",
     "skew",
     "transform_points",
     "wrap_angle",

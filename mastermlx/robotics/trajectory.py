@@ -6,6 +6,8 @@ import importlib
 import numpy as np
 
 from ..config import get_backend
+from .constraints import validate_joint_limits
+from .results import RobotResult
 
 try:
     from ._trajectory_ops import sample_joint_trajectory as _cy_sample_joint_trajectory
@@ -332,6 +334,175 @@ def smooth_joint_path(reference_waypoints, smoothness=1.0, fixed_start=True, fix
     if fixed_goal:
         smoothed[-1] = reference_waypoints[-1]
     return smoothed
+
+
+def optimize_joint_path(
+    reference_waypoints,
+    *,
+    smoothness=1.0,
+    reference_weight=1.0,
+    path_cost=None,
+    path_cost_weight=1.0,
+    joint_limits=None,
+    max_iter=100,
+    step_size=0.1,
+    tolerance=1e-6,
+    finite_difference_eps=1e-5,
+    fixed_start=True,
+    fixed_goal=True,
+):
+    """Optimize a joint-space path with smoothness and optional path cost.
+
+    The objective combines a reference-path penalty with a squared
+    second-difference (curvature) penalty. ``path_cost`` may add a scalar cost
+    for the complete path, for example a collision or clearance barrier. Its
+    gradient is estimated only for movable interior waypoints, while the
+    smoothness gradient is analytic. Each update is projected into
+    ``joint_limits`` and accepted only when it reduces the objective.
+    """
+
+    reference = np.asarray(reference_waypoints, dtype=float)
+    if reference.ndim != 2 or reference.shape[0] < 2 or reference.shape[1] < 1:
+        raise ValueError("reference_waypoints must have shape (n_waypoints, n_joints)")
+    if not np.all(np.isfinite(reference)):
+        raise ValueError("reference_waypoints must contain only finite values")
+
+    smoothness = float(smoothness)
+    reference_weight = float(reference_weight)
+    path_cost_weight = float(path_cost_weight)
+    step_size = float(step_size)
+    tolerance = float(tolerance)
+    finite_difference_eps = float(finite_difference_eps)
+    max_iter = int(max_iter)
+    if smoothness < 0.0 or reference_weight < 0.0 or path_cost_weight < 0.0:
+        raise ValueError("cost weights must be non-negative")
+    if step_size <= 0.0 or tolerance <= 0.0 or finite_difference_eps <= 0.0:
+        raise ValueError("step_size, tolerance, and finite_difference_eps must be positive")
+    if max_iter < 1:
+        raise ValueError("max_iter must be at least 1")
+    if path_cost is not None and not callable(path_cost):
+        raise TypeError("path_cost must be callable or None")
+
+    limits = validate_joint_limits(joint_limits, reference.shape[1])
+    path = reference.copy()
+    if limits is not None and (
+        np.any(path < limits[:, 0]) or np.any(path > limits[:, 1])
+    ):
+        raise ValueError("reference_waypoints exceed joint_limits")
+
+    movable = np.arange(reference.shape[0])
+    if fixed_start:
+        movable = movable[1:]
+    if fixed_goal:
+        movable = movable[:-1]
+
+    def _custom_cost(candidate):
+        if path_cost is None or path_cost_weight == 0.0:
+            return 0.0
+        value = float(path_cost(candidate))
+        if not np.isfinite(value) or value < 0.0:
+            raise ValueError("path_cost must return a finite non-negative scalar")
+        return path_cost_weight * value
+
+    def _components(candidate):
+        differences = candidate[2:] - 2.0 * candidate[1:-1] + candidate[:-2]
+        reference_value = reference_weight * float(np.sum((candidate - reference) ** 2))
+        smooth_value = smoothness * float(np.sum(differences**2))
+        custom_value = _custom_cost(candidate)
+        return reference_value, smooth_value, custom_value
+
+    def _objective(candidate):
+        return float(sum(_components(candidate)))
+
+    def _analytic_gradient(candidate):
+        gradient = 2.0 * reference_weight * (candidate - reference)
+        if smoothness != 0.0 and candidate.shape[0] > 2:
+            differences = candidate[2:] - 2.0 * candidate[1:-1] + candidate[:-2]
+            gradient[:-2] += 2.0 * smoothness * differences
+            gradient[1:-1] -= 4.0 * smoothness * differences
+            gradient[2:] += 2.0 * smoothness * differences
+        return gradient
+
+    def _custom_gradient(candidate):
+        gradient = np.zeros_like(candidate)
+        if path_cost is None or path_cost_weight == 0.0:
+            return gradient
+        for row in movable:
+            for column in range(candidate.shape[1]):
+                plus = candidate.copy()
+                minus = candidate.copy()
+                plus[row, column] += finite_difference_eps
+                minus[row, column] -= finite_difference_eps
+                if limits is not None:
+                    plus[row, column] = np.clip(
+                        plus[row, column], limits[column, 0], limits[column, 1]
+                    )
+                    minus[row, column] = np.clip(
+                        minus[row, column], limits[column, 0], limits[column, 1]
+                    )
+                gradient[row, column] = (
+                    _custom_cost(plus) - _custom_cost(minus)
+                ) / (2.0 * finite_difference_eps)
+        return gradient
+
+    initial_components = _components(path)
+    initial_cost = float(sum(initial_components))
+    history = [initial_cost]
+    converged = not movable.size
+    message = "no movable interior waypoints" if converged else "maximum iterations reached"
+    iterations = 0
+
+    for iterations in range(1, max_iter + 1):
+        gradient = _analytic_gradient(path) + _custom_gradient(path)
+        if fixed_start:
+            gradient[0] = 0.0
+        if fixed_goal:
+            gradient[-1] = 0.0
+        gradient_norm = float(np.linalg.norm(gradient[movable])) if movable.size else 0.0
+        if gradient_norm <= tolerance:
+            converged = True
+            message = "gradient tolerance reached"
+            break
+
+        current_cost = history[-1]
+        accepted = False
+        local_step = step_size
+        for _ in range(20):
+            candidate = path.copy()
+            candidate[movable] -= local_step * gradient[movable]
+            if limits is not None:
+                candidate = np.clip(candidate, limits[:, 0], limits[:, 1])
+            if fixed_start:
+                candidate[0] = reference[0]
+            if fixed_goal:
+                candidate[-1] = reference[-1]
+            candidate_cost = _objective(candidate)
+            if candidate_cost < current_cost - tolerance * max(1.0, abs(current_cost)):
+                path = candidate
+                history.append(candidate_cost)
+                accepted = True
+                break
+            local_step *= 0.5
+        if not accepted:
+            converged = True
+            message = "line search reached a stationary point"
+            break
+
+    final_components = _components(path)
+    return RobotResult({
+        "path": path,
+        "initial_cost": initial_cost,
+        "final_cost": float(sum(final_components)),
+        "reference_cost": final_components[0],
+        "smoothness_cost": final_components[1],
+        "path_cost": final_components[2],
+        "iterations": iterations,
+        "converged": converged,
+        "message": message,
+        "history": np.asarray(history, dtype=float),
+        "fixed_start": bool(fixed_start),
+        "fixed_goal": bool(fixed_goal),
+    })
 
 
 def plan_joint_trajectory(q_start, q_goal, duration, num_waypoints=11, num_samples_per_segment=100, kind="quintic", smoothness=0.0, via_points=None):

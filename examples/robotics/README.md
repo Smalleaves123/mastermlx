@@ -7,6 +7,8 @@ This folder contains robotics demos for the `mastermlx.robotics` package.
 - forward and inverse kinematics on a small serial arm
 - joint-space trajectory planning and tracking
 - URDF-based model construction
+- spatial URDF kinematics with arbitrary joint axes and full-pose IK
+- spatial collision checks against analytic obstacles and point-cloud voxels
 - planar pose estimation with `PlanarPoseEKF`
 - the higher-level `RobotExperiment` workflow
 
@@ -21,3 +23,5 @@ This folder contains robotics demos for the `mastermlx.robotics` package.
 
 The high-level workflow demo lives in [`experiment_demo.py`](experiment_demo.py).
 The workcell planning workflow lives in [`workcell_planning_demo.py`](workcell_planning_demo.py).
+The general spatial URDF API is documented in
+[`docs/robotics_3d.md`](../../docs/robotics_3d.md).
