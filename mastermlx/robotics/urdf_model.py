@@ -19,6 +19,15 @@ from .collision import (
     robot_collision_report,
 )
 from .results import RobotResult
+from .dynamics import LinkInertia, normalize_link_inertias
+from .spatial_dynamics import (
+    spatial_computed_torque,
+    spatial_coriolis_forces,
+    spatial_forward_dynamics,
+    spatial_gravity_forces,
+    spatial_inverse_dynamics,
+    spatial_mass_matrix,
+)
 from .urdf_parser import URDFSerialChain
 
 
@@ -51,6 +60,7 @@ class URDFRobotModel:
     tool: np.ndarray | None = None
     joint_limits: np.ndarray | None = None
     resource_dir: str | Path | None = None
+    link_inertias: tuple[LinkInertia, ...] | None = None
 
     def __post_init__(self):
         if not isinstance(self.chain, URDFSerialChain):
@@ -65,6 +75,11 @@ class URDFRobotModel:
                 raise ValueError("tool must have shape (4, 4)")
         if self.resource_dir is not None:
             self.resource_dir = Path(self.resource_dir)
+        configured_inertias = self.chain.link_inertias if self.link_inertias is None else self.link_inertias
+        if configured_inertias and all(value is not None for value in configured_inertias):
+            self.link_inertias = normalize_link_inertias(configured_inertias, len(self.chain.joints))
+        elif self.link_inertias is not None:
+            self.link_inertias = normalize_link_inertias(self.link_inertias, len(self.chain.joints))
         limits = self.chain.joint_limits if self.joint_limits is None else self.joint_limits
         self.joint_limits = validate_joint_limits(limits, self.n_joints)
 
@@ -80,6 +95,7 @@ class URDFRobotModel:
         tool=None,
         joint_limits=None,
         resource_dir=None,
+        link_inertias=None,
     ):
         chain = URDFSerialChain.from_urdf(
             xml_text, base_link=base_link, tip_link=tip_link
@@ -91,6 +107,7 @@ class URDFRobotModel:
             tool=tool,
             joint_limits=joint_limits,
             resource_dir=resource_dir,
+            link_inertias=link_inertias,
         )
 
     @property
@@ -531,6 +548,112 @@ class URDFRobotModel:
 
     def geometric_jacobian(self, joint_values=None):
         return self.jacobian(joint_values=joint_values)
+
+    def mass_matrix(self, joint_values=None, *, link_inertias=None):
+        """Return the spatial URDF joint-space mass matrix."""
+
+        return spatial_mass_matrix(
+            self, joint_values, link_inertias=self.link_inertias if link_inertias is None else link_inertias
+        )
+
+    def gravity_forces(
+        self, joint_values=None, *, gravity=(0.0, 0.0, -9.81), link_inertias=None
+    ):
+        """Return gravity forces for a spatial URDF chain."""
+
+        return spatial_gravity_forces(
+            self,
+            joint_values,
+            gravity=gravity,
+            link_inertias=self.link_inertias if link_inertias is None else link_inertias,
+        )
+
+    def coriolis_forces(
+        self, joint_values, joint_velocities, *, link_inertias=None, epsilon=1e-6
+    ):
+        """Return Coriolis and centrifugal forces for a spatial URDF chain."""
+
+        return spatial_coriolis_forces(
+            self,
+            joint_values,
+            joint_velocities,
+            link_inertias=self.link_inertias if link_inertias is None else link_inertias,
+            epsilon=epsilon,
+        )
+
+    def inverse_dynamics(
+        self,
+        joint_values,
+        joint_velocities,
+        joint_accelerations,
+        *,
+        gravity=(0.0, 0.0, -9.81),
+        link_inertias=None,
+        include_coriolis=True,
+    ):
+        """Return spatial inverse-dynamics torques."""
+
+        return spatial_inverse_dynamics(
+            self,
+            joint_values,
+            joint_velocities,
+            joint_accelerations,
+            gravity=gravity,
+            link_inertias=self.link_inertias if link_inertias is None else link_inertias,
+            include_coriolis=include_coriolis,
+        )
+
+    def forward_dynamics(
+        self,
+        joint_values,
+        joint_velocities,
+        joint_torques,
+        *,
+        gravity=(0.0, 0.0, -9.81),
+        link_inertias=None,
+        include_coriolis=True,
+    ):
+        """Return spatial joint accelerations from applied torques."""
+
+        return spatial_forward_dynamics(
+            self,
+            joint_values,
+            joint_velocities,
+            joint_torques,
+            gravity=gravity,
+            link_inertias=self.link_inertias if link_inertias is None else link_inertias,
+            include_coriolis=include_coriolis,
+        )
+
+    def computed_torque_control(
+        self,
+        joint_values,
+        joint_velocities,
+        desired_positions,
+        desired_velocities=None,
+        desired_accelerations=None,
+        *,
+        kp=25.0,
+        kd=8.0,
+        gravity=(0.0, 0.0, -9.81),
+        link_inertias=None,
+        torque_limits=None,
+    ):
+        """Return a computed-torque control command for a desired joint state."""
+
+        return spatial_computed_torque(
+            self,
+            joint_values,
+            joint_velocities,
+            desired_positions,
+            desired_velocities,
+            desired_accelerations,
+            kp=kp,
+            kd=kd,
+            gravity=gravity,
+            link_inertias=self.link_inertias if link_inertias is None else link_inertias,
+            torque_limits=torque_limits,
+        )
 
     def jacobian_batch(self, joint_values):
         values = np.asarray(joint_values, dtype=float)

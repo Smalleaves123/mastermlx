@@ -6,6 +6,7 @@ import xml.etree.ElementTree as ET
 import numpy as np
 
 from .kinematics import DHLink
+from .dynamics import LinkInertia
 from .transforms import homogeneous_transform, rpy_to_matrix
 
 
@@ -39,6 +40,7 @@ class URDFCollision:
 class URDFLink:
     name: str
     collisions: tuple[URDFCollision, ...] = ()
+    inertia: LinkInertia | None = None
 
 
 def _normalize_joint_axis(axis):
@@ -129,6 +131,7 @@ class URDFSerialChain:
     tip_link: str
     joints: tuple[URDFJoint, ...]
     link_collisions: tuple[tuple[URDFCollision, ...], ...] = ()
+    link_inertias: tuple[LinkInertia | None, ...] = ()
 
     @classmethod
     def from_urdf(cls, xml_text, *, base_link=None, tip_link=None):
@@ -150,6 +153,7 @@ class URDFSerialChain:
             link_collisions=tuple(
                 link_map[name].collisions for name in chain_links
             ),
+            link_inertias=tuple(link_map[name].inertia for name in chain_links[1:]),
         )
 
     @property
@@ -336,7 +340,43 @@ def parse_urdf(xml_text):
                 if any(value <= 0.0 for value in kwargs["scale"]):
                     raise ValueError("URDF mesh scale must be positive")
             collisions.append(URDFCollision(**kwargs))
-        links.append(URDFLink(name=node.attrib["name"], collisions=tuple(collisions)))
+        inertial = node.find("inertial")
+        inertia = None
+        if inertial is not None:
+            mass_node = inertial.find("mass")
+            inertia_node = inertial.find("inertia")
+            if mass_node is None or inertia_node is None:
+                raise ValueError(f"URDF inertial on link {node.attrib['name']!r} is incomplete")
+            inertial_origin = inertial.find("origin")
+            center_of_mass = _parse_vector(
+                inertial_origin.attrib.get("xyz") if inertial_origin is not None else None, 3
+            )
+            inertia_values = np.asarray([
+                [float(inertia_node.attrib.get("ixx", "nan")), float(inertia_node.attrib.get("ixy", "nan")), float(inertia_node.attrib.get("ixz", "nan"))],
+                [float(inertia_node.attrib.get("ixy", "nan")), float(inertia_node.attrib.get("iyy", "nan")), float(inertia_node.attrib.get("iyz", "nan"))],
+                [float(inertia_node.attrib.get("ixz", "nan")), float(inertia_node.attrib.get("iyz", "nan")), float(inertia_node.attrib.get("izz", "nan"))],
+            ])
+            if not np.all(np.isfinite(inertia_values)):
+                raise ValueError(f"URDF inertia on link {node.attrib['name']!r} must be complete and finite")
+            if inertial_origin is not None:
+                inertia_values = (
+                    rpy_to_matrix(*_parse_vector(inertial_origin.attrib.get("rpy"), 3))
+                    @ inertia_values
+                    @ rpy_to_matrix(*_parse_vector(inertial_origin.attrib.get("rpy"), 3)).T
+                )
+            inertia_tuple = (
+                (float(inertia_values[0, 0]), float(inertia_values[0, 1]), float(inertia_values[0, 2])),
+                (float(inertia_values[1, 0]), float(inertia_values[1, 1]), float(inertia_values[1, 2])),
+                (float(inertia_values[2, 0]), float(inertia_values[2, 1]), float(inertia_values[2, 2])),
+            )
+            inertia = LinkInertia(
+                mass=float(mass_node.attrib.get("value", "nan")),
+                center_of_mass=center_of_mass,
+                inertia=inertia_tuple,
+            )
+        links.append(
+            URDFLink(name=node.attrib["name"], collisions=tuple(collisions), inertia=inertia)
+        )
     joints = []
     for node in root.findall("joint"):
         name = node.attrib["name"]

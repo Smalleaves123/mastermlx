@@ -7,7 +7,7 @@ import numpy as np
 
 from ..config import get_backend
 from .constraints import validate_joint_limits
-from .results import RobotResult
+from .results import JointTrajectory, RobotResult
 
 try:
     from ._trajectory_ops import sample_joint_trajectory as _cy_sample_joint_trajectory
@@ -336,6 +336,62 @@ def smooth_joint_path(reference_waypoints, smoothness=1.0, fixed_start=True, fix
     return smoothed
 
 
+_QUINTIC_MAX_VELOCITY = 1.875
+_QUINTIC_MAX_ACCELERATION = 10.0 / np.sqrt(3.0)
+_QUINTIC_MAX_JERK = 60.0
+
+
+def _constraint_durations(path, velocity_limits, acceleration_limits, jerk_limits, minimum_duration):
+    durations = []
+    for delta in np.abs(np.diff(path, axis=0)):
+        candidates = []
+        if velocity_limits is not None:
+            candidates.append(_QUINTIC_MAX_VELOCITY * delta / velocity_limits)
+        if acceleration_limits is not None:
+            candidates.append(np.sqrt(_QUINTIC_MAX_ACCELERATION * delta / acceleration_limits))
+        if jerk_limits is not None:
+            candidates.append(np.cbrt(_QUINTIC_MAX_JERK * delta / jerk_limits))
+        durations.append(max(float(minimum_duration), float(np.max(np.concatenate(candidates)))))
+    return np.asarray(durations, dtype=float)
+
+
+def _retime_path_with_limits(
+    path,
+    durations,
+    *,
+    num_samples_per_segment,
+    velocity_limits,
+    acceleration_limits,
+    jerk_limits,
+):
+    time, position, velocity, acceleration = sample_joint_trajectory_segments(
+        path,
+        durations,
+        num_samples_per_segment=num_samples_per_segment,
+        kind="quintic",
+    )
+    jerk_parts = []
+    for segment, duration in enumerate(durations):
+        tau = np.linspace(0.0, 1.0, num_samples_per_segment)
+        if segment > 0:
+            tau = tau[1:]
+        jerk_scale = (60.0 - 360.0 * tau + 360.0 * tau**2) / duration**3
+        jerk_parts.append(jerk_scale[:, None] * (path[segment + 1] - path[segment]))
+    jerk = np.concatenate(jerk_parts, axis=0)
+    return JointTrajectory(
+        time=time,
+        position=position,
+        velocity=velocity,
+        acceleration=acceleration,
+        jerk=jerk,
+        durations=durations,
+        path=path.copy(),
+        velocity_limits=None if velocity_limits is None else velocity_limits.copy(),
+        acceleration_limits=None if acceleration_limits is None else acceleration_limits.copy(),
+        jerk_limits=None if jerk_limits is None else jerk_limits.copy(),
+    )
+
+
 def optimize_joint_path(
     reference_waypoints,
     *,
@@ -350,6 +406,12 @@ def optimize_joint_path(
     finite_difference_eps=1e-5,
     fixed_start=True,
     fixed_goal=True,
+    velocity_limits=None,
+    acceleration_limits=None,
+    jerk_limits=None,
+    segment_durations=None,
+    num_samples_per_segment=101,
+    minimum_duration=1e-3,
 ):
     """Optimize a joint-space path with smoothness and optional path cost.
 
@@ -384,6 +446,54 @@ def optimize_joint_path(
         raise TypeError("path_cost must be callable or None")
 
     limits = validate_joint_limits(joint_limits, reference.shape[1])
+    motion_limits = [velocity_limits, acceleration_limits, jerk_limits]
+    normalized_motion_limits: list[np.ndarray | None] | None = None
+    if any(value is not None for value in motion_limits):
+        if velocity_limits is None and acceleration_limits is None and jerk_limits is None:
+            raise ValueError("at least one motion limit must be provided")
+        normalized_motion_limits = []
+        for value, name in zip(
+            motion_limits, ("velocity_limits", "acceleration_limits", "jerk_limits")
+        ):
+            if value is None:
+                normalized_motion_limits.append(None)
+                continue
+            array = np.asarray(value, dtype=float)
+            if array.ndim == 0:
+                array = np.full(reference.shape[1], float(array))
+            else:
+                array = array.reshape(-1)
+            if (
+                array.shape != (reference.shape[1],)
+                or not np.all(np.isfinite(array))
+                or np.any(array <= 0.0)
+            ):
+                raise ValueError(f"{name} must be a positive scalar or vector of length n_joints")
+            normalized_motion_limits.append(array)
+        velocity_limits, acceleration_limits, jerk_limits = normalized_motion_limits
+        minimum_duration = float(minimum_duration)
+        num_samples_per_segment = int(num_samples_per_segment)
+        if minimum_duration <= 0.0 or not np.isfinite(minimum_duration):
+            raise ValueError("minimum_duration must be positive and finite")
+        if num_samples_per_segment < 2:
+            raise ValueError("num_samples_per_segment must be at least 2")
+        if segment_durations is not None:
+            durations = np.asarray(segment_durations, dtype=float).reshape(-1)
+            if durations.size != reference.shape[0] - 1 or not np.all(np.isfinite(durations)):
+                raise ValueError("segment_durations must have one finite value per path segment")
+            if np.any(durations < minimum_duration):
+                raise ValueError("segment_durations must be at least minimum_duration")
+        else:
+            durations = _constraint_durations(
+                reference,
+                velocity_limits,
+                acceleration_limits,
+                jerk_limits,
+                minimum_duration,
+            )
+    else:
+        normalized_motion_limits = None
+        durations = None
     path = reference.copy()
     if limits is not None and (
         np.any(path < limits[:, 0]) or np.any(path > limits[:, 1])
@@ -489,7 +599,7 @@ def optimize_joint_path(
             break
 
     final_components = _components(path)
-    return RobotResult({
+    result = {
         "path": path,
         "initial_cost": initial_cost,
         "final_cost": float(sum(final_components)),
@@ -502,7 +612,23 @@ def optimize_joint_path(
         "history": np.asarray(history, dtype=float),
         "fixed_start": bool(fixed_start),
         "fixed_goal": bool(fixed_goal),
-    })
+    }
+    if normalized_motion_limits is not None:
+        trajectory = _retime_path_with_limits(
+            path,
+            durations,
+            num_samples_per_segment=num_samples_per_segment,
+            velocity_limits=velocity_limits,
+            acceleration_limits=acceleration_limits,
+            jerk_limits=jerk_limits,
+        )
+        result["trajectory"] = trajectory
+        result["motion_limits"] = {
+            "velocity": None if velocity_limits is None else velocity_limits.copy(),
+            "acceleration": None if acceleration_limits is None else acceleration_limits.copy(),
+            "jerk": None if jerk_limits is None else jerk_limits.copy(),
+        }
+    return RobotResult(result)
 
 
 def plan_joint_trajectory(q_start, q_goal, duration, num_waypoints=11, num_samples_per_segment=100, kind="quintic", smoothness=0.0, via_points=None):

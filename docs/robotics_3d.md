@@ -91,6 +91,34 @@ path = robot.plan_joint_path(
 The planner checks every interpolated edge against analytic obstacles and the
 optional occupancy grid, then performs a final safety check before returning.
 
+## Spatial dynamics and constrained trajectories
+
+URDF `<inertial>` blocks are parsed into `LinkInertia` values. Once every child
+link has mass properties, the model exposes:
+
+```python
+mass = robot.mass_matrix(q)
+gravity = robot.gravity_forces(q)
+torque = robot.inverse_dynamics(q, qd, qdd)
+acceleration = robot.forward_dynamics(q, qd, torque)
+command = robot.computed_torque_control(q, qd, q_target, torque_limits=limits)
+```
+
+Path optimization can also return a directly sampled, limit-aware trajectory:
+
+```python
+result = optimize_joint_path(
+    path,
+    velocity_limits=velocity_limits,
+    acceleration_limits=acceleration_limits,
+    jerk_limits=jerk_limits,
+)
+trajectory = result["trajectory"]
+```
+
+The trajectory is quintic-retimed and stores position, velocity,
+acceleration, jerk, durations, and the configured limits.
+
 ## Design boundary
 
 The current implementation intentionally rejects branching chains and URDF

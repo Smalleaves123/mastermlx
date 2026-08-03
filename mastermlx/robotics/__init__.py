@@ -76,6 +76,14 @@ from .trajectory import (
 )
 from .model import RobotModel
 from .occupancy import VoxelOccupancyGrid
+from .spatial_dynamics import (
+    spatial_computed_torque,
+    spatial_coriolis_forces,
+    spatial_forward_dynamics,
+    spatial_gravity_forces,
+    spatial_inverse_dynamics,
+    spatial_mass_matrix,
+)
 from .results import JointTrajectory, RobotResult
 from .experiment import RobotExperiment, compare_robot_models
 from .workcell import RobotWorkcell
@@ -142,6 +150,12 @@ __all__ = [
     "quaternion_to_matrix",
     "quintic_time_scaling",
     "smooth_joint_path",
+    "spatial_computed_torque",
+    "spatial_coriolis_forces",
+    "spatial_forward_dynamics",
+    "spatial_gravity_forces",
+    "spatial_inverse_dynamics",
+    "spatial_mass_matrix",
     "parse_urdf",
     "RobotModel",
     "RobotResult",

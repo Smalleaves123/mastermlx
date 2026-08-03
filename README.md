@@ -17,6 +17,8 @@ It gives you a broad set of classic ML algorithms, math utilities, and optional 
 - General serial URDF spatial kinematics with arbitrary joint axes, batched FK/Jacobians, and damped task-space IK
 - 3D sphere/box/capsule collision checks and NumPy-only voxel occupancy maps from point clouds
 - URDF collision boxes, primitives, OBJ/STL meshes, and spatial RRT/RRT* joint planning
+- Constraint-aware trajectory optimization with velocity, acceleration, and jerk limits
+- Spatial URDF dynamics with mass matrix, gravity, Coriolis, inverse/forward dynamics, and computed torque
 - Joint-path optimization with curvature, reference-path, joint-limit, and workcell clearance costs
 - Optional MPC trajectory tracking in the virtual joint-space simulator
 - Planar workcell workflow with configurable joint limits, Cartesian task interpolation, pick-and-place cycles with gripper events, clearance-aware paths, constrained retiming, kinematic diagnostics, virtual tracking, and CSV/JSON exports

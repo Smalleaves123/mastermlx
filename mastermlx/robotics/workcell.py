@@ -405,6 +405,12 @@ class RobotWorkcell(BaseExperiment):
         clearance=0.0,
         link_radius=0.0,
         collision_step=0.05,
+        velocity_limits=None,
+        acceleration_limits=None,
+        jerk_limits=None,
+        segment_durations=None,
+        num_samples_per_segment=101,
+        minimum_duration=1e-3,
     ):
         """Optimize a joint path while retaining a collision-safe contract.
 
@@ -454,6 +460,12 @@ class RobotWorkcell(BaseExperiment):
             step_size=step_size,
             tolerance=tolerance,
             finite_difference_eps=finite_difference_eps,
+            velocity_limits=velocity_limits,
+            acceleration_limits=acceleration_limits,
+            jerk_limits=jerk_limits,
+            segment_durations=segment_durations,
+            num_samples_per_segment=num_samples_per_segment,
+            minimum_duration=minimum_duration,
         )
         optimized = np.asarray(result["path"], dtype=float)
         collision = self.path_collision_summary(
@@ -468,6 +480,32 @@ class RobotWorkcell(BaseExperiment):
         result["collision_summary"] = collision
         result["bounds"] = bounds
         result["clearance"] = clearance
+        if any(value is not None for value in (velocity_limits, acceleration_limits, jerk_limits)):
+            trajectory = self.retime_joint_path(
+                optimized,
+                velocity_limits=velocity_limits
+                if velocity_limits is not None
+                else np.full(self.n_joints, 1e12),
+                acceleration_limits=acceleration_limits,
+                jerk_limits=jerk_limits,
+                num_samples_per_segment=num_samples_per_segment,
+                minimum_duration=minimum_duration,
+            )
+            result["trajectory"] = trajectory
+            checks = []
+            for key, limit in (
+                ("velocity", velocity_limits),
+                ("acceleration", acceleration_limits),
+                ("jerk", jerk_limits),
+            ):
+                if limit is not None:
+                    checks.append(
+                        np.all(
+                            np.max(np.abs(trajectory[key]), axis=0)
+                            <= np.asarray(limit).reshape(-1) + 1e-10
+                        )
+                    )
+            result["trajectory_limits_feasible"] = bool(all(checks))
         return result
 
     def plan_motion(
