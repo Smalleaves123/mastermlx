@@ -19,6 +19,7 @@ It gives you a broad set of classic ML algorithms, math utilities, and optional 
 - URDF collision boxes, primitives, OBJ/STL meshes, and spatial RRT/RRT* joint planning
 - Constraint-aware trajectory optimization with velocity, acceleration, and jerk limits
 - Spatial URDF dynamics with mass matrix, gravity, Coriolis, inverse/forward dynamics, and computed torque
+- Semi-supervised learning with graph label propagation, label spreading, and inductive self-training
 - Joint-path optimization with curvature, reference-path, joint-limit, and workcell clearance costs
 - Optional MPC trajectory tracking in the virtual joint-space simulator
 - Planar workcell workflow with configurable joint limits, Cartesian task interpolation, pick-and-place cycles with gripper events, clearance-aware paths, constrained retiming, kinematic diagnostics, virtual tracking, and CSV/JSON exports
@@ -92,6 +93,7 @@ For the recommended use cases and workflow conventions, see:
 - [`docs/business_use_cases.md`](docs/business_use_cases.md)
 - [`docs/workflows.md`](docs/workflows.md)
 - [`docs/api_policy.md`](docs/api_policy.md)
+- [`docs/semi_supervised.md`](docs/semi_supervised.md)
 
 ## Benchmarks
 
