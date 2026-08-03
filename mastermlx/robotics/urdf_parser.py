@@ -22,8 +22,23 @@ class URDFJoint:
 
 
 @dataclass(frozen=True)
+class URDFCollision:
+    """Collision geometry attached to a URDF link."""
+
+    geometry_type: str
+    origin_xyz: tuple[float, float, float]
+    origin_rpy: tuple[float, float, float]
+    size: tuple[float, ...] | None = None
+    radius: float | None = None
+    length: float | None = None
+    filename: str | None = None
+    scale: tuple[float, float, float] = (1.0, 1.0, 1.0)
+
+
+@dataclass(frozen=True)
 class URDFLink:
     name: str
+    collisions: tuple[URDFCollision, ...] = ()
 
 
 def _normalize_joint_axis(axis):
@@ -113,6 +128,7 @@ class URDFSerialChain:
     base_link: str
     tip_link: str
     joints: tuple[URDFJoint, ...]
+    link_collisions: tuple[tuple[URDFCollision, ...], ...] = ()
 
     @classmethod
     def from_urdf(cls, xml_text, *, base_link=None, tip_link=None):
@@ -125,7 +141,16 @@ class URDFSerialChain:
         for joint in path:
             if joint.joint_type in {"revolute", "continuous", "prismatic"}:
                 _normalize_joint_axis(joint.axis)
-        return cls(base_link=base, tip_link=tip, joints=tuple(path))
+        link_map = {link.name: link for link in links}
+        chain_links = [base, *(joint.child for joint in path)]
+        return cls(
+            base_link=base,
+            tip_link=tip,
+            joints=tuple(path),
+            link_collisions=tuple(
+                link_map[name].collisions for name in chain_links
+            ),
+        )
 
     @property
     def active_joints(self):
@@ -256,7 +281,62 @@ def parse_urdf(xml_text):
     if root.tag != "robot":
         raise ValueError("URDF must have a <robot> root element")
 
-    links = [URDFLink(name=node.attrib["name"]) for node in root.findall("link")]
+    links = []
+    for node in root.findall("link"):
+        collisions = []
+        for collision in node.findall("collision"):
+            origin = collision.find("origin")
+            geometry = collision.find("geometry")
+            if geometry is None:
+                raise ValueError(f"URDF collision on link {node.attrib['name']!r} has no geometry")
+            origin_xyz = _parse_vector(
+                origin.attrib.get("xyz") if origin is not None else None, 3
+            )
+            origin_rpy = _parse_vector(
+                origin.attrib.get("rpy") if origin is not None else None, 3
+            )
+            elements = [child for child in geometry if child.tag in {
+                "box", "cylinder", "sphere", "capsule", "mesh"
+            }]
+            if len(elements) != 1:
+                raise ValueError(
+                    f"URDF collision on link {node.attrib['name']!r} must contain one supported geometry"
+                )
+            element = elements[0]
+            kind = element.tag
+            kwargs = {
+                "geometry_type": kind,
+                "origin_xyz": origin_xyz,
+                "origin_rpy": origin_rpy,
+            }
+            if kind == "box":
+                kwargs["size"] = _parse_vector(element.attrib.get("size"), 3)
+                if any(not np.isfinite(value) or value <= 0.0 for value in kwargs["size"]):
+                    raise ValueError("URDF box size must be positive")
+            elif kind in {"cylinder", "capsule"}:
+                kwargs["radius"] = float(element.attrib.get("radius", "nan"))
+                kwargs["length"] = float(element.attrib.get("length", "nan"))
+                if (
+                    not np.isfinite(kwargs["radius"])
+                    or not np.isfinite(kwargs["length"])
+                    or kwargs["radius"] <= 0.0
+                    or kwargs["length"] <= 0.0
+                ):
+                    raise ValueError(f"URDF {kind} radius and length must be positive")
+            elif kind == "sphere":
+                kwargs["radius"] = float(element.attrib.get("radius", "nan"))
+                if not np.isfinite(kwargs["radius"]) or kwargs["radius"] <= 0.0:
+                    raise ValueError("URDF sphere radius must be positive")
+            else:
+                filename = element.attrib.get("filename")
+                if not filename:
+                    raise ValueError("URDF mesh must define a filename")
+                kwargs["filename"] = filename
+                kwargs["scale"] = _parse_vector(element.attrib.get("scale"), 3, default=1.0)
+                if any(value <= 0.0 for value in kwargs["scale"]):
+                    raise ValueError("URDF mesh scale must be positive")
+            collisions.append(URDFCollision(**kwargs))
+        links.append(URDFLink(name=node.attrib["name"], collisions=tuple(collisions)))
     joints = []
     for node in root.findall("joint"):
         name = node.attrib["name"]

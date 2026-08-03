@@ -44,12 +44,15 @@ from .jacobian import finite_difference_jacobian, geometric_jacobian, geometric_
 from .collision import (
     BoxObstacle,
     CapsuleObstacle,
+    MeshObstacle,
     SphereObstacle,
     chain_clearance_batch,
     chain_collision_free_batch,
     chain_collision_details_batch,
     chain_collision_summary_batch,
     chain_collision_report,
+    mesh_collision_report,
+    mesh_obstacle_clearance,
     path_collision_free,
     path_collision_summary,
     path_collision_report,
@@ -78,16 +81,19 @@ from .experiment import RobotExperiment, compare_robot_models
 from .workcell import RobotWorkcell
 from .state_estimation import PlanarPoseEKF, wrap_angle
 from .urdf_model import URDFRobotModel
-from .urdf_parser import URDFJoint, URDFLink, URDFSerialChain, parse_urdf, urdf_to_dh_chain
+from .urdf_parser import URDFCollision, URDFJoint, URDFLink, URDFSerialChain, parse_urdf, urdf_to_dh_chain
 from .visualizer import plot_chain
 
 __all__ = [
     "BoxObstacle",
     "CapsuleObstacle",
+    "MeshObstacle",
     "DHLink",
     "LinkInertia",
     "SphereObstacle",
     "chain_collision_report",
+    "mesh_collision_report",
+    "mesh_obstacle_clearance",
     "chain_clearance_batch",
     "chain_collision_free_batch",
     "chain_collision_details_batch",
@@ -153,6 +159,7 @@ __all__ = [
     "trajectory_peaks_batch",
     "segment_distance",
     "segment_obstacle_clearance",
+    "URDFCollision",
     "URDFJoint",
     "URDFLink",
     "URDFRobotModel",

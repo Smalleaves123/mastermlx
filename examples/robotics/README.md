@@ -9,6 +9,7 @@ This folder contains robotics demos for the `mastermlx.robotics` package.
 - URDF-based model construction
 - spatial URDF kinematics with arbitrary joint axes and full-pose IK
 - spatial collision checks against analytic obstacles and point-cloud voxels
+- URDF collision geometry and spatial RRT/RRT* planning
 - planar pose estimation with `PlanarPoseEKF`
 - the higher-level `RobotExperiment` workflow
 

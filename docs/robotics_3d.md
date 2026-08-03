@@ -61,6 +61,36 @@ occupied voxels, point queries, conservative radius checks, and polyline
 checks. Points outside the map are treated as free for collision queries and
 ignored when voxelizing a point cloud.
 
+## URDF collision geometry and sampling planners
+
+URDF links may contain collision boxes, spheres, cylinders, or OBJ/STL meshes.
+Pass `resource_dir` when mesh filenames are relative:
+
+```python
+robot = URDFRobotModel.from_urdf(
+    xml_text,
+    resource_dir="path/to/meshes",
+)
+meshes = robot.collision_meshes(q)
+report = robot.collision_report(q, obstacles)
+```
+
+Spatial models also expose the existing NumPy RRT and RRT* planners:
+
+```python
+path = robot.plan_joint_path(
+    q_start,
+    q_goal,
+    bounds=joint_bounds,
+    planner="rrt_star",
+    obstacles=obstacles,
+    random_state=0,
+)
+```
+
+The planner checks every interpolated edge against analytic obstacles and the
+optional occupancy grid, then performs a final safety check before returning.
+
 ## Design boundary
 
 The current implementation intentionally rejects branching chains and URDF

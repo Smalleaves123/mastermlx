@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 
+from ..planning import rrt, rrt_star, smooth
 from .constraints import clip_joint_values, validate_joint_limits
 from .collision import (
+    MeshObstacle,
+    _path_samples,
+    mesh_collision_report,
     path_collision_free,
     path_collision_report,
     path_collision_summary,
@@ -45,6 +50,7 @@ class URDFRobotModel:
     base: np.ndarray | None = None
     tool: np.ndarray | None = None
     joint_limits: np.ndarray | None = None
+    resource_dir: str | Path | None = None
 
     def __post_init__(self):
         if not isinstance(self.chain, URDFSerialChain):
@@ -57,6 +63,8 @@ class URDFRobotModel:
             self.tool = np.asarray(self.tool, dtype=float)
             if self.tool.shape != (4, 4):
                 raise ValueError("tool must have shape (4, 4)")
+        if self.resource_dir is not None:
+            self.resource_dir = Path(self.resource_dir)
         limits = self.chain.joint_limits if self.joint_limits is None else self.joint_limits
         self.joint_limits = validate_joint_limits(limits, self.n_joints)
 
@@ -71,6 +79,7 @@ class URDFRobotModel:
         base=None,
         tool=None,
         joint_limits=None,
+        resource_dir=None,
     ):
         chain = URDFSerialChain.from_urdf(
             xml_text, base_link=base_link, tip_link=tip_link
@@ -81,6 +90,7 @@ class URDFRobotModel:
             base=base,
             tool=tool,
             joint_limits=joint_limits,
+            resource_dir=resource_dir,
         )
 
     @property
@@ -159,6 +169,105 @@ class URDFRobotModel:
             [self.frame_positions(row) for row in values], dtype=float
         )
 
+    def collision_meshes(self, joint_values=None):
+        """Return transformed collision meshes for all links in the chain."""
+
+        from .urdf_parser import URDFCollision
+
+        values = self.default_joint_values() if joint_values is None else joint_values
+        values = self.validate_joint_values(values, check_limits=self.joint_limits is not None)
+        _, frames = self.chain.forward_kinematics(
+            values, base=self.base, tool=None, return_all=True
+        )
+        meshes = []
+        for link_frame, collisions in zip(frames, self.chain.link_collisions):
+            for collision in collisions:
+                if not isinstance(collision, URDFCollision):
+                    raise TypeError("chain link collisions must contain URDFCollision values")
+                mesh = self._collision_mesh(collision)
+                origin = np.eye(4, dtype=float)
+                origin[:3, :3] = self._rpy_matrix(collision.origin_rpy)
+                origin[:3, 3] = collision.origin_xyz
+                meshes.append(mesh.transformed(link_frame @ origin))
+        return tuple(meshes)
+
+    @staticmethod
+    def _rpy_matrix(values):
+        from .transforms import rpy_to_matrix
+
+        return rpy_to_matrix(*values)
+
+    def _collision_mesh(self, collision):
+        kind = collision.geometry_type
+        if kind == "mesh":
+            filename = Path(collision.filename)
+            if not filename.is_absolute() and self.resource_dir is not None:
+                filename = Path(self.resource_dir) / filename
+            mesh = MeshObstacle.from_file(filename)
+            return MeshObstacle(mesh.vertices * np.asarray(collision.scale), mesh.faces)
+        if kind == "box":
+            size = np.asarray(collision.size, dtype=float)
+            vertices = np.asarray([
+                [x * size[0] / 2.0, y * size[1] / 2.0, z * size[2] / 2.0]
+                for x in (-1.0, 1.0) for y in (-1.0, 1.0) for z in (-1.0, 1.0)
+            ])
+            faces = np.asarray([
+                [0, 1, 3], [0, 3, 2], [4, 6, 7], [4, 7, 5],
+                [0, 4, 5], [0, 5, 1], [2, 3, 7], [2, 7, 6],
+                [0, 2, 6], [0, 6, 4], [1, 5, 7], [1, 7, 3],
+            ])
+            return MeshObstacle(vertices, faces)
+        if kind == "sphere":
+            return self._sphere_mesh(float(collision.radius))
+        if kind in {"cylinder", "capsule"}:
+            return self._cylinder_mesh(float(collision.radius), float(collision.length))
+        raise ValueError(f"unsupported URDF collision geometry: {kind!r}")
+
+    @staticmethod
+    def _sphere_mesh(radius, latitude=8, longitude=16):
+        vertices = []
+        for i in range(latitude + 1):
+            phi = np.pi * i / latitude
+            for j in range(longitude):
+                theta = 2.0 * np.pi * j / longitude
+                vertices.append([
+                    radius * np.sin(phi) * np.cos(theta),
+                    radius * np.sin(phi) * np.sin(theta),
+                    radius * np.cos(phi),
+                ])
+        faces = []
+        for i in range(latitude):
+            for j in range(longitude):
+                next_j = (j + 1) % longitude
+                a = i * longitude + j
+                b = i * longitude + next_j
+                c = (i + 1) * longitude + j
+                d = (i + 1) * longitude + next_j
+                faces.extend([[a, c, b], [b, c, d]])
+        return MeshObstacle(np.asarray(vertices), np.asarray(faces))
+
+    @staticmethod
+    def _cylinder_mesh(radius, length, segments=16):
+        vertices = []
+        for z in (-length / 2.0, length / 2.0):
+            vertices.extend([
+                [radius * np.cos(2.0 * np.pi * i / segments),
+                 radius * np.sin(2.0 * np.pi * i / segments), z]
+                for i in range(segments)
+            ])
+        vertices.extend([[0.0, 0.0, -length / 2.0], [0.0, 0.0, length / 2.0]])
+        bottom, top = 2 * segments, 2 * segments + 1
+        faces = []
+        for i in range(segments):
+            next_i = (i + 1) % segments
+            faces.extend([
+                [i, next_i, segments + next_i],
+                [i, segments + next_i, segments + i],
+                [bottom, next_i, i],
+                [top, segments + i, segments + next_i],
+            ])
+        return MeshObstacle(np.asarray(vertices), np.asarray(faces))
+
     def collision_report(
         self,
         joint_values=None,
@@ -169,13 +278,23 @@ class URDFRobotModel:
     ):
         """Return geometric and optional occupancy-grid collision diagnostics."""
 
-        return robot_collision_report(
+        obstacles = list(obstacles)
+        report = robot_collision_report(
             self,
             joint_values,
             obstacles,
             link_radius=link_radius,
             occupancy_grid=occupancy_grid,
         )
+        mesh_report = mesh_collision_report(
+            self.collision_meshes(joint_values), obstacles, link_radius=link_radius
+        )
+        if mesh_report["minimum_clearance"] < report["minimum_clearance"]:
+            report["minimum_clearance"] = mesh_report["minimum_clearance"]
+            report["closest"] = mesh_report["closest"]
+        report["collision"] = bool(report["collision"] or mesh_report["collision"])
+        report["hits"].extend(mesh_report["hits"])
+        return report
 
     def path_collision_free(
         self,
@@ -189,6 +308,17 @@ class URDFRobotModel:
     ):
         """Return whether a joint path clears geometry and an optional voxel map."""
 
+        if any(self.chain.link_collisions):
+            samples = _path_samples(self, joint_path, interpolation_step)
+            def sample_free(sample):
+                report = self.collision_report(
+                    sample,
+                    obstacles,
+                    link_radius=link_radius,
+                    occupancy_grid=occupancy_grid,
+                )
+                return bool(not report["collision"] and report["minimum_clearance"] >= clearance)
+            return bool(all(sample_free(sample) for sample in samples))
         return path_collision_free(
             self,
             joint_path,
@@ -210,6 +340,36 @@ class URDFRobotModel:
     ):
         """Return batched collision and clearance data for a joint path."""
 
+        if any(self.chain.link_collisions):
+            report = self.path_collision_report(
+                joint_path,
+                obstacles,
+                link_radius=link_radius,
+                interpolation_step=interpolation_step,
+                occupancy_grid=occupancy_grid,
+            )
+            clearances = report["clearances"]
+            kind_codes = {None: 0, "point": 1, "segment": 2, "mesh": 3, "occupancy": 4}
+            closest = [item["closest"] for item in report["reports"]]
+            return RobotResult({
+                "collision": bool(report["collision"]),
+                "minimum_clearance": float(np.min(clearances)),
+                "first_collision_index": report["first_collision_index"],
+                "n_samples": report["n_samples"],
+                "samples": report["samples"],
+                "clearances": clearances,
+                "closest_kind": np.asarray(
+                    [kind_codes.get(item["kind"], 0) for item in closest], dtype=np.int8
+                ),
+                "closest_index": np.asarray(
+                    [-1 if item["index"] is None else item["index"] for item in closest],
+                    dtype=np.int64,
+                ),
+                "closest_obstacle_index": np.asarray(
+                    [-1 if item["obstacle_index"] is None else item["obstacle_index"] for item in closest],
+                    dtype=np.int64,
+                ),
+            })
         return path_collision_summary(
             self,
             joint_path,
@@ -230,6 +390,29 @@ class URDFRobotModel:
     ):
         """Return detailed collision reports for a joint path."""
 
+        if any(self.chain.link_collisions):
+            obstacles = list(obstacles)
+            samples = _path_samples(self, joint_path, interpolation_step)
+            reports = [
+                self.collision_report(
+                    sample,
+                    obstacles,
+                    link_radius=link_radius,
+                    occupancy_grid=occupancy_grid,
+                )
+                for sample in samples
+            ]
+            clearances = np.asarray([item["minimum_clearance"] for item in reports])
+            first = next((index for index, item in enumerate(reports) if item["collision"]), None)
+            return RobotResult({
+                "collision": bool(first is not None),
+                "minimum_clearance": float(np.min(clearances)),
+                "first_collision_index": first,
+                "n_samples": samples.shape[0],
+                "samples": samples,
+                "clearances": clearances,
+                "reports": reports,
+            })
         return path_collision_report(
             self,
             joint_path,
@@ -238,6 +421,108 @@ class URDFRobotModel:
             interpolation_step=interpolation_step,
             occupancy_grid=occupancy_grid,
         )
+
+    def plan_joint_path(
+        self,
+        q_start,
+        q_goal,
+        bounds=None,
+        *,
+        planner="rrt",
+        obstacles=(),
+        occupancy_grid=None,
+        smooth_path=True,
+        shortcut_attempts=100,
+        collision_step=0.05,
+        clearance=0.0,
+        link_radius=0.0,
+        workers=1,
+        **planner_kwargs,
+    ):
+        """Plan a collision-free spatial-URDF joint path with RRT or RRT*."""
+
+        q_start = self.validate_joint_values(q_start, check_limits=self.joint_limits is not None)
+        q_goal = self.validate_joint_values(q_goal, check_limits=self.joint_limits is not None)
+        if bounds is None:
+            if self.joint_limits is None:
+                raise ValueError("bounds are required when joint_limits are not configured")
+            bounds = self.joint_limits.copy()
+        bounds = np.asarray(bounds, dtype=float)
+        if bounds.shape != (self.n_joints, 2) or np.any(bounds[:, 0] >= bounds[:, 1]):
+            raise ValueError("bounds must have shape (n_joints, 2) with lower < upper")
+        if self.joint_limits is not None:
+            bounds = np.column_stack([
+                np.maximum(bounds[:, 0], self.joint_limits[:, 0]),
+                np.minimum(bounds[:, 1], self.joint_limits[:, 1]),
+            ])
+            if np.any(bounds[:, 0] >= bounds[:, 1]):
+                raise ValueError("bounds do not overlap configured joint_limits")
+        if np.any(q_start < bounds[:, 0]) or np.any(q_start > bounds[:, 1]):
+            raise ValueError("q_start must be inside bounds")
+        if np.any(q_goal < bounds[:, 0]) or np.any(q_goal > bounds[:, 1]):
+            raise ValueError("q_goal must be inside bounds")
+        clearance = float(clearance)
+        link_radius = float(link_radius)
+        collision_step = float(collision_step)
+        if clearance < 0.0 or link_radius < 0.0 or collision_step <= 0.0:
+            raise ValueError("clearance and link_radius must be non-negative; collision_step must be positive")
+        obstacles = list(obstacles)
+
+        def hit(values):
+            report = self.collision_report(
+                values, obstacles, link_radius=link_radius, occupancy_grid=occupancy_grid
+            )
+            return bool(report["collision"] or report["minimum_clearance"] < clearance)
+
+        def edge_free(start, end, step):
+            return self.path_collision_free(
+                np.vstack([start, end]),
+                obstacles,
+                clearance=clearance,
+                link_radius=link_radius,
+                interpolation_step=step,
+                occupancy_grid=occupancy_grid,
+            )
+
+        if self.path_collision_free(
+            np.vstack([q_start, q_goal]), obstacles, clearance=clearance,
+            link_radius=link_radius, interpolation_step=collision_step,
+            occupancy_grid=occupancy_grid,
+        ):
+            return np.vstack([q_start, q_goal])
+        planner_name = str(planner).lower()
+        options = dict(planner_kwargs)
+        options.setdefault("collision_step", collision_step)
+        options.setdefault("edge_free", edge_free)
+        options.setdefault("workers", workers)
+        if planner_name == "rrt":
+            path = rrt(q_start, q_goal, bounds, hit=hit, **options)
+        elif planner_name in {"rrt_star", "rrt*"}:
+            path = rrt_star(q_start, q_goal, bounds, hit=hit, **options)
+        else:
+            raise ValueError("planner must be one of: rrt, rrt_star")
+        if path is None:
+            raise RuntimeError(f"{planner_name} could not find a collision-free joint-space path")
+        if smooth_path:
+            candidate = smooth(
+                path,
+                hit=hit,
+                n=int(shortcut_attempts),
+                random_state=options.get("random_state"),
+                edge_free=edge_free,
+                workers=workers,
+            )
+            if self.path_collision_free(
+                candidate, obstacles, clearance=clearance, link_radius=link_radius,
+                interpolation_step=collision_step, occupancy_grid=occupancy_grid,
+            ):
+                path = candidate
+        if not self.path_collision_free(
+            path, obstacles, clearance=clearance, link_radius=link_radius,
+            interpolation_step=collision_step, occupancy_grid=occupancy_grid,
+        ):
+            raise RuntimeError("planner returned a path that does not satisfy collision checks")
+        return path
 
     def jacobian(self, joint_values=None):
         values = self.default_joint_values() if joint_values is None else joint_values

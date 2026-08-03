@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from collections.abc import Iterable
 from functools import lru_cache
 import importlib
+from pathlib import Path
+import struct
 from typing import Any
 
 import numpy as np
@@ -154,7 +156,112 @@ class CapsuleObstacle:
         object.__setattr__(self, "radius", radius)
 
 
+@dataclass(frozen=True)
+class MeshObstacle:
+    """Triangular mesh obstacle with optional OBJ/STL file loaders."""
+
+    vertices: np.ndarray
+    faces: np.ndarray
+
+    def __post_init__(self):
+        vertices = np.asarray(self.vertices, dtype=float)
+        faces = np.asarray(self.faces, dtype=np.int64)
+        if vertices.ndim != 2 or vertices.shape[1] != 3 or vertices.shape[0] < 3:
+            raise ValueError("mesh vertices must have shape (n_vertices, 3)")
+        if faces.ndim != 2 or faces.shape[1] != 3 or faces.shape[0] < 1:
+            raise ValueError("mesh faces must have shape (n_faces, 3)")
+        if not np.all(np.isfinite(vertices)):
+            raise ValueError("mesh vertices must contain only finite values")
+        if np.any(faces < 0) or np.any(faces >= vertices.shape[0]):
+            raise ValueError("mesh faces contain an invalid vertex index")
+        object.__setattr__(self, "vertices", np.ascontiguousarray(vertices))
+        object.__setattr__(self, "faces", np.ascontiguousarray(faces))
+
+    @property
+    def triangles(self):
+        """Return mesh triangles with shape ``(n_faces, 3, 3)``."""
+
+        return self.vertices[self.faces]
+
+    @property
+    def lower(self):
+        return np.min(self.vertices, axis=0)
+
+    @property
+    def upper(self):
+        return np.max(self.vertices, axis=0)
+
+    def transformed(self, transform):
+        """Return this mesh transformed by a homogeneous matrix."""
+
+        transform = np.asarray(transform, dtype=float)
+        if transform.shape != (4, 4):
+            raise ValueError("transform must have shape (4, 4)")
+        homogeneous = np.column_stack([self.vertices, np.ones(self.vertices.shape[0])])
+        return MeshObstacle((homogeneous @ transform.T)[:, :3], self.faces)
+
+    @classmethod
+    def from_obj(cls, path):
+        """Load a triangular or polygonal Wavefront OBJ mesh."""
+
+        vertices: list[list[float]] = []
+        faces: list[list[int]] = []
+        for line in Path(path).read_text(encoding="utf-8").splitlines():
+            fields = line.strip().split()
+            if not fields or fields[0].startswith("#"):
+                continue
+            if fields[0] == "v" and len(fields) >= 4:
+                vertices.append([float(value) for value in fields[1:4]])
+            elif fields[0] == "f" and len(fields) >= 4:
+                indices = []
+                for field in fields[1:]:
+                    index = int(field.split("/")[0])
+                    indices.append(index - 1 if index > 0 else len(vertices) + index)
+                for index in range(1, len(indices) - 1):
+                    faces.append([indices[0], indices[index], indices[index + 1]])
+        return cls(np.asarray(vertices, dtype=float), np.asarray(faces, dtype=np.int64))
+
+    @classmethod
+    def from_stl(cls, path):
+        """Load either binary or ASCII STL geometry."""
+
+        raw = Path(path).read_bytes()
+        binary_count = struct.unpack_from("<I", raw, 80)[0] if len(raw) >= 84 else -1
+        if binary_count >= 0 and 84 + 50 * binary_count == len(raw):
+            vertices: list[list[float]] = []
+            faces: list[list[int]] = []
+            for index in range(binary_count):
+                offset = 84 + 50 * index + 12
+                triangle = np.frombuffer(raw, dtype="<f4", count=9, offset=offset).astype(float)
+                start = len(vertices)
+                vertices.extend(triangle.reshape(3, 3).tolist())
+                faces.append([start, start + 1, start + 2])
+            return cls(np.asarray(vertices), np.asarray(faces, dtype=np.int64))
+        ascii_vertices: list[list[float]] = []
+        for line in raw.decode("utf-8", errors="ignore").splitlines():
+            fields = line.strip().split()
+            if len(fields) == 4 and fields[0].lower() == "vertex":
+                ascii_vertices.append([float(value) for value in fields[1:4]])
+        if len(ascii_vertices) % 3 != 0:
+            raise ValueError("ASCII STL must contain complete triangles")
+        face_array = np.arange(len(ascii_vertices), dtype=np.int64).reshape(-1, 3)
+        return cls(np.asarray(ascii_vertices), face_array)
+
+    @classmethod
+    def from_file(cls, path):
+        """Load an OBJ or STL mesh using its filename suffix."""
+
+        suffix = Path(path).suffix.lower()
+        if suffix == ".obj":
+            return cls.from_obj(path)
+        if suffix in {".stl", ".stla", ".stlb"}:
+            return cls.from_stl(path)
+        raise ValueError("mesh format must use an .obj or .stl extension")
+
+
 def _obstacle_dims(obstacle):
+    if isinstance(obstacle, MeshObstacle):
+        return 3
     if hasattr(obstacle, "center"):
         return len(tuple(obstacle.center))
     if hasattr(obstacle, "lower") and hasattr(obstacle, "upper"):
@@ -168,6 +275,8 @@ def _pack_obstacles(obstacles, point_dims):
     """Pack supported obstacle objects into the fixed C++ array contract."""
 
     obstacles = list(obstacles)
+    if any(isinstance(obstacle, MeshObstacle) for obstacle in obstacles):
+        return None
     types = np.empty(len(obstacles), dtype=np.int8)
     dims = np.empty(len(obstacles), dtype=np.int8)
     params = np.zeros((len(obstacles), 7), dtype=float)
@@ -509,6 +618,181 @@ def chain_collision_details_batch(
     return RobotResult(buffers)
 
 
+def _point_triangle_distance(point, triangle):
+    """Return the Euclidean distance from a point to a triangle."""
+
+    a, b, c = np.asarray(triangle, dtype=float)
+    point = np.asarray(point, dtype=float)
+    ab = b - a
+    ac = c - a
+    ap = point - a
+    d1 = float(np.dot(ab, ap))
+    d2 = float(np.dot(ac, ap))
+    if d1 <= 0.0 and d2 <= 0.0:
+        return float(np.linalg.norm(ap))
+    bp = point - b
+    d3 = float(np.dot(ab, bp))
+    d4 = float(np.dot(ac, bp))
+    if d3 >= 0.0 and d4 <= d3:
+        return float(np.linalg.norm(bp))
+    vc = d1 * d4 - d3 * d2
+    if vc <= 0.0 and d1 >= 0.0 and d3 <= 0.0:
+        value = d1 / (d1 - d3)
+        return float(np.linalg.norm(point - (a + value * ab)))
+    cp = point - c
+    d5 = float(np.dot(ab, cp))
+    d6 = float(np.dot(ac, cp))
+    if d6 >= 0.0 and d5 <= d6:
+        return float(np.linalg.norm(cp))
+    vb = d5 * d2 - d1 * d6
+    if vb <= 0.0 and d2 >= 0.0 and d6 <= 0.0:
+        value = d2 / (d2 - d6)
+        return float(np.linalg.norm(point - (a + value * ac)))
+    va = d3 * d6 - d5 * d4
+    if va <= 0.0 and (d4 - d3) >= 0.0 and (d5 - d6) >= 0.0:
+        value = (d4 - d3) / ((d4 - d3) + (d5 - d6))
+        return float(np.linalg.norm(point - (b + value * (c - b))))
+    normal = np.cross(ab, ac)
+    norm = float(np.linalg.norm(normal))
+    return float(abs(np.dot(point - a, normal)) / norm) if norm > 1e-12 else float(np.linalg.norm(ap))
+
+
+def _segment_triangle_intersects(start, end, triangle):
+    """Return whether a segment intersects a triangle."""
+
+    a, b, c = np.asarray(triangle, dtype=float)
+    direction = np.asarray(end, dtype=float) - np.asarray(start, dtype=float)
+    edge1 = b - a
+    edge2 = c - a
+    h = np.cross(direction, edge2)
+    determinant = float(np.dot(edge1, h))
+    if abs(determinant) <= 1e-12:
+        return _point_triangle_distance(start, triangle) <= 1e-12 or _point_triangle_distance(end, triangle) <= 1e-12
+    inverse = 1.0 / determinant
+    s = np.asarray(start, dtype=float) - a
+    u = inverse * float(np.dot(s, h))
+    if u < -1e-12 or u > 1.0 + 1e-12:
+        return False
+    q = np.cross(s, edge1)
+    v = inverse * float(np.dot(direction, q))
+    if v < -1e-12 or u + v > 1.0 + 1e-12:
+        return False
+    t = inverse * float(np.dot(edge2, q))
+    return -1e-12 <= t <= 1.0 + 1e-12
+
+
+def _segment_triangle_distance(start, end, triangle):
+    if _segment_triangle_intersects(start, end, triangle):
+        return 0.0
+    vertices = np.asarray(triangle, dtype=float)
+    return float(min(
+        _point_triangle_distance(start, triangle),
+        _point_triangle_distance(end, triangle),
+        point_segment_distance(vertices[0], start, end),
+        point_segment_distance(vertices[1], start, end),
+        point_segment_distance(vertices[2], start, end),
+    ))
+
+
+def _point_inside_mesh(point, mesh):
+    """Use odd/even ray casting for closed triangular meshes."""
+
+    point = np.asarray(point, dtype=float)
+    if np.any(point < mesh.lower - 1e-12) or np.any(point > mesh.upper + 1e-12):
+        return False
+    direction = np.array([1.0, 0.1234567, 0.2345671], dtype=float)
+    direction /= np.linalg.norm(direction)
+    count = 0
+    for triangle in mesh.triangles:
+        if _segment_triangle_intersects(point, point + direction * 1e6, triangle):
+            count += 1
+    return bool(count % 2)
+
+
+def mesh_obstacle_clearance(mesh, obstacle):
+    """Return conservative clearance between a mesh and another obstacle."""
+
+    if not isinstance(mesh, MeshObstacle):
+        raise TypeError("mesh must be a MeshObstacle")
+    if isinstance(obstacle, MeshObstacle):
+        lower = np.maximum(mesh.lower, obstacle.lower)
+        upper = np.minimum(mesh.upper, obstacle.upper)
+        if np.all(lower <= upper):
+            return -0.0
+        return float(min(
+            min(point_obstacle_clearance(vertex, obstacle) for vertex in mesh.vertices),
+            min(point_obstacle_clearance(vertex, mesh) for vertex in obstacle.vertices),
+        ))
+    if hasattr(obstacle, "center"):
+        center = np.asarray(obstacle.center, dtype=float)
+        if _point_inside_mesh(center, mesh):
+            return -float(obstacle.radius)
+        return float(
+            min(_point_triangle_distance(center, triangle) for triangle in mesh.triangles)
+            - float(obstacle.radius)
+        )
+    if hasattr(obstacle, "start") and hasattr(obstacle, "end"):
+        midpoint = 0.5 * (np.asarray(obstacle.start) + np.asarray(obstacle.end))
+        if _point_inside_mesh(midpoint, mesh):
+            return -float(obstacle.radius)
+        return float(
+            min(_segment_triangle_distance(obstacle.start, obstacle.end, triangle) for triangle in mesh.triangles)
+            - float(obstacle.radius)
+        )
+    if hasattr(obstacle, "lower") and hasattr(obstacle, "upper"):
+        lower = np.asarray(obstacle.lower, dtype=float)
+        upper = np.asarray(obstacle.upper, dtype=float)
+        if np.all(mesh.lower <= upper) and np.all(mesh.upper >= lower):
+            return -0.0
+        corners = np.asarray(np.meshgrid(*zip(lower, upper), indexing="ij"), dtype=float).reshape(3, -1).T
+        return float(min(
+            min(point_obstacle_clearance(vertex, obstacle) for vertex in mesh.vertices),
+            min(point_obstacle_clearance(corner, mesh) for corner in corners),
+        ))
+    raise TypeError("obstacle must be a supported obstacle type")
+
+
+def mesh_collision_report(meshes, obstacles, *, link_radius=0.0):
+    """Report clearance between transformed link meshes and world obstacles."""
+
+    meshes = list(meshes)
+    obstacles = list(obstacles)
+    link_radius = float(link_radius)
+    if link_radius < 0.0 or not np.isfinite(link_radius):
+        raise ValueError("link_radius must be a non-negative finite value")
+    closest: dict[str, Any] = {
+        "kind": None,
+        "index": None,
+        "obstacle_index": None,
+        "clearance": float("inf"),
+    }
+    hits = []
+    for mesh_index, mesh in enumerate(meshes):
+        for obstacle_index, obstacle in enumerate(obstacles):
+            clearance = mesh_obstacle_clearance(mesh, obstacle) - link_radius
+            if clearance < closest["clearance"]:
+                closest = {
+                    "kind": "mesh",
+                    "index": mesh_index,
+                    "obstacle_index": obstacle_index,
+                    "clearance": float(clearance),
+                }
+            if clearance <= 0.0:
+                hits.append({
+                    "kind": "mesh",
+                    "mesh_index": mesh_index,
+                    "obstacle_index": obstacle_index,
+                    "clearance": float(clearance),
+                    "obstacle": obstacle,
+                })
+    return RobotResult({
+        "collision": bool(hits),
+        "minimum_clearance": float(closest["clearance"]),
+        "closest": closest,
+        "hits": hits,
+    })
+
+
 def point_obstacle_clearance(point, obstacle):
     """Return signed point clearance to an obstacle.
 
@@ -517,6 +801,13 @@ def point_obstacle_clearance(point, obstacle):
 
     dims = _obstacle_dims(obstacle)
     point = _point(point, dims, "point")
+    if isinstance(obstacle, MeshObstacle):
+        distances = np.asarray(
+            [_point_triangle_distance(point, triangle) for triangle in obstacle.triangles],
+            dtype=float,
+        )
+        distance = float(np.min(distances))
+        return -distance if _point_inside_mesh(point, obstacle) else distance
     if hasattr(obstacle, "center"):
         center = _point(obstacle.center, dims, "center")
         return float(np.linalg.norm(point - center) - float(obstacle.radius))
@@ -539,6 +830,15 @@ def segment_obstacle_clearance(start, end, obstacle, *, box_samples=25):
     dims = _obstacle_dims(obstacle)
     start = _point(start, dims, "start")
     end = _point(end, dims, "end")
+    if isinstance(obstacle, MeshObstacle):
+        clearances = []
+        for triangle in obstacle.triangles:
+            if _segment_triangle_intersects(start, end, triangle):
+                return -0.0
+            clearances.append(_segment_triangle_distance(start, end, triangle))
+        midpoint = 0.5 * (start + end)
+        distance = float(np.min(clearances))
+        return -distance if _point_inside_mesh(midpoint, obstacle) else distance
     if hasattr(obstacle, "center"):
         center = _point(obstacle.center, dims, "center")
         return point_segment_distance(center, start, end) - float(obstacle.radius)
@@ -811,6 +1111,7 @@ def path_collision_report(
 __all__ = [
     "BoxObstacle",
     "CapsuleObstacle",
+    "MeshObstacle",
     "chain_clearance_batch",
     "chain_collision_free_batch",
     "chain_collision_details_batch",
@@ -820,6 +1121,8 @@ __all__ = [
     "path_collision_free",
     "path_collision_summary",
     "path_collision_report",
+    "mesh_collision_report",
+    "mesh_obstacle_clearance",
     "point_obstacle_clearance",
     "point_segment_distance",
     "robot_collision_report",
