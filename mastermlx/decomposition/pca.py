@@ -6,6 +6,19 @@ from typing import cast
 from ..base import BaseTransformer
 from ..utils import as_2d, check_2d_array
 
+try:
+    from scipy.linalg import svd as _scipy_svd
+except ImportError:  # pragma: no cover - SciPy is an optional comparison dependency
+    _scipy_svd = None
+
+
+def _compute_svd(X):
+    """Use SciPy's LAPACK driver when available, with a NumPy-only fallback."""
+
+    if _scipy_svd is not None:
+        return _scipy_svd(X, full_matrices=False, lapack_driver="gesdd")
+    return np.linalg.svd(X, full_matrices=False)
+
 
 class PCA(BaseTransformer):
     """Principal component analysis using SVD."""
@@ -30,7 +43,7 @@ class PCA(BaseTransformer):
 
         self.mean_ = np.mean(X, axis=0)
         Xc = X - self.mean_
-        _, s, vt = np.linalg.svd(Xc, full_matrices=False)
+        _, s, vt = _compute_svd(Xc)
 
         self.components_ = vt[:k]
         denom = max(1, n - 1)
