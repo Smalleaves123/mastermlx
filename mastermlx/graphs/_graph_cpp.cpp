@@ -245,6 +245,51 @@ py::tuple dijkstra_weighted(
     return py::make_tuple(distance_output, predecessor_output);
 }
 
+py::array_t<double> all_pairs_dijkstra(
+    IntArray indptr_,
+    IntArray indices_,
+    FloatArray weights_) {
+    const auto csr = validate_csr(indptr_, indices_);
+    const auto* weights = validate_weights(weights_, csr);
+    const double inf = std::numeric_limits<double>::infinity();
+    py::array_t<double> output({csr.nodes, csr.nodes});
+    auto* result = static_cast<double*>(output.request().ptr);
+    {
+        py::gil_scoped_release release;
+        for (std::int64_t source = 0; source < csr.nodes; ++source) {
+            std::vector<double> distances(static_cast<std::size_t>(csr.nodes), inf);
+            using QueueItem = std::pair<double, std::int64_t>;
+            std::priority_queue<QueueItem, std::vector<QueueItem>, std::greater<>> queue;
+            distances[static_cast<std::size_t>(source)] = 0.0;
+            queue.emplace(0.0, source);
+            while (!queue.empty()) {
+                const QueueItem current = queue.top();
+                queue.pop();
+                const double cost = current.first;
+                const auto node = current.second;
+                if (cost > distances[static_cast<std::size_t>(node)]) {
+                    continue;
+                }
+                for (std::int64_t edge = csr.indptr[node]; edge < csr.indptr[node + 1]; ++edge) {
+                    const auto neighbor = csr.indices[edge];
+                    const double next_cost = cost + weights[edge];
+                    auto& distance = distances[static_cast<std::size_t>(neighbor)];
+                    if (next_cost < distance) {
+                        distance = next_cost;
+                        queue.emplace(next_cost, neighbor);
+                    }
+                }
+            }
+            std::copy(
+                distances.begin(),
+                distances.end(),
+                result + source * csr.nodes
+            );
+        }
+    }
+    return output;
+}
+
 py::array_t<std::int64_t> multi_source_bfs_distances(
     IntArray indptr_,
     IntArray indices_,
@@ -369,6 +414,7 @@ PYBIND11_MODULE(_graph_cpp, m) {
         py::arg("start"),
         py::arg("goal")
     );
+    m.def("all_pairs_dijkstra", &all_pairs_dijkstra);
     m.def(
         "multi_source_bfs_distances",
         &multi_source_bfs_distances,

@@ -169,3 +169,26 @@ def test_cpp_graph_kernels_match_python_for_new_algorithms():
         assert cpp_scc == py_scc
     finally:
         set_backend(old)
+
+
+def test_cpp_all_pairs_dijkstra_matches_numpy():
+    if not graph_backend_report()["cpp"]:
+        pytest.skip("C++ graph extension is unavailable")
+    from mastermlx.graphs.csr import _load_cpp
+
+    old = get_backend()
+    try:
+        indptr = np.array([0, 2, 4, 6], dtype=np.int64)
+        indices = np.array([1, 2, 0, 2, 0, 1], dtype=np.int64)
+        weights = np.array([1.0, 4.0, 1.0, 2.0, 4.0, 2.0])
+        cpp = _load_cpp("auto")
+        if not callable(getattr(cpp, "all_pairs_dijkstra", None)):
+            pytest.skip("C++ all-pairs Dijkstra kernel is unavailable")
+        set_backend("numpy")
+        expected = np.array([[0.0, 1.0, 3.0], [1.0, 0.0, 2.0], [3.0, 2.0, 0.0]])
+        set_backend("auto")
+        actual = cpp.all_pairs_dijkstra(indptr, indices, weights)
+    finally:
+        set_backend(old)
+
+    assert np.allclose(actual, expected)

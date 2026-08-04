@@ -1,7 +1,8 @@
 import numpy as np
 
-from mastermlx import Isomap, LLE, MDS, SpectralEmbedding
+from mastermlx import Isomap, LLE, MDS, SpectralEmbedding, get_backend, set_backend
 from mastermlx.manifold import ClassicalMDS, LocallyLinearEmbedding
+from mastermlx.manifold._core import all_pairs_shortest
 
 
 def _arc(n=12):
@@ -45,3 +46,30 @@ def test_spectral_embedding_is_finite_and_nontrivial():
     assert np.isfinite(y).all()
     assert np.std(y[:, 0]) > 0.0
     assert np.std(y[:, 1]) > 0.0
+
+
+def test_isomap_geodesic_cpp_and_numpy_paths_match(monkeypatch):
+    X = np.c_[np.arange(8, dtype=float), np.zeros(8)]
+    W = np.full((8, 8), np.inf)
+    for i in range(8):
+        W[i, i] = 0.0
+        if i > 0:
+            W[i, i - 1] = 1.0
+        if i + 1 < 8:
+            W[i, i + 1] = 1.0
+    old = get_backend()
+    try:
+        set_backend("auto")
+        accelerated = all_pairs_shortest(W)
+        set_backend("numpy")
+        fallback = all_pairs_shortest(W)
+    finally:
+        set_backend(old)
+
+    assert np.allclose(accelerated, fallback)
+    assert np.allclose(accelerated, np.abs(np.arange(8)[:, None] - np.arange(8)[None, :]))
+
+    import mastermlx.manifold._core as core
+
+    monkeypatch.setattr(core, "_load_cpp", lambda backend: object())
+    assert np.allclose(core.all_pairs_shortest(W), fallback)

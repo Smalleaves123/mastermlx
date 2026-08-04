@@ -2,14 +2,15 @@ from __future__ import annotations
 
 import numpy as np
 
+from ..accel.backends import pairwise_distances
+from ..config import get_backend
+from ..graphs.csr import _load_cpp
 from ..utils import check_2d_array
 
 
 def pairwise_dist(X):
     X = check_2d_array(X).astype(float)
-    x2 = np.sum(X ** 2, axis=1, keepdims=True)
-    d2 = np.maximum(x2 + x2.T - 2.0 * (X @ X.T), 0.0)
-    return np.sqrt(d2)
+    return pairwise_distances(X, X)
 
 
 def kgraph(D, k):
@@ -29,7 +30,25 @@ def kgraph(D, k):
 
 def all_pairs_shortest(W):
     W = np.asarray(W, dtype=float)
+    if W.ndim != 2 or W.shape[0] != W.shape[1]:
+        raise ValueError("W must be a square matrix")
     n = W.shape[0]
+    cpp = _load_cpp(get_backend())
+    cpp_all_pairs = getattr(cpp, "all_pairs_dijkstra", None) if cpp is not None else None
+    if callable(cpp_all_pairs) and np.all(W >= 0.0):
+        connected = np.isfinite(W)
+        connected[np.diag_indices(n)] = False
+        rows, columns = np.nonzero(connected)
+        indptr = np.bincount(rows, minlength=n).cumsum()
+        indptr = np.concatenate(([0], indptr)).astype(np.int64, copy=False)
+        distances = cpp_all_pairs(
+            indptr,
+            columns.astype(np.int64, copy=False),
+            W[rows, columns].astype(float, copy=False),
+        )
+        if not np.isfinite(distances).all():
+            raise ValueError("graph must be connected")
+        return distances
     D = W.copy()
     for k in range(n):
         via = D[:, [k]] + D[[k], :]
