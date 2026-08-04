@@ -1,11 +1,23 @@
 """Control tools for robotics and dynamical systems."""
 
 from .pid import PIDController
+from .controller import (
+    Controller,
+    ControllerStatus,
+    ComputedTorqueController,
+    JointMPCController,
+    JointPDController,
+)
 from .lqr import DiscreteLQR, finite_horizon_lqr, solve_discrete_are
 from .mpc import LinearMPC, control_backend_report, iLQR, rollout_dynamics, rollout_linear_dynamics
 
 __all__ = [
     "DiscreteLQR",
+    "Controller",
+    "ControllerStatus",
+    "ComputedTorqueController",
+    "JointMPCController",
+    "JointPDController",
     "LinearMPC",
     "PIDController",
     "control_backend_report",

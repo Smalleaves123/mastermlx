@@ -3,6 +3,10 @@ import pytest
 
 from mastermlx import get_backend, set_backend
 from mastermlx.control import (
+    Controller,
+    ComputedTorqueController,
+    JointMPCController,
+    JointPDController,
     DiscreteLQR,
     LinearMPC,
     PIDController,
@@ -11,6 +15,7 @@ from mastermlx.control import (
     rollout_dynamics,
     rollout_linear_dynamics,
 )
+from mastermlx.robotics import LinkInertia, RobotModel
 from mastermlx.control.mpc import _load_cpp_control
 
 
@@ -22,6 +27,61 @@ def test_pid_controller_basic_response():
 
     assert np.allclose(u1, 2.5)
     assert np.allclose(u2, 3.0)
+
+
+def test_joint_pd_controller_exposes_limited_status():
+    controller = JointPDController(2, kp=2.0, output_limits=([-1.0, -0.5], [1.0, 0.5]))
+
+    output = controller.update([1.0, 1.0], np.zeros(4), dt=0.1)
+    status = controller.status()
+
+    assert np.allclose(output, [1.0, 0.5])
+    assert status["name"] == "pd"
+    assert status["steps"] == 1
+    assert status["saturated"]
+    controller.reset()
+    assert controller.status()["steps"] == 0
+
+
+def test_joint_mpc_controller_uses_shared_controller_contract():
+    controller = JointMPCController(1, dt=0.1, mpc_kwargs={"horizon": 2})
+
+    output = controller.update([1.0], np.zeros(2), dt=0.1)
+    status = controller.status()
+
+    assert output.shape == (1,)
+    assert status["name"] == "mpc"
+    assert status["steps"] == 1
+    assert "qp_converged" in status
+
+
+def test_controller_is_an_explicit_extension_contract():
+    with pytest.raises(NotImplementedError):
+        Controller(1).update([0.0], np.zeros(2), dt=0.1)
+
+
+def test_computed_torque_controller_uses_dh_dynamics_fallback():
+    robot = RobotModel.from_dh(
+        [{"a": 1.0, "alpha": 0.0, "d": 0.0, "theta": 0.0}],
+        link_inertias=[LinkInertia(mass=1.0, center_of_mass=(-0.5, 0.0, 0.0), inertia=(0.0, 0.0, 0.1))],
+    )
+    controller = ComputedTorqueController(
+        robot,
+        kp=2.0,
+        kd=0.1,
+        gravity=(0.0, 0.0, 0.0),
+        output_limits=(-0.25, 0.25),
+    )
+
+    output = controller.update([1.0], np.zeros(2), dt=0.05)
+    expected = robot.inverse_dynamics_batch(
+        [[0.0]], [[0.0]], [[2.0]], gravity=(0.0, 0.0, 0.0), include_coriolis=True
+    )[0]
+
+    assert np.allclose(output, [0.25])
+    assert expected[0] > output[0]
+    assert controller.status()["command_type"] == "torque"
+    assert controller.status()["saturated"]
 
 
 def test_pid_integral_limits_and_derivative_on_measurement():

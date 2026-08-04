@@ -1159,8 +1159,8 @@ class RobotWorkcell(BaseExperiment):
                     raise ValueError("trajectory time must be strictly increasing")
                 dt = float(np.min(differences))
         dt = float(dt)
-        if dt <= 0.0:
-            raise ValueError("dt must be positive")
+        if dt <= 0.0 or not np.isfinite(dt):
+            raise ValueError("dt must be positive and finite")
 
         if reference_time is not None and reference_time.size > 1:
             simulation_time = np.arange(reference_time[0], reference_time[-1], dt)
@@ -1172,56 +1172,104 @@ class RobotWorkcell(BaseExperiment):
         else:
             simulation_time = np.arange(reference.shape[0], dtype=float) * dt
 
-        controller_name = str(controller).lower()
-        if controller_name == "pd":
-            states, poses, controls = self.world.trajectory_follow(
-                reference,
-                gains=gains,
-                dt=dt,
-                damping=damping,
-                state=state,
-            )
-        elif controller_name == "mpc":
-            from ..control import LinearMPC
-            from ..sim.core import SimpleRobotSim
+        from ..control import ComputedTorqueController, JointMPCController, JointPDController
+        from ..sim.core import SimpleRobotSim
 
-            n_joints = self.n_joints
-            damping = float(damping)
-            if damping < 0.0 or not np.isfinite(damping):
-                raise ValueError("damping must be a non-negative finite value")
-            identity = np.eye(n_joints, dtype=float)
-            damping_factor = 1.0 - dt * damping
-            A = np.block([
-                [identity, dt * damping_factor * identity],
-                [np.zeros((n_joints, n_joints)), damping_factor * identity],
-            ])
-            B = np.vstack([dt**2 * identity, dt * identity])
-            mpc_options = {} if mpc_kwargs is None else dict(mpc_kwargs)
-            mpc_options.setdefault("horizon", max(2, min(20, reference.shape[0] - 1)))
-            mpc_options.setdefault(
-                "Q", np.diag(np.concatenate([np.full(n_joints, 10.0), np.ones(n_joints)]))
-            )
-            mpc_options.setdefault("R", 0.1 * identity)
-            mpc_options.setdefault("Qf", mpc_options["Q"])
-            if control_limits is not None and "u_bounds" not in mpc_options:
-                limits = _limits(control_limits, n_joints, "control_limits")
-                mpc_options["u_bounds"] = (-limits, limits)
-            controller_impl = LinearMPC(A, B, **mpc_options)
-            sim = SimpleRobotSim(self.robot, state=state, dt=dt, damping=damping)
-            states = [sim.state.copy()]
-            poses = [sim.pose()]
-            controls = []
-            for target in reference:
-                target_state = np.concatenate([target, np.zeros(n_joints, dtype=float)])
-                action = controller_impl.control(sim.state, x_ref=target_state)
-                controls.append(action)
-                sim.step(action)
-                states.append(sim.state.copy())
-                poses.append(sim.pose())
-            states = np.asarray(states)
-            controls = np.asarray(controls)
+        if isinstance(controller, str):
+            controller_name = controller.lower()
+            if controller_name == "pd":
+                kp, kd = gains
+                output_limits = None
+                if control_limits is not None:
+                    limits = _limits(control_limits, self.n_joints, "control_limits")
+                    output_limits = (-limits, limits)
+                controller_impl = JointPDController(
+                    self.n_joints, kp=kp, kd=kd, output_limits=output_limits
+                )
+            elif controller_name == "mpc":
+                damping = float(damping)
+                if damping < 0.0 or not np.isfinite(damping):
+                    raise ValueError("damping must be a non-negative finite value")
+                mpc_options = {} if mpc_kwargs is None else dict(mpc_kwargs)
+                mpc_options.setdefault("horizon", max(2, min(20, reference.shape[0] - 1)))
+                if control_limits is not None and "u_bounds" not in mpc_options:
+                    limits = _limits(control_limits, self.n_joints, "control_limits")
+                    mpc_options["u_bounds"] = (-limits, limits)
+                controller_impl = JointMPCController(
+                    self.n_joints,
+                    dt=dt,
+                    damping=damping,
+                    mpc_kwargs=mpc_options,
+                )
+            elif controller_name in {"computed_torque", "computed-torque"}:
+                kp, kd = gains
+                output_limits = None
+                if control_limits is not None:
+                    limits = _limits(control_limits, self.n_joints, "control_limits")
+                    output_limits = (-limits, limits)
+                controller_impl = ComputedTorqueController(
+                    self.robot,
+                    kp=kp,
+                    kd=kd,
+                    output_limits=output_limits,
+                )
+            else:
+                raise ValueError("controller must be 'pd', 'mpc', 'computed_torque', or a Controller")
         else:
-            raise ValueError("controller must be 'pd' or 'mpc'")
+            controller_impl = controller
+            controller_name = str(getattr(controller_impl, "name", type(controller_impl).__name__)).lower()
+            if not callable(getattr(controller_impl, "update", None)):
+                raise TypeError("controller objects must define update(reference, state, dt)")
+            if not callable(getattr(controller_impl, "reset", None)):
+                raise TypeError("controller objects must define reset(state=None)")
+            if not callable(getattr(controller_impl, "status", None)):
+                raise TypeError("controller objects must define status()")
+            if getattr(controller_impl, "n_joints", self.n_joints) != self.n_joints:
+                raise ValueError("controller.n_joints must match the workcell robot")
+
+        sim = SimpleRobotSim(self.robot, state=state, dt=dt, damping=damping)
+        controller_impl.reset(state=sim.state.copy())
+        states = [sim.state.copy()]
+        poses = [sim.pose()]
+        controls = []
+        command_type = str(getattr(controller_impl, "command_type", "acceleration")).lower()
+        if command_type not in {"acceleration", "torque"}:
+            raise ValueError("controller command_type must be 'acceleration' or 'torque'")
+        for target in reference:
+            action = _joint_vector(
+                controller_impl.update(target, sim.state.copy(), dt),
+                self.n_joints,
+                "controller output",
+            )
+            controls.append(action)
+            if command_type == "torque":
+                gravity = getattr(controller_impl, "gravity", (0.0, 0.0, -9.81))
+                if callable(getattr(self.robot, "forward_dynamics_batch", None)):
+                    acceleration = self.robot.forward_dynamics_batch(
+                        sim.q[None, :],
+                        sim.qd[None, :],
+                        action[None, :],
+                        gravity=gravity,
+                        include_coriolis=True,
+                    )[0]
+                elif callable(getattr(self.robot, "forward_dynamics", None)):
+                    acceleration = self.robot.forward_dynamics(
+                        sim.q,
+                        sim.qd,
+                        action,
+                        gravity=gravity,
+                        include_coriolis=True,
+                    )
+                else:
+                    raise TypeError("torque controllers require robot forward dynamics")
+                sim.step(acceleration)
+            else:
+                sim.step(action)
+            states.append(sim.state.copy())
+            poses.append(sim.pose())
+        states = np.asarray(states)
+        controls = np.asarray(controls)
+        controller_status = controller_impl.status()
         actual = states[1:, : self.n_joints]
         joint_error = actual - reference
         return RobotResult({
@@ -1234,6 +1282,7 @@ class RobotWorkcell(BaseExperiment):
             "joint_error": joint_error,
             "dt": dt,
             "controller": controller_name,
+            "controller_status": controller_status,
         })
 
     def safety_report(

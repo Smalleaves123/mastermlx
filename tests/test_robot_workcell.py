@@ -4,7 +4,8 @@ import json
 import numpy as np
 import pytest
 
-from mastermlx.robotics import RobotModel, RobotWorkcell, URDFRobotModel
+from mastermlx.control import JointPDController
+from mastermlx.robotics import LinkInertia, RobotModel, RobotWorkcell, URDFRobotModel
 from mastermlx.sim import SimpleWorld
 
 
@@ -153,6 +154,7 @@ def test_workcell_retimes_tracks_reports_and_exports(tmp_path):
     assert np.all(np.max(np.abs(trajectory["jerk"]), axis=0) <= jerk_limits + 1e-12)
     assert tracking["actual"].shape == tracking["reference"].shape
     assert np.all(np.isfinite(tracking["joint_error"]))
+    assert tracking["controller_status"]["steps"] == tracking["reference"].shape[0]
     assert report["minimum_clearance"] is not None
     assert report["minimum_clearance"] > 0.0
     assert not report["collision"]
@@ -335,3 +337,38 @@ def test_self_collision_is_reported_and_can_be_excluded():
     )
     assert not report["valid"]
     assert "self_collision" in report["violations"]
+
+
+def test_workcell_accepts_external_controller_objects():
+    workcell = _workcell()
+    controller = JointPDController(2, kp=2.0, kd=0.1, output_limits=(-1.0, 1.0))
+
+    tracking = workcell.simulate_tracking(
+        np.zeros((4, 2), dtype=float),
+        controller=controller,
+        dt=0.05,
+    )
+
+    assert tracking["controller"] == "pd"
+    assert tracking["controller_status"]["steps"] == 4
+    assert tracking["controls"].shape == (4, 2)
+
+
+def test_workcell_simulates_computed_torque_as_physical_torque():
+    robot = RobotModel.from_dh(
+        [{"a": 1.0, "alpha": 0.0, "d": 0.0, "theta": 0.0}],
+        link_inertias=[LinkInertia(mass=1.0, center_of_mass=(-0.5, 0.0, 0.0), inertia=(0.0, 0.0, 0.1))],
+    )
+    workcell = RobotWorkcell(robot, SimpleWorld(robot))
+
+    tracking = workcell.simulate_tracking(
+        np.array([[0.2]], dtype=float),
+        controller="computed_torque",
+        gains=(2.0, 0.1),
+        dt=0.05,
+    )
+
+    assert tracking["controller"] == "computed_torque"
+    assert tracking["controller_status"]["command_type"] == "torque"
+    assert tracking["controls"].shape == (1, 1)
+    assert np.all(np.isfinite(tracking["actual"]))
