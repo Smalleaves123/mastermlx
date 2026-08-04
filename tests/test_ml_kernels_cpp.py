@@ -5,6 +5,7 @@ from mastermlx import get_backend, set_backend
 from mastermlx.accel.backends import _load_cpp_ml_kernels
 from mastermlx.accel.ml_kernels import (
     csr_propagate,
+    dbscan_labels,
     dbscan_neighbors,
     gmm_log_gaussian,
     gmm_m_step,
@@ -72,6 +73,8 @@ def test_ml_kernels_match_numpy_fallback_on_non_contiguous_inputs():
     csr_weights = np.array([0.4, 0.6, 1.0, 0.25, 0.75])
     radius_query = np.asfortranarray(np.array([[0.0, 0.0], [1.0, 0.0]], dtype=np.float32))
     radius_fit = np.asfortranarray(np.array([[0.0, 0.0], [0.6, 0.0], [2.0, 0.0]], dtype=np.float32))
+    dbscan_indptr = np.array([0, 2, 4, 6, 8], dtype=np.int64)
+    dbscan_indices = np.array([0, 1, 0, 1, 2, 3, 2, 3], dtype=np.int64)
 
     for func, args in (
         (rbf_affinity, (X, 0.7)),
@@ -80,6 +83,7 @@ def test_ml_kernels_match_numpy_fallback_on_non_contiguous_inputs():
         (radius_neighbors, (radius_query, radius_fit, 0.75)),
         (knn_impute, (query_missing, fit_missing, 2, "distance")),
         (dbscan_neighbors, (X, 2.0)),
+        (dbscan_labels, (dbscan_indptr, dbscan_indices, 2)),
         (csr_propagate, (csr_indptr, csr_indices, csr_weights, responsibilities[:3])),
         (kmeans_assign, (X, centers)),
         (kmeans_update, (X, labels, 3)),
@@ -137,6 +141,9 @@ def test_cpp_ml_kernels_validate_direct_inputs():
         _require_cpp_radius_neighbors()
         with pytest.raises(ValueError, match="positive and finite"):
             cpp.radius_neighbors(X, X, 0.0)
+        if callable(getattr(cpp, "dbscan_labels", None)):
+            with pytest.raises(ValueError, match="row pointer"):
+                cpp.dbscan_labels(np.array([0, 2, 1], dtype=np.int64), np.array([0, 1], dtype=np.int64), 1)
     finally:
         set_backend(old)
 
@@ -172,3 +179,22 @@ def test_radius_neighbors_numpy_backend_does_not_require_cpp_radius_api(monkeypa
     assert np.array_equal(indptr, np.array([0, 2, 4]))
     assert np.array_equal(indices, np.array([0, 1, 1, 2]))
     assert np.allclose(distances, np.array([0.0, 1.0, 1.0, 1.0]))
+
+
+def test_dbscan_labels_numpy_fallback_handles_old_cpp_extension(monkeypatch):
+    import mastermlx.accel.ml_kernels as kernels
+
+    old = get_backend()
+    try:
+        set_backend("auto")
+        monkeypatch.setattr(kernels, "_load_cpp_ml_kernels", lambda: object())
+        labels, core_samples = kernels.dbscan_labels(
+            np.array([0, 2, 4, 6], dtype=np.int64),
+            np.array([0, 1, 0, 1, 2, 2], dtype=np.int64),
+            2,
+        )
+    finally:
+        set_backend(old)
+
+    assert np.array_equal(labels, np.array([0, 0, 1]))
+    assert np.array_equal(core_samples, np.array([0, 1, 2]))

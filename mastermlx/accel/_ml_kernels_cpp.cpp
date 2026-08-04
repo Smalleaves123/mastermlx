@@ -441,23 +441,26 @@ py::tuple dbscan_neighbors(Matrix X_, double eps) {
     const py::ssize_t d = Xb.shape[1];
     const double radius_sq = eps * eps;
     std::vector<std::vector<py::ssize_t>> adjacency(static_cast<std::size_t>(n));
-    parallel_rows(n, n, [&](py::ssize_t begin, py::ssize_t end) {
-        for (py::ssize_t i = begin; i < end; ++i) {
-            const double* xi = X + i * d;
-            auto& row = adjacency[static_cast<std::size_t>(i)];
-            for (py::ssize_t j = 0; j < n; ++j) {
-                const double* xj = X + j * d;
-                double d2 = 0.0;
-                for (py::ssize_t q = 0; q < d; ++q) {
-                    const double diff = xi[q] - xj[q];
-                    d2 += diff * diff;
-                }
-                if (d2 <= radius_sq) {
-                    row.push_back(j);
+    {
+        py::gil_scoped_release release;
+        parallel_rows(n, n, [&](py::ssize_t begin, py::ssize_t end) {
+            for (py::ssize_t i = begin; i < end; ++i) {
+                const double* xi = X + i * d;
+                auto& row = adjacency[static_cast<std::size_t>(i)];
+                for (py::ssize_t j = 0; j < n; ++j) {
+                    const double* xj = X + j * d;
+                    double d2 = 0.0;
+                    for (py::ssize_t q = 0; q < d; ++q) {
+                        const double diff = xi[q] - xj[q];
+                        d2 += diff * diff;
+                    }
+                    if (d2 <= radius_sq) {
+                        row.push_back(j);
+                    }
                 }
             }
-        }
-    });
+        });
+    }
     py::array_t<std::int64_t> indptr(n + 1);
     auto* rows = static_cast<std::int64_t*>(indptr.request().ptr);
     rows[0] = 0;
@@ -478,6 +481,90 @@ py::tuple dbscan_neighbors(Matrix X_, double eps) {
         }
     }
     return py::make_tuple(indptr, indices, values);
+}
+
+py::tuple dbscan_labels(
+    py::array_t<std::int64_t, py::array::c_style | py::array::forcecast> indptr_,
+    py::array_t<std::int64_t, py::array::c_style | py::array::forcecast> indices_,
+    py::ssize_t min_samples) {
+    const auto indptr = indptr_.request();
+    const auto indices = indices_.request();
+    if (indptr.ndim != 1 || indices.ndim != 1 || indptr.shape[0] < 2
+        || min_samples < 1) {
+        throw std::invalid_argument("invalid CSR arrays or min_samples");
+    }
+    const py::ssize_t n = indptr.shape[0] - 1;
+    const py::ssize_t edges = indices.shape[0];
+    const auto* rows = static_cast<const std::int64_t*>(indptr.ptr);
+    const auto* cols = static_cast<const std::int64_t*>(indices.ptr);
+    if (rows[0] != 0 || rows[n] != edges) {
+        throw std::invalid_argument("invalid CSR row pointer");
+    }
+    for (py::ssize_t row = 0; row < n; ++row) {
+        if (rows[row] < 0 || rows[row + 1] < rows[row]) {
+            throw std::invalid_argument("indptr must be non-decreasing and non-negative");
+        }
+    }
+    for (py::ssize_t edge = 0; edge < edges; ++edge) {
+        if (cols[edge] < 0 || cols[edge] >= n) {
+            throw std::invalid_argument("invalid CSR indices");
+        }
+    }
+
+    py::array_t<std::int64_t> labels(n);
+    py::array_t<std::int64_t> core_samples;
+    auto* output = static_cast<std::int64_t*>(labels.request().ptr);
+    std::fill(output, output + n, static_cast<std::int64_t>(-1));
+    std::vector<char> core(static_cast<std::size_t>(n), 0);
+    std::vector<char> visited(static_cast<std::size_t>(n), 0);
+    std::vector<py::ssize_t> core_indices;
+    core_indices.reserve(static_cast<std::size_t>(n));
+    for (py::ssize_t row = 0; row < n; ++row) {
+        if (rows[row + 1] - rows[row] >= min_samples) {
+            core[static_cast<std::size_t>(row)] = 1;
+            core_indices.push_back(row);
+        }
+    }
+    core_samples = py::array_t<std::int64_t>(static_cast<py::ssize_t>(core_indices.size()));
+    auto* core_output = static_cast<std::int64_t*>(core_samples.request().ptr);
+    for (std::size_t i = 0; i < core_indices.size(); ++i) {
+        core_output[i] = static_cast<std::int64_t>(core_indices[i]);
+    }
+
+    std::int64_t cluster_id = 0;
+    std::vector<py::ssize_t> stack;
+    stack.reserve(static_cast<std::size_t>(n));
+    {
+        py::gil_scoped_release release;
+        for (py::ssize_t point = 0; point < n; ++point) {
+            if (visited[static_cast<std::size_t>(point)]
+                || !core[static_cast<std::size_t>(point)]) {
+                continue;
+            }
+            stack.clear();
+            stack.push_back(point);
+            visited[static_cast<std::size_t>(point)] = 1;
+            output[point] = cluster_id;
+            while (!stack.empty()) {
+                const py::ssize_t current = stack.back();
+                stack.pop_back();
+                for (std::int64_t edge = rows[current]; edge < rows[current + 1]; ++edge) {
+                    const py::ssize_t neighbor = static_cast<py::ssize_t>(cols[edge]);
+                    if (output[neighbor] == -1) {
+                        output[neighbor] = cluster_id;
+                    }
+                    if (!visited[static_cast<std::size_t>(neighbor)]) {
+                        visited[static_cast<std::size_t>(neighbor)] = 1;
+                        if (core[static_cast<std::size_t>(neighbor)]) {
+                            stack.push_back(neighbor);
+                        }
+                    }
+                }
+            }
+            ++cluster_id;
+        }
+    }
+    return py::make_tuple(labels, core_samples);
 }
 
 py::array_t<double> csr_propagate(
@@ -743,6 +830,7 @@ PYBIND11_MODULE(_ml_kernels_cpp, m) {
     m.def("knn_impute", &knn_impute);
     m.def("radius_neighbors", &radius_neighbors);
     m.def("dbscan_neighbors", &dbscan_neighbors);
+    m.def("dbscan_labels", &dbscan_labels);
     m.def("csr_propagate", &csr_propagate);
     m.def("kmeans_assign", &kmeans_assign);
     m.def("kmeans_update", &kmeans_update);

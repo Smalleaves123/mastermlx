@@ -142,6 +142,56 @@ def dbscan_neighbors(X, eps):
     return _csr_from_dense_affinity((d2 <= eps * eps).astype(float))
 
 
+def dbscan_labels(indptr, indices, min_samples):
+    """Expand DBSCAN clusters from a CSR epsilon-neighborhood graph."""
+    indptr = np.asarray(indptr, dtype=np.int64)
+    indices = np.asarray(indices, dtype=np.int64)
+    try:
+        min_samples = int(min_samples)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("min_samples must be an integer") from exc
+    if min_samples < 1:
+        raise ValueError("min_samples must be at least 1")
+    if indptr.ndim != 1 or indptr.size < 2 or indices.ndim != 1:
+        raise ValueError("invalid CSR arrays")
+    n = indptr.size - 1
+    if indptr[0] != 0 or indptr[-1] != indices.size or np.any(np.diff(indptr) < 0):
+        raise ValueError("invalid CSR row pointer")
+    if np.any(indices < 0) or np.any(indices >= n):
+        raise ValueError("invalid CSR indices")
+    indptr = np.ascontiguousarray(indptr)
+    indices = np.ascontiguousarray(indices)
+
+    cpp = _load_cpp_ml_kernels()
+    cpp_dbscan_labels = getattr(cpp, "dbscan_labels", None) if cpp is not None else None
+    if callable(cpp_dbscan_labels):
+        return cpp_dbscan_labels(indptr, indices, min_samples)
+
+    core_mask = np.diff(indptr) >= min_samples
+    core_samples = np.flatnonzero(core_mask).astype(np.int64, copy=False)
+    labels = np.full(n, -1, dtype=np.int64)
+    visited = np.zeros(n, dtype=bool)
+    cluster_id = 0
+    for point in range(n):
+        if visited[point] or not core_mask[point]:
+            continue
+        stack = [point]
+        visited[point] = True
+        labels[point] = cluster_id
+        while stack:
+            current = stack.pop()
+            for neighbor in indices[indptr[current] : indptr[current + 1]]:
+                neighbor = int(neighbor)
+                if labels[neighbor] == -1:
+                    labels[neighbor] = cluster_id
+                if not visited[neighbor]:
+                    visited[neighbor] = True
+                    if core_mask[neighbor]:
+                        stack.append(neighbor)
+        cluster_id += 1
+    return labels, core_samples
+
+
 def radius_neighbors(X, X_fit, radius):
     """Return Euclidean radius neighbors as CSR arrays with distances."""
     X = _matrix(X, "X")

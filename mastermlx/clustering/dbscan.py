@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import numpy as np
 
-from ..accel.ml_kernels import dbscan_neighbors
+from ..accel.ml_kernels import dbscan_labels, dbscan_neighbors
 from ..base import BaseEstimator
 from ..utils import check_2d_array
 
 
 class DBSCAN(BaseEstimator):
-    """Density-based clustering with a simple NumPy implementation."""
+    """Density-based clustering with an optional C++ acceleration path."""
 
     def __init__(self, eps=0.5, min_samples=5):
         self.eps = float(eps)
@@ -19,38 +19,14 @@ class DBSCAN(BaseEstimator):
 
     def fit(self, X, y=None):
         X = check_2d_array(X)
-        if self.eps <= 0:
-            raise ValueError("eps must be positive")
+        if not np.isfinite(self.eps) or self.eps <= 0:
+            raise ValueError("eps must be positive and finite")
         if self.min_samples < 1:
             raise ValueError("min_samples must be at least 1")
 
         indptr, indices, _ = dbscan_neighbors(X, self.eps)
-        neighbors = [indices[indptr[i] : indptr[i + 1]] for i in range(X.shape[0])]
-        core_mask = np.array([nn.size >= self.min_samples for nn in neighbors], dtype=bool)
-        core_samples = np.flatnonzero(core_mask)
-
-        labels = np.full(X.shape[0], -1, dtype=int)
-        cluster_id = 0
-        visited = np.zeros(X.shape[0], dtype=bool)
-
-        for point in range(X.shape[0]):
-            if visited[point] or not core_mask[point]:
-                continue
-
-            stack = [point]
-            visited[point] = True
-            labels[point] = cluster_id
-
-            while stack:
-                current = stack.pop()
-                for neighbor in neighbors[current]:
-                    if labels[neighbor] == -1:
-                        labels[neighbor] = cluster_id
-                    if not visited[neighbor]:
-                        visited[neighbor] = True
-                        if core_mask[neighbor]:
-                            stack.append(neighbor)
-            cluster_id += 1
+        labels, core_samples = dbscan_labels(indptr, indices, self.min_samples)
+        cluster_id = int(np.max(labels)) + 1 if np.any(labels >= 0) else 0
 
         self.labels_ = labels
         self.core_sample_indices_ = core_samples
