@@ -1,5 +1,6 @@
 import numpy as np
 
+from mastermlx import get_backend, set_backend
 from mastermlx.probabilistic import HMM
 
 
@@ -49,3 +50,25 @@ def test_hmm_emissions_accumulate_duplicate_observations():
 
     assert np.allclose(model.emit_[:, 0], 2.0 / 3.0)
     assert np.allclose(model.emit_[:, 2], 1.0 / 3.0)
+
+
+def test_hmm_cpp_and_numpy_dynamic_programs_match():
+    model = HMM(n_states=2, n_obs=2, random_state=4)
+    model._init_params()
+    seq = np.array([0, 1, 1, 0, 1])
+    old = get_backend()
+    try:
+        set_backend("auto")
+        forward_cpp = model._forward(seq)
+        backward_cpp = model._backward(seq)
+        path_cpp = model.predict(seq)
+        set_backend("numpy")
+        forward_numpy = model._forward(seq)
+        backward_numpy = model._backward(seq)
+        path_numpy = model.predict(seq)
+    finally:
+        set_backend(old)
+
+    assert np.allclose(forward_cpp, forward_numpy)
+    assert np.allclose(backward_cpp, backward_numpy)
+    assert np.array_equal(path_cpp, path_numpy)

@@ -216,6 +216,88 @@ def meanshift_update(X, centers, bandwidth):
     return updates
 
 
+def _hmm_inputs(sequence, start, trans, emit):
+    sequence = np.asarray(sequence, dtype=np.int64)
+    start = np.asarray(start, dtype=float)
+    trans = _matrix(trans, "trans")
+    emit = _matrix(emit, "emit")
+    if sequence.ndim != 1 or sequence.size == 0 or start.ndim != 1 or start.size == 0:
+        raise ValueError("sequence must be a non-empty 1D array")
+    if trans.shape[0] != trans.shape[1] or start.shape[0] != trans.shape[0] \
+            or emit.shape[0] != trans.shape[0]:
+        raise ValueError("invalid HMM array shapes")
+    if np.any(sequence < 0) or np.any(sequence >= emit.shape[1]):
+        raise ValueError("observation index out of range")
+    if not np.isfinite(start).all():
+        raise ValueError("start must contain finite values")
+    return (
+        np.ascontiguousarray(sequence),
+        np.ascontiguousarray(start),
+        np.ascontiguousarray(trans),
+        np.ascontiguousarray(emit),
+    )
+
+
+def hmm_forward(sequence, start, trans, emit):
+    sequence, start, trans, emit = _hmm_inputs(sequence, start, trans, emit)
+    cpp = _load_cpp_ml_kernels()
+    cpp_hmm_forward = getattr(cpp, "hmm_forward", None) if cpp is not None else None
+    if callable(cpp_hmm_forward):
+        return cpp_hmm_forward(sequence, start, trans, emit)
+    log_start = np.log(start + 1e-12)
+    log_trans = np.log(trans + 1e-12)
+    log_emit = np.log(emit + 1e-12)
+    output = np.empty((sequence.size, trans.shape[0]))
+    output[0] = log_start + log_emit[:, sequence[0]]
+    for step in range(1, sequence.size):
+        output[step] = log_emit[:, sequence[step]] + np.logaddexp.reduce(
+            output[step - 1][:, None] + log_trans, axis=0
+        )
+    return output
+
+
+def hmm_backward(sequence, start, trans, emit):
+    sequence, start, trans, emit = _hmm_inputs(sequence, start, trans, emit)
+    cpp = _load_cpp_ml_kernels()
+    cpp_hmm_backward = getattr(cpp, "hmm_backward", None) if cpp is not None else None
+    if callable(cpp_hmm_backward):
+        return cpp_hmm_backward(sequence, start, trans, emit)
+    log_trans = np.log(trans + 1e-12)
+    log_emit = np.log(emit + 1e-12)
+    output = np.empty((sequence.size, trans.shape[0]))
+    output[-1] = 0.0
+    for step in range(sequence.size - 2, -1, -1):
+        output[step] = np.logaddexp.reduce(
+            log_trans + log_emit[:, sequence[step + 1]][None, :] + output[step + 1][None, :],
+            axis=1,
+        )
+    return output
+
+
+def hmm_viterbi(sequence, start, trans, emit):
+    sequence, start, trans, emit = _hmm_inputs(sequence, start, trans, emit)
+    cpp = _load_cpp_ml_kernels()
+    cpp_hmm_viterbi = getattr(cpp, "hmm_viterbi", None) if cpp is not None else None
+    if callable(cpp_hmm_viterbi):
+        return cpp_hmm_viterbi(sequence, start, trans, emit)
+    log_start = np.log(start + 1e-12)
+    log_trans = np.log(trans + 1e-12)
+    log_emit = np.log(emit + 1e-12)
+    delta = np.empty((sequence.size, trans.shape[0]))
+    psi = np.empty((sequence.size, trans.shape[0]), dtype=np.int64)
+    delta[0] = log_start + log_emit[:, sequence[0]]
+    psi[0] = 0
+    for step in range(1, sequence.size):
+        scores = delta[step - 1][:, None] + log_trans
+        psi[step] = np.argmax(scores, axis=0)
+        delta[step] = np.max(scores, axis=0) + log_emit[:, sequence[step]]
+    path = np.empty(sequence.size, dtype=np.int64)
+    path[-1] = np.argmax(delta[-1])
+    for step in range(sequence.size - 2, -1, -1):
+        path[step] = psi[step + 1, path[step + 1]]
+    return path
+
+
 def radius_neighbors(X, X_fit, radius):
     """Return Euclidean radius neighbors as CSR arrays with distances."""
     X = _matrix(X, "X")

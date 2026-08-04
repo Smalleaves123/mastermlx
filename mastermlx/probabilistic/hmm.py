@@ -3,6 +3,7 @@ from __future__ import annotations
 import numpy as np
 from typing import cast
 
+from ..accel.backends import _load_cpp_ml_kernels
 from ..utils.math import log_sum_exp
 
 
@@ -39,6 +40,15 @@ class HMM:
         start = cast(np.ndarray, self.start_)
         trans = cast(np.ndarray, self.trans_)
         emit = cast(np.ndarray, self.emit_)
+        cpp = _load_cpp_ml_kernels()
+        cpp_forward = getattr(cpp, "hmm_forward", None) if cpp is not None else None
+        if callable(cpp_forward):
+            return cpp_forward(
+                np.ascontiguousarray(seq, dtype=np.int64),
+                np.ascontiguousarray(start, dtype=float),
+                np.ascontiguousarray(trans, dtype=float),
+                np.ascontiguousarray(emit, dtype=float),
+            )
         t = seq.size
         log_start = np.log(start + 1e-12)
         log_trans = np.log(trans + 1e-12)
@@ -51,8 +61,18 @@ class HMM:
         return a
 
     def _backward(self, seq):
+        start = cast(np.ndarray, self.start_)
         trans = cast(np.ndarray, self.trans_)
         emit = cast(np.ndarray, self.emit_)
+        cpp = _load_cpp_ml_kernels()
+        cpp_backward = getattr(cpp, "hmm_backward", None) if cpp is not None else None
+        if callable(cpp_backward):
+            return cpp_backward(
+                np.ascontiguousarray(seq, dtype=np.int64),
+                np.ascontiguousarray(start, dtype=float),
+                np.ascontiguousarray(trans, dtype=float),
+                np.ascontiguousarray(emit, dtype=float),
+            )
         t = seq.size
         log_trans = np.log(trans + 1e-12)
         log_emit = np.log(emit + 1e-12)
@@ -118,6 +138,15 @@ class HMM:
         start = cast(np.ndarray, self.start_)
         trans = cast(np.ndarray, self.trans_)
         emit = cast(np.ndarray, self.emit_)
+        cpp = _load_cpp_ml_kernels()
+        cpp_viterbi = getattr(cpp, "hmm_viterbi", None) if cpp is not None else None
+        if callable(cpp_viterbi):
+            return cpp_viterbi(
+                np.ascontiguousarray(seq, dtype=np.int64),
+                np.ascontiguousarray(start, dtype=float),
+                np.ascontiguousarray(trans, dtype=float),
+                np.ascontiguousarray(emit, dtype=float),
+            )
         log_start = np.log(start + 1e-12)
         log_trans = np.log(trans + 1e-12)
         log_emit = np.log(emit + 1e-12)

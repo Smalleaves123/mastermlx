@@ -74,6 +74,173 @@ static void require_same_features(const py::buffer_info& Xb, const py::buffer_in
     }
 }
 
+static void require_hmm_inputs(
+    const py::buffer_info& sequence,
+    const py::buffer_info& start,
+    const py::buffer_info& trans,
+    const py::buffer_info& emit) {
+    if (sequence.ndim != 1 || sequence.shape[0] <= 0
+        || start.ndim != 1 || trans.ndim != 2 || emit.ndim != 2
+        || trans.shape[0] != trans.shape[1]
+        || start.shape[0] != trans.shape[0]
+        || emit.shape[0] != trans.shape[0]) {
+        throw std::invalid_argument("invalid HMM array shapes");
+    }
+    for (py::ssize_t i = 0; i < sequence.shape[0]; ++i) {
+        const auto observation = static_cast<const std::int64_t*>(sequence.ptr)[i];
+        if (observation < 0 || observation >= emit.shape[1]) {
+            throw std::invalid_argument("observation index out of range");
+        }
+    }
+}
+
+static double log_sum_exp(const double* values, py::ssize_t size) {
+    double maximum = -std::numeric_limits<double>::infinity();
+    for (py::ssize_t i = 0; i < size; ++i) {
+        maximum = std::max(maximum, values[i]);
+    }
+    if (!std::isfinite(maximum)) {
+        return maximum;
+    }
+    double total = 0.0;
+    for (py::ssize_t i = 0; i < size; ++i) {
+        total += std::exp(values[i] - maximum);
+    }
+    return maximum + std::log(total);
+}
+
+py::array_t<double> hmm_forward(Labels sequence_, Vector start_, Matrix trans_, Matrix emit_) {
+    const auto sequence = sequence_.request();
+    const auto start = start_.request();
+    const auto trans = trans_.request();
+    const auto emit = emit_.request();
+    require_hmm_inputs(sequence, start, trans, emit);
+    const auto* observations = static_cast<const std::int64_t*>(sequence.ptr);
+    const auto* start_values = static_cast<const double*>(start.ptr);
+    const auto* transition = static_cast<const double*>(trans.ptr);
+    const auto* emission = static_cast<const double*>(emit.ptr);
+    const py::ssize_t time = sequence.shape[0];
+    const py::ssize_t states = trans.shape[0];
+    py::array_t<double> output({time, states});
+    auto* result = static_cast<double*>(output.request().ptr);
+    {
+        py::gil_scoped_release release;
+        for (py::ssize_t state = 0; state < states; ++state) {
+            result[state] = std::log(start_values[state] + 1e-12)
+                + std::log(emission[state * emit.shape[1] + observations[0]] + 1e-12);
+        }
+        std::vector<double> scratch(static_cast<std::size_t>(states));
+        for (py::ssize_t step = 1; step < time; ++step) {
+            const auto observation = observations[step];
+            for (py::ssize_t destination = 0; destination < states; ++destination) {
+                for (py::ssize_t source = 0; source < states; ++source) {
+                    scratch[static_cast<std::size_t>(source)] =
+                        result[(step - 1) * states + source]
+                        + std::log(transition[source * states + destination] + 1e-12);
+                }
+                result[step * states + destination] =
+                    std::log(emission[destination * emit.shape[1] + observation] + 1e-12)
+                    + log_sum_exp(scratch.data(), states);
+            }
+        }
+    }
+    return output;
+}
+
+py::array_t<double> hmm_backward(Labels sequence_, Vector start_, Matrix trans_, Matrix emit_) {
+    const auto sequence = sequence_.request();
+    const auto start = start_.request();
+    const auto trans = trans_.request();
+    const auto emit = emit_.request();
+    require_hmm_inputs(sequence, start, trans, emit);
+    const auto* observations = static_cast<const std::int64_t*>(sequence.ptr);
+    const auto* transition = static_cast<const double*>(trans.ptr);
+    const auto* emission = static_cast<const double*>(emit.ptr);
+    const py::ssize_t time = sequence.shape[0];
+    const py::ssize_t states = trans.shape[0];
+    py::array_t<double> output({time, states});
+    auto* result = static_cast<double*>(output.request().ptr);
+    {
+        py::gil_scoped_release release;
+        for (py::ssize_t state = 0; state < states; ++state) {
+            result[(time - 1) * states + state] = 0.0;
+        }
+        std::vector<double> scratch(static_cast<std::size_t>(states));
+        for (py::ssize_t step = time - 2; step >= 0; --step) {
+            const auto observation = observations[step + 1];
+            for (py::ssize_t source = 0; source < states; ++source) {
+                for (py::ssize_t destination = 0; destination < states; ++destination) {
+                    scratch[static_cast<std::size_t>(destination)] =
+                        std::log(transition[source * states + destination] + 1e-12)
+                        + std::log(emission[destination * emit.shape[1] + observation] + 1e-12)
+                        + result[(step + 1) * states + destination];
+                }
+                result[step * states + source] = log_sum_exp(scratch.data(), states);
+            }
+        }
+    }
+    return output;
+}
+
+py::array_t<std::int64_t> hmm_viterbi(
+    Labels sequence_, Vector start_, Matrix trans_, Matrix emit_) {
+    const auto sequence = sequence_.request();
+    const auto start = start_.request();
+    const auto trans = trans_.request();
+    const auto emit = emit_.request();
+    require_hmm_inputs(sequence, start, trans, emit);
+    const auto* observations = static_cast<const std::int64_t*>(sequence.ptr);
+    const auto* start_values = static_cast<const double*>(start.ptr);
+    const auto* transition = static_cast<const double*>(trans.ptr);
+    const auto* emission = static_cast<const double*>(emit.ptr);
+    const py::ssize_t time = sequence.shape[0];
+    const py::ssize_t states = trans.shape[0];
+    py::array_t<std::int64_t> path(time);
+    py::array_t<double> delta({time, states});
+    py::array_t<std::int64_t> psi({time, states});
+    auto* output = static_cast<std::int64_t*>(path.request().ptr);
+    auto* scores = static_cast<double*>(delta.request().ptr);
+    auto* backpointers = static_cast<std::int64_t*>(psi.request().ptr);
+    {
+        py::gil_scoped_release release;
+        for (py::ssize_t state = 0; state < states; ++state) {
+            scores[state] = std::log(start_values[state] + 1e-12)
+                + std::log(emission[state * emit.shape[1] + observations[0]] + 1e-12);
+            backpointers[state] = 0;
+        }
+        for (py::ssize_t step = 1; step < time; ++step) {
+            const auto observation = observations[step];
+            for (py::ssize_t destination = 0; destination < states; ++destination) {
+                double best = -std::numeric_limits<double>::infinity();
+                std::int64_t best_state = 0;
+                for (py::ssize_t source = 0; source < states; ++source) {
+                    const double candidate = scores[(step - 1) * states + source]
+                        + std::log(transition[source * states + destination] + 1e-12);
+                    if (candidate > best) {
+                        best = candidate;
+                        best_state = source;
+                    }
+                }
+                scores[step * states + destination] = best
+                    + std::log(emission[destination * emit.shape[1] + observation] + 1e-12);
+                backpointers[step * states + destination] = best_state;
+            }
+        }
+        std::int64_t last = 0;
+        for (py::ssize_t state = 1; state < states; ++state) {
+            if (scores[(time - 1) * states + state] > scores[(time - 1) * states + last]) {
+                last = state;
+            }
+        }
+        output[time - 1] = last;
+        for (py::ssize_t step = time - 2; step >= 0; --step) {
+            last = backpointers[(step + 1) * states + last];
+            output[step] = last;
+        }
+    }
+    return path;
+}
+
 static bool neighbor_distance_less(
     const std::pair<double, py::ssize_t>& left,
     const std::pair<double, py::ssize_t>& right) {
@@ -885,6 +1052,9 @@ PYBIND11_MODULE(_ml_kernels_cpp, m) {
     m.def("dbscan_neighbors", &dbscan_neighbors);
     m.def("dbscan_labels", &dbscan_labels);
     m.def("meanshift_update", &meanshift_update);
+    m.def("hmm_forward", &hmm_forward);
+    m.def("hmm_backward", &hmm_backward);
+    m.def("hmm_viterbi", &hmm_viterbi);
     m.def("csr_propagate", &csr_propagate);
     m.def("kmeans_assign", &kmeans_assign);
     m.def("kmeans_update", &kmeans_update);

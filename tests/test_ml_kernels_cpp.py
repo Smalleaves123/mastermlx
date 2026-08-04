@@ -9,6 +9,9 @@ from mastermlx.accel.ml_kernels import (
     dbscan_neighbors,
     gmm_log_gaussian,
     gmm_m_step,
+    hmm_backward,
+    hmm_forward,
+    hmm_viterbi,
     kmeans_assign,
     kmeans_update,
     knn_impute,
@@ -77,6 +80,10 @@ def test_ml_kernels_match_numpy_fallback_on_non_contiguous_inputs():
     dbscan_indptr = np.array([0, 2, 4, 6, 8], dtype=np.int64)
     dbscan_indices = np.array([0, 1, 0, 1, 2, 3, 2, 3], dtype=np.int64)
     meanshift_centers = np.asfortranarray(rng.normal(size=(3, 4)).astype(np.float32))
+    hmm_seq = np.array([0, 1, 1, 0], dtype=np.int64)
+    hmm_start = np.array([0.6, 0.4])
+    hmm_trans = np.array([[0.7, 0.3], [0.2, 0.8]])
+    hmm_emit = np.array([[0.8, 0.2], [0.3, 0.7]])
 
     for func, args in (
         (rbf_affinity, (X, 0.7)),
@@ -87,6 +94,9 @@ def test_ml_kernels_match_numpy_fallback_on_non_contiguous_inputs():
         (dbscan_neighbors, (X, 2.0)),
         (dbscan_labels, (dbscan_indptr, dbscan_indices, 2)),
         (meanshift_update, (X, meanshift_centers, 1.5)),
+        (hmm_forward, (hmm_seq, hmm_start, hmm_trans, hmm_emit)),
+        (hmm_backward, (hmm_seq, hmm_start, hmm_trans, hmm_emit)),
+        (hmm_viterbi, (hmm_seq, hmm_start, hmm_trans, hmm_emit)),
         (csr_propagate, (csr_indptr, csr_indices, csr_weights, responsibilities[:3])),
         (kmeans_assign, (X, centers)),
         (kmeans_update, (X, labels, 3)),
