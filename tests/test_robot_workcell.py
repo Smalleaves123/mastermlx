@@ -4,7 +4,7 @@ import json
 import numpy as np
 import pytest
 
-from mastermlx.robotics import RobotModel, RobotWorkcell
+from mastermlx.robotics import RobotModel, RobotWorkcell, URDFRobotModel
 from mastermlx.sim import SimpleWorld
 
 
@@ -257,3 +257,54 @@ def test_workcell_plans_pick_and_place_with_time_aligned_gripper_events():
     assert np.all(np.diff([event["time"] for event in task["gripper_schedule"]]) >= 0.0)
     assert not task["safety_report"]["collision"]
     assert workcell.artifacts_["pick_and_place"] is task
+
+
+def test_workcell_accepts_spatial_urdf_and_runs_motion_workflow():
+    xml = """
+    <robot name="spatial_workcell">
+      <link name="base" />
+      <link name="tip" />
+      <joint name="slide" type="prismatic">
+        <parent link="base" /><child link="tip" />
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <axis xyz="1 0 0" />
+        <limit lower="0" upper="1" />
+      </joint>
+    </robot>
+    """
+    robot = URDFRobotModel.from_urdf(xml, name="spatial_workcell")
+    workcell = RobotWorkcell(robot)
+    result = workcell.plan_motion(
+        [0.1],
+        [0.8],
+        bounds=[[0.0, 1.0]],
+        velocity_limits=0.8,
+        acceleration_limits=1.0,
+        jerk_limits=4.0,
+    )
+
+    assert result["trajectory"].n_joints == 1
+    assert result["safety_report"]["valid"]
+    assert result["safety_report"]["execution_ready"]
+    assert result["safety_report"]["workcell"] == "spatial_workcell"
+
+
+def test_validate_trajectory_is_an_execution_gate():
+    workcell = _workcell()
+    workcell.world.add_obstacle((0.0, 0.0), 0.2)
+    unsafe = {
+        "time": np.array([0.0, 0.0]),
+        "position": np.array([[0.0, 0.0], [0.1, 0.0]]),
+        "velocity": np.zeros((2, 2)),
+        "acceleration": np.zeros((2, 2)),
+        "jerk": np.zeros((2, 2)),
+    }
+
+    report = workcell.validate_trajectory(unsafe)
+
+    assert not report["valid"]
+    assert not report["execution_ready"]
+    assert "invalid_time" in report["violations"]
+    assert "collision" in report["violations"]
+    with pytest.raises(RuntimeError, match="collision"):
+        workcell.validate_trajectory(unsafe, raise_on_failure=True)

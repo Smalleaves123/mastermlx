@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
@@ -48,10 +48,9 @@ class URDFRobotModel:
     """Kinematics model for a general serial spatial URDF chain.
 
     This model preserves URDF joint origins and axes, including non-zero RPY
-    origins and joints that rotate or translate about arbitrary directions. It
-    deliberately focuses on kinematics and task-space IK; the existing
-    :class:`RobotModel` remains the compatibility path for DH dynamics and
-    workcell features.
+    origins and joints that rotate or translate about arbitrary directions.
+    It exposes the same core planning, collision, and dynamics contracts as
+    :class:`RobotModel` while preserving general URDF geometry.
     """
 
     chain: URDFSerialChain
@@ -61,6 +60,7 @@ class URDFRobotModel:
     joint_limits: np.ndarray | None = None
     resource_dir: str | Path | None = None
     link_inertias: tuple[LinkInertia, ...] | None = None
+    _collision_mesh_cache: dict[object, MeshObstacle] = field(default_factory=dict, init=False, repr=False)
 
     def __post_init__(self):
         if not isinstance(self.chain, URDFSerialChain):
@@ -215,13 +215,18 @@ class URDFRobotModel:
         return rpy_to_matrix(*values)
 
     def _collision_mesh(self, collision):
+        cached = self._collision_mesh_cache.get(collision)
+        if cached is not None:
+            return cached
         kind = collision.geometry_type
         if kind == "mesh":
             filename = Path(collision.filename)
             if not filename.is_absolute() and self.resource_dir is not None:
                 filename = Path(self.resource_dir) / filename
             mesh = MeshObstacle.from_file(filename)
-            return MeshObstacle(mesh.vertices * np.asarray(collision.scale), mesh.faces)
+            result = MeshObstacle(mesh.vertices * np.asarray(collision.scale), mesh.faces)
+            self._collision_mesh_cache[collision] = result
+            return result
         if kind == "box":
             size = np.asarray(collision.size, dtype=float)
             vertices = np.asarray([
@@ -233,11 +238,17 @@ class URDFRobotModel:
                 [0, 4, 5], [0, 5, 1], [2, 3, 7], [2, 7, 6],
                 [0, 2, 6], [0, 6, 4], [1, 5, 7], [1, 7, 3],
             ])
-            return MeshObstacle(vertices, faces)
+            result = MeshObstacle(vertices, faces)
+            self._collision_mesh_cache[collision] = result
+            return result
         if kind == "sphere":
-            return self._sphere_mesh(float(collision.radius))
+            result = self._sphere_mesh(float(collision.radius))
+            self._collision_mesh_cache[collision] = result
+            return result
         if kind in {"cylinder", "capsule"}:
-            return self._cylinder_mesh(float(collision.radius), float(collision.length))
+            result = self._cylinder_mesh(float(collision.radius), float(collision.length))
+            self._collision_mesh_cache[collision] = result
+            return result
         raise ValueError(f"unsupported URDF collision geometry: {kind!r}")
 
     @staticmethod
@@ -663,6 +674,39 @@ class URDFRobotModel:
             for row in values:
                 self.validate_joint_values(row, check_limits=True)
         return self.chain.geometric_jacobian_batch(values, base=self.base, tool=self.tool)
+
+    def kinematic_metrics_batch(self, joint_values, *, translational=False, threshold=1e-8):
+        """Return batch singularity and dexterity diagnostics."""
+
+        threshold = float(threshold)
+        if not np.isfinite(threshold) or threshold <= 0.0:
+            raise ValueError("threshold must be a positive finite value")
+        jacobian = self.jacobian_batch(joint_values)
+        if translational:
+            jacobian = jacobian[:, :3, :]
+        singular_values = np.linalg.svd(jacobian, compute_uv=False)
+        scale = singular_values[:, 0] if singular_values.shape[1] else np.zeros(jacobian.shape[0])
+        effective_threshold = threshold * np.maximum(1.0, scale)
+        rank = np.count_nonzero(singular_values > effective_threshold[:, None], axis=1)
+        full_rank = min(jacobian.shape[1:])
+        smallest = singular_values[:, -1] if singular_values.shape[1] else np.zeros(jacobian.shape[0])
+        condition_number = np.divide(
+            scale,
+            smallest,
+            out=np.full(jacobian.shape[0], np.inf, dtype=float),
+            where=smallest > effective_threshold,
+        )
+        return RobotResult({
+            "singular_values": singular_values,
+            "rank": rank.astype(int),
+            "full_rank": full_rank,
+            "singular": rank < full_rank,
+            "condition_number": condition_number,
+            "manipulability": np.prod(singular_values, axis=1)
+            if singular_values.shape[1]
+            else np.zeros(jacobian.shape[0]),
+            "translational": bool(translational),
+        })
 
     def end_effector_velocity(self, joint_values, joint_velocities, *, translational=False):
         q = self.validate_joint_values(joint_values, check_limits=self.joint_limits is not None)

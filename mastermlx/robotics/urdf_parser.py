@@ -122,9 +122,8 @@ class URDFSerialChain:
     """General serial URDF chain for spatial forward kinematics.
 
     Unlike :func:`urdf_to_dh_chain`, this representation preserves each joint's
-    origin RPY and arbitrary axis. It is intentionally kinematics-only; the
-    existing DH model remains the compatibility path for dynamics and legacy
-    workcell APIs.
+    origin RPY and arbitrary axis. It is shared by spatial planning, collision,
+    and dynamics APIs.
     """
 
     base_link: str

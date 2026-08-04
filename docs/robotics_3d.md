@@ -27,9 +27,9 @@ Supported serial-chain joints are:
 - `prismatic`
 
 The model supports non-zero joint-origin RPY, arbitrary joint axes, batches of
-FK/Jacobian evaluations, differential IK, position IK, and full-pose IK. It is
-currently a kinematics-focused model. The existing `RobotModel` remains the
-compatibility path for DH-based dynamics and workcell workflows.
+FK/Jacobian evaluations, differential IK, position IK, and full-pose IK. It
+also exposes the same core collision, dynamics, planning, and workcell
+contracts as `RobotModel`.
 
 ## Spatial collision and occupancy maps
 
@@ -122,9 +122,8 @@ acceleration, jerk, durations, and the configured limits.
 ## Design boundary
 
 The current implementation intentionally rejects branching chains and URDF
-`floating`, `planar`, and `spherical` joints. The spatial model remains
-kinematics-focused: it does not yet parse URDF visual/collision meshes or
-provide dynamics for arbitrary spatial chains.
+`floating`, `planar`, and `spherical` joints. Visual materials, transmissions,
+and hardware-specific execution adapters remain outside the current scope.
 
 ## Joint-path optimization
 
@@ -150,6 +149,23 @@ the workcell obstacles and returns `collision_free`, `minimum_clearance`, and
 the detailed collision summary. `RobotWorkcell.plan_motion()` can run this
 step with `optimize_path=True`; it refuses to execute an optimized path that
 does not pass the final collision check.
+
+`RobotWorkcell` accepts both `RobotModel` and `URDFRobotModel`. A spatial URDF
+without an explicit world gets a three-dimensional obstacle world automatically:
+
+```python
+from mastermlx.robotics import RobotWorkcell
+
+workcell = RobotWorkcell(robot, occupancy_grid=occupancy)
+workcell.world.add_sphere((0.5, 0.0, 0.2), 0.1)
+result = workcell.plan_motion(q_start, q_goal, bounds=joint_bounds)
+gate = workcell.validate_trajectory(result["trajectory"])
+assert gate["execution_ready"]
+```
+
+The validation gate checks joint limits, interpolated collision clearance,
+trajectory motion limits, timestamps, and optional singularity policy. Planning
+workflows call the gate before returning an execution-ready result.
 
 ## Closed-loop tracking
 

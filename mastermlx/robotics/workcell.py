@@ -12,13 +12,14 @@ import numpy as np
 from ..base import BaseExperiment
 from ..planning import rrt_star, smooth
 from .collision import (
-    chain_clearance_batch,
     path_collision_free,
     path_collision_report,
     path_collision_summary,
+    robot_collision_report,
 )
 from .constraints import validate_joint_limits
 from .model import RobotModel
+from .urdf_model import URDFRobotModel
 from .results import JointTrajectory, RobotResult
 from .trajectory import (
     _retime_quintic_path_compiled,
@@ -84,35 +85,108 @@ def _task_offset(values, name):
     return values
 
 
-class RobotWorkcell(BaseExperiment):
-    """Compose kinematics, collision planning, retiming, and virtual tracking.
+class _SpatialWorkcellWorld:
+    """Small obstacle world used when a spatial URDF has no custom world."""
 
-    The workcell uses :class:`~mastermlx.sim.SimpleWorld`, so obstacle checks
-    model planar circular obstacles.  It deliberately reuses the project's
-    robot model and simulator instead of maintaining a second implementation.
+    def __init__(self, robot, obstacles=(), occupancy_grid=None):
+        self.robot = robot
+        self.obstacles = list(obstacles)
+        self.occupancy_grid = occupancy_grid
+
+    def add_obstacle(self, obstacle):
+        self.obstacles.append(obstacle)
+        return obstacle
+
+    def add_sphere(self, center, radius):
+        from .collision import SphereObstacle
+
+        return self.add_obstacle(SphereObstacle(tuple(np.asarray(center, dtype=float)), radius))
+
+    def add_box(self, lower, upper):
+        from .collision import BoxObstacle
+
+        return self.add_obstacle(BoxObstacle(tuple(np.asarray(lower, dtype=float)), tuple(np.asarray(upper, dtype=float))))
+
+    def add_capsule(self, start, end, radius):
+        from .collision import CapsuleObstacle
+
+        return self.add_obstacle(
+            CapsuleObstacle(tuple(np.asarray(start, dtype=float)), tuple(np.asarray(end, dtype=float)), radius)
+        )
+
+    def link_positions(self, joint_values=None):
+        return self.robot.frame_positions(joint_values)
+
+    def collision_report(self, joint_values=None):
+        return self.robot.collision_report(
+            joint_values,
+            self.obstacles,
+            occupancy_grid=self.occupancy_grid,
+        )
+
+    def hit(self, joint_values=None):
+        return bool(self.collision_report(joint_values)["collision"])
+
+    def clearance(self, joint_values=None):
+        return float(self.collision_report(joint_values)["minimum_clearance"])
+
+    def plan_path(self, q_start, q_goal, bounds, *, hit=None, **kwargs):
+        from ..planning import rrt
+
+        return rrt(q_start, q_goal, bounds, hit=self.hit if hit is None else hit, **kwargs)
+
+    def trajectory_follow(self, trajectory, *, gains=(4.0, 0.4), dt=0.1, damping=0.0, state=None):
+        from ..sim.core import SimpleRobotSim
+
+        sim = SimpleRobotSim(self.robot, state=state, dt=dt, damping=damping)
+        states = [sim.state.copy()]
+        poses = [sim.pose()]
+        controls = []
+        kp, kd = gains
+        for target in np.asarray(trajectory, dtype=float):
+            action = kp * (target - sim.q) + kd * (-sim.qd)
+            controls.append(action)
+            sim.step(action)
+            states.append(sim.state.copy())
+            poses.append(sim.pose())
+        return np.asarray(states), poses, np.asarray(controls)
+
+
+class RobotWorkcell(BaseExperiment):
+    """Compose robot kinematics, collision planning, retiming, and tracking.
+
+    DH robots retain the existing :class:`~mastermlx.sim.SimpleWorld` path;
+    serial URDF robots use the same workflow with spatial obstacle queries.
     """
 
-    def __init__(self, robot, world=None, name=None, joint_limits=None):
+    def __init__(self, robot, world=None, name=None, joint_limits=None, occupancy_grid=None):
         from ..sim.world import SimpleWorld
 
         super().__init__()
-        if not isinstance(robot, RobotModel):
-            raise TypeError("robot must be a RobotModel")
+        if not isinstance(robot, (RobotModel, URDFRobotModel)):
+            raise TypeError("robot must be a RobotModel or URDFRobotModel")
         if world is None:
-            world = SimpleWorld(robot)
-        if not isinstance(world, SimpleWorld):
-            raise TypeError("world must be a SimpleWorld")
-        if world.robot is not robot:
-            raise ValueError("world.robot must be the same RobotModel as robot")
+            world = (
+                SimpleWorld(robot)
+                if isinstance(robot, RobotModel)
+                else _SpatialWorkcellWorld(robot, occupancy_grid=occupancy_grid)
+            )
+        if getattr(world, "robot", None) is not robot:
+            raise ValueError("world.robot must be the same robot instance")
+        if not hasattr(world, "obstacles"):
+            raise TypeError("world must expose an obstacles collection")
         self.robot = robot
         self.world = world
         self.name = robot.name if name is None else str(name)
+        self.occupancy_grid = (
+            getattr(world, "occupancy_grid", None) if occupancy_grid is None else occupancy_grid
+        )
         configured_limits = robot.joint_limits if joint_limits is None else joint_limits
-        self.joint_limits = validate_joint_limits(configured_limits, len(robot.links))
+        self.joint_limits = validate_joint_limits(configured_limits, self.n_joints)
 
     @property
     def n_joints(self):
-        return len(self.robot.links)
+        return self.robot.n_joints
 
     def _check_joint_limits(self, values, name):
         values = np.asarray(values, dtype=float)
@@ -151,13 +225,36 @@ class RobotWorkcell(BaseExperiment):
         upper = np.maximum(values - self.joint_limits[:, 1], 0.0)
         return np.max(np.maximum(lower, upper), axis=-1)
 
+    def _state_collision_report(self, joint_values):
+        if isinstance(self.robot, URDFRobotModel):
+            return self.robot.collision_report(
+                joint_values,
+                self.world.obstacles,
+                occupancy_grid=self.occupancy_grid,
+            )
+        return robot_collision_report(
+            self.robot,
+            joint_values,
+            self.world.obstacles,
+            occupancy_grid=self.occupancy_grid,
+        )
+
     def _collision_free_path(self, path, collision_step=0.05, clearance=0.0):
+        if isinstance(self.robot, URDFRobotModel):
+            return self.robot.path_collision_free(
+                path,
+                self.world.obstacles,
+                clearance=clearance,
+                interpolation_step=collision_step,
+                occupancy_grid=self.occupancy_grid,
+            )
         return path_collision_free(
             self.robot,
             path,
             self.world.obstacles,
             clearance=clearance,
             interpolation_step=collision_step,
+            occupancy_grid=self.occupancy_grid,
         )
 
     def _collision_free_edge(self, start, end, collision_step, clearance):
@@ -168,17 +265,35 @@ class RobotWorkcell(BaseExperiment):
     def path_collision_summary(self, joint_path, *, link_radius=0.0, interpolation_step=0.05):
         """Return compiled batch collision diagnostics for a joint-space path."""
 
+        if isinstance(self.robot, URDFRobotModel):
+            return self.robot.path_collision_summary(
+                joint_path,
+                self.world.obstacles,
+                link_radius=link_radius,
+                interpolation_step=interpolation_step,
+                occupancy_grid=self.occupancy_grid,
+            )
         return path_collision_summary(
             self.robot,
             joint_path,
             self.world.obstacles,
             link_radius=link_radius,
             interpolation_step=interpolation_step,
+            occupancy_grid=self.occupancy_grid,
         )
 
     def path_collision_free(self, joint_path, *, clearance=0.0, link_radius=0.0, interpolation_step=0.05):
         """Return whether a joint-space path satisfies an obstacle clearance."""
 
+        if isinstance(self.robot, URDFRobotModel):
+            return self.robot.path_collision_free(
+                joint_path,
+                self.world.obstacles,
+                clearance=clearance,
+                link_radius=link_radius,
+                interpolation_step=interpolation_step,
+                occupancy_grid=self.occupancy_grid,
+            )
         return path_collision_free(
             self.robot,
             joint_path,
@@ -186,6 +301,27 @@ class RobotWorkcell(BaseExperiment):
             clearance=clearance,
             link_radius=link_radius,
             interpolation_step=interpolation_step,
+            occupancy_grid=self.occupancy_grid,
+        )
+
+    def path_collision_report(self, joint_path, *, link_radius=0.0, interpolation_step=0.05):
+        """Return detailed collision diagnostics for a joint-space path."""
+
+        if isinstance(self.robot, URDFRobotModel):
+            return self.robot.path_collision_report(
+                joint_path,
+                self.world.obstacles,
+                link_radius=link_radius,
+                interpolation_step=interpolation_step,
+                occupancy_grid=self.occupancy_grid,
+            )
+        return path_collision_report(
+            self.robot,
+            joint_path,
+            self.world.obstacles,
+            link_radius=link_radius,
+            interpolation_step=interpolation_step,
+            occupancy_grid=self.occupancy_grid,
         )
 
     def solve_tcp_path(
@@ -233,7 +369,7 @@ class RobotWorkcell(BaseExperiment):
                     f"IK did not converge for TCP target {index}: "
                     f"position_error={position_error:.3e}, orientation_error={orientation_error:.3e}"
                 )
-            if check_collisions and self.world.hit(q_current):
+            if check_collisions and self._state_collision_report(q_current)["collision"]:
                 raise RuntimeError(f"IK solution for TCP target {index} is in collision")
             normalized_targets.append(target.copy())
             configurations.append(q_current.copy())
@@ -357,7 +493,8 @@ class RobotWorkcell(BaseExperiment):
         if workers < 1:
             raise ValueError("workers must be at least 1")
         def hit(values):
-            return self.world.clearance(values) < clearance
+            report = self._state_collision_report(values)
+            return bool(report["collision"] or report["minimum_clearance"] < clearance)
 
         def edge_free(start, end, step):
             return self._collision_free_edge(start, end, step, clearance)
@@ -557,12 +694,7 @@ class RobotWorkcell(BaseExperiment):
             if not optimization["collision_free"]:
                 raise RuntimeError("trajectory optimizer did not produce a collision-safe path")
             path = np.asarray(optimization["path"], dtype=float)
-        collision = path_collision_report(
-            self.robot,
-            path,
-            self.world.obstacles,
-            interpolation_step=collision_step,
-        )
+        collision = self.path_collision_report(path, interpolation_step=collision_step)
         deltas = np.diff(path, axis=0)
         planning_report = RobotResult({
             "planner": str(planner),
@@ -591,7 +723,12 @@ class RobotWorkcell(BaseExperiment):
         if track:
             tracking_kwargs = {} if tracking_kwargs is None else dict(tracking_kwargs)
             tracking = self.simulate_tracking(trajectory, **tracking_kwargs)
-        safety = self.safety_report(trajectory, tracking=tracking, clearance_margin=clearance)
+        safety = self.validate_trajectory(
+            trajectory,
+            tracking=tracking,
+            clearance_margin=clearance,
+            raise_on_failure=True,
+        )
         result = RobotResult({
             "path": path,
             "trajectory": trajectory,
@@ -753,7 +890,11 @@ class RobotWorkcell(BaseExperiment):
                 "value": gripper_open,
             },
         ]
-        safety = self.safety_report(trajectory, clearance_margin=clearance)
+        safety = self.validate_trajectory(
+            trajectory,
+            clearance_margin=clearance,
+            raise_on_failure=True,
+        )
         result = RobotResult({
             "pick_target": pick_target.copy(),
             "place_target": place_target.copy(),
@@ -964,12 +1105,22 @@ class RobotWorkcell(BaseExperiment):
             "controller": controller_name,
         })
 
-    def safety_report(self, trajectory, tracking=None, *, clearance_margin=0.0, singularity_threshold=1e-8):
+    def safety_report(
+        self,
+        trajectory,
+        tracking=None,
+        *,
+        clearance_margin=0.0,
+        singularity_threshold=1e-8,
+        link_radius=0.0,
+        interpolation_step=0.05,
+    ):
         """Summarize collision clearance, motion limits, and tracking error."""
 
         if isinstance(trajectory, Mapping):
             position = np.asarray(trajectory["position"], dtype=float)
-            time = np.asarray(trajectory.get("time"), dtype=float)
+            raw_time = trajectory.get("time")
+            time = None if raw_time is None else np.asarray(raw_time, dtype=float)
             velocity = trajectory.get("velocity")
             acceleration = trajectory.get("acceleration")
             jerk = trajectory.get("jerk")
@@ -982,9 +1133,24 @@ class RobotWorkcell(BaseExperiment):
             raise ValueError("clearance_margin must be a non-negative finite value")
         if position.ndim != 2 or position.shape[0] < 1 or position.shape[1] != self.n_joints:
             raise ValueError("trajectory positions must have shape (n_steps, n_joints)")
+        link_radius = float(link_radius)
+        interpolation_step = float(interpolation_step)
+        if link_radius < 0.0 or not np.isfinite(link_radius):
+            raise ValueError("link_radius must be a non-negative finite value")
+        if interpolation_step <= 0.0 or not np.isfinite(interpolation_step):
+            raise ValueError("interpolation_step must be a positive finite value")
+        time_valid = time is None or (
+            time.shape == (position.shape[0],)
+            and np.all(np.isfinite(time))
+            and np.all(np.diff(time) > 0.0)
+        )
+        if time is not None and time.shape != (position.shape[0],):
+            raise ValueError("trajectory time must have one value per position sample")
 
-        reference_points = np.asarray([self.world.link_positions(q) for q in position], dtype=float)
-        reference_clearances = chain_clearance_batch(reference_points, self.world.obstacles)
+        reference_collision = self.path_collision_summary(
+            position, link_radius=link_radius, interpolation_step=interpolation_step
+        )
+        reference_clearances = np.asarray(reference_collision["clearances"], dtype=float)
         deltas = np.diff(position, axis=0)
         joint_path_length = float(np.sum(np.linalg.norm(deltas, axis=1))) if deltas.size else 0.0
         reference_limit_violation = self._joint_limit_violation(position)
@@ -995,8 +1161,10 @@ class RobotWorkcell(BaseExperiment):
             actual = np.asarray(tracking["actual"], dtype=float)
             if actual.ndim != 2 or actual.shape[1] != self.n_joints or not np.all(np.isfinite(actual)):
                 raise ValueError("tracking actual must have shape (n_steps, n_joints) with finite values")
-            tracking_points = np.asarray([self.world.link_positions(q) for q in actual], dtype=float)
-            tracking_clearances = chain_clearance_batch(tracking_points, self.world.obstacles)
+            tracking_collision = self.path_collision_summary(
+                actual, link_radius=link_radius, interpolation_step=interpolation_step
+            )
+            tracking_clearances = np.asarray(tracking_collision["clearances"], dtype=float)
             tracking_limit_violation = self._joint_limit_violation(actual)
 
         all_clearances = reference_clearances if tracking_clearances is None else np.concatenate([reference_clearances, tracking_clearances])
@@ -1058,12 +1226,19 @@ class RobotWorkcell(BaseExperiment):
             "n_joints": self.n_joints,
             "n_samples": int(position.shape[0]),
             "duration": None if time is None else float(time[-1] - time[0]),
+            "time_valid": bool(time_valid),
             "joint_path_length": joint_path_length,
             "collision": bool(np.any(all_clearances <= 0.0)),
             "clearance_margin": clearance_margin,
+            "link_radius": link_radius,
+            "interpolation_step": interpolation_step,
             "clearance_violation": clearance_violation,
             "reference_collision": bool(np.any(reference_clearances <= 0.0)),
+            "reference_first_collision_index": reference_collision["first_collision_index"],
             "tracking_collision": None if tracking_clearances is None else bool(np.any(tracking_clearances <= 0.0)),
+            "tracking_first_collision_index": None
+            if tracking_clearances is None
+            else tracking_collision["first_collision_index"],
             "minimum_clearance": None if finite_clearances.size == 0 else float(np.min(finite_clearances)),
             "reference_minimum_clearance": None
             if not np.any(np.isfinite(reference_clearances))
@@ -1094,6 +1269,81 @@ class RobotWorkcell(BaseExperiment):
             error_norm = np.linalg.norm(error, axis=1)
             report["tracking_max_error"] = float(np.max(error_norm))
             report["tracking_rms_error"] = float(np.sqrt(np.mean(error_norm**2)))
+        return report
+
+    def validate_trajectory(
+        self,
+        trajectory,
+        tracking=None,
+        *,
+        clearance_margin=0.0,
+        singularity_threshold=1e-8,
+        link_radius=0.0,
+        interpolation_step=0.05,
+        check_limits=True,
+        check_collision=True,
+        check_clearance=True,
+        check_motion_limits=True,
+        check_singularity=False,
+        check_time=True,
+        raise_on_failure=False,
+    ):
+        """Validate a trajectory before handing it to an execution adapter.
+
+        The returned report remains mapping-compatible with ``safety_report``
+        and adds a stable ``valid`` flag plus machine-readable violations.
+        """
+
+        report = self.safety_report(
+            trajectory,
+            tracking=tracking,
+            clearance_margin=clearance_margin,
+            singularity_threshold=singularity_threshold,
+            link_radius=link_radius,
+            interpolation_step=interpolation_step,
+        )
+        violations = []
+        if check_time and not report["time_valid"]:
+            violations.append("invalid_time")
+        if check_limits and report["joint_limit_violation"]:
+            violations.append("joint_limits")
+        if check_collision and report["collision"]:
+            violations.append("collision")
+        if check_clearance and report["clearance_violation"]:
+            violations.append("clearance")
+        if check_motion_limits and report["motion_limit_violation"]:
+            violations.append("motion_limits")
+        if check_singularity and report["singular_configuration"]:
+            violations.append("singularity")
+        report["violations"] = violations
+        report["valid"] = not violations
+        report["execution_ready"] = report["valid"]
+        candidates = []
+        if isinstance(trajectory, Mapping):
+            positions = np.asarray(trajectory["position"], dtype=float)
+            if check_limits:
+                invalid = np.flatnonzero(self._joint_limit_violation(positions) > 0.0)
+                if invalid.size:
+                    candidates.append(int(invalid[0]))
+            if check_motion_limits:
+                for name in ("velocity", "acceleration", "jerk"):
+                    values = trajectory.get(name)
+                    limits = trajectory.get(f"{name}_limits")
+                    if values is None or limits is None:
+                        continue
+                    values = np.asarray(values, dtype=float)
+                    limits = np.asarray(limits, dtype=float).reshape(-1)
+                    invalid = np.flatnonzero(np.any(np.abs(values) > limits + 1e-12, axis=1))
+                    if invalid.size:
+                        candidates.append(int(invalid[0]))
+        if report["reference_first_collision_index"] is not None:
+            candidates.append(report["reference_first_collision_index"])
+        if report["tracking_first_collision_index"] is not None:
+            candidates.append(report["tracking_first_collision_index"])
+        report["first_violation_index"] = min(candidates) if candidates else None
+        self._store_report(report)
+        if raise_on_failure and not report["valid"]:
+            raise RuntimeError("trajectory failed safety validation: " + ", ".join(violations))
         return report
 
     def export_artifacts(self, directory, trajectory, *, tracking=None, report=None):

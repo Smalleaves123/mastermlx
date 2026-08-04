@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import numpy as np
 
-from ..robotics.model import RobotModel
 from ..robotics.visualizer import plot_chain
 
 
@@ -27,11 +26,11 @@ def step_state(state, action, dt=0.1, damping=0.0):
 class SimpleRobotSim:
     """Tiny deterministic simulator for serial robots."""
 
-    def __init__(self, robot: RobotModel, state=None, dt=0.1, damping=0.0):
+    def __init__(self, robot, state=None, dt=0.1, damping=0.0):
         self.robot = robot
         self.dt = float(dt)
         self.damping = float(damping)
-        n = len(robot.links)
+        n = robot.n_joints
         if state is None:
             self.state = np.zeros(2 * n, dtype=float)
         else:
@@ -41,12 +40,12 @@ class SimpleRobotSim:
 
     @property
     def q(self):
-        n = len(self.robot.links)
+        n = self.robot.n_joints
         return self.state[:n]
 
     @property
     def qd(self):
-        n = len(self.robot.links)
+        n = self.robot.n_joints
         return self.state[n:]
 
     def pose(self):
@@ -58,7 +57,7 @@ class SimpleRobotSim:
 
     def rollout(self, actions):
         actions = np.asarray(actions, dtype=float)
-        if actions.ndim != 2 or actions.shape[1] != len(self.robot.links):
+        if actions.ndim != 2 or actions.shape[1] != self.robot.n_joints:
             raise ValueError("actions must have shape (T, n_joints)")
         states = [self.state.copy()]
         poses = [self.pose()]
@@ -74,7 +73,7 @@ class SimpleRobotSim:
         return plot_chain(points[:, :2] if points.shape[1] >= 2 else points, ax=ax, annotate=annotate)
 
     def reset(self, state=None):
-        n = len(self.robot.links)
+        n = self.robot.n_joints
         if state is None:
             self.state = np.zeros(2 * n, dtype=float)
         else:
