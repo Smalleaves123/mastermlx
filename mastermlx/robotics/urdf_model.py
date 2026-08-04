@@ -303,6 +303,8 @@ class URDFRobotModel:
         *,
         link_radius=0.0,
         occupancy_grid=None,
+        check_self_collision=False,
+        self_collision_exclusions=(),
     ):
         """Return geometric and optional occupancy-grid collision diagnostics."""
 
@@ -313,6 +315,8 @@ class URDFRobotModel:
             obstacles,
             link_radius=link_radius,
             occupancy_grid=occupancy_grid,
+            check_self_collision=check_self_collision,
+            self_collision_exclusions=self_collision_exclusions,
         )
         mesh_report = mesh_collision_report(
             self.collision_meshes(joint_values), obstacles, link_radius=link_radius
@@ -333,6 +337,8 @@ class URDFRobotModel:
         link_radius=0.0,
         interpolation_step=0.05,
         occupancy_grid=None,
+        check_self_collision=False,
+        self_collision_exclusions=(),
     ):
         """Return whether a joint path clears geometry and an optional voxel map."""
 
@@ -344,6 +350,8 @@ class URDFRobotModel:
                     obstacles,
                     link_radius=link_radius,
                     occupancy_grid=occupancy_grid,
+                    check_self_collision=check_self_collision,
+                    self_collision_exclusions=self_collision_exclusions,
                 )
                 return bool(not report["collision"] and report["minimum_clearance"] >= clearance)
             return bool(all(sample_free(sample) for sample in samples))
@@ -355,6 +363,8 @@ class URDFRobotModel:
             link_radius=link_radius,
             interpolation_step=interpolation_step,
             occupancy_grid=occupancy_grid,
+            check_self_collision=check_self_collision,
+            self_collision_exclusions=self_collision_exclusions,
         )
 
     def path_collision_summary(
@@ -365,6 +375,8 @@ class URDFRobotModel:
         link_radius=0.0,
         interpolation_step=0.05,
         occupancy_grid=None,
+        check_self_collision=False,
+        self_collision_exclusions=(),
     ):
         """Return batched collision and clearance data for a joint path."""
 
@@ -375,12 +387,15 @@ class URDFRobotModel:
                 link_radius=link_radius,
                 interpolation_step=interpolation_step,
                 occupancy_grid=occupancy_grid,
+                check_self_collision=check_self_collision,
+                self_collision_exclusions=self_collision_exclusions,
             )
             clearances = report["clearances"]
             kind_codes = {None: 0, "point": 1, "segment": 2, "mesh": 3, "occupancy": 4}
             closest = [item["closest"] for item in report["reports"]]
             return RobotResult({
                 "collision": bool(report["collision"]),
+                "self_collision": bool(any(item.get("self_collision", False) for item in report["reports"])),
                 "minimum_clearance": float(np.min(clearances)),
                 "first_collision_index": report["first_collision_index"],
                 "n_samples": report["n_samples"],
@@ -405,6 +420,8 @@ class URDFRobotModel:
             link_radius=link_radius,
             interpolation_step=interpolation_step,
             occupancy_grid=occupancy_grid,
+            check_self_collision=check_self_collision,
+            self_collision_exclusions=self_collision_exclusions,
         )
 
     def path_collision_report(
@@ -415,6 +432,8 @@ class URDFRobotModel:
         link_radius=0.0,
         interpolation_step=0.05,
         occupancy_grid=None,
+        check_self_collision=False,
+        self_collision_exclusions=(),
     ):
         """Return detailed collision reports for a joint path."""
 
@@ -427,6 +446,8 @@ class URDFRobotModel:
                     obstacles,
                     link_radius=link_radius,
                     occupancy_grid=occupancy_grid,
+                    check_self_collision=check_self_collision,
+                    self_collision_exclusions=self_collision_exclusions,
                 )
                 for sample in samples
             ]
@@ -448,6 +469,8 @@ class URDFRobotModel:
             link_radius=link_radius,
             interpolation_step=interpolation_step,
             occupancy_grid=occupancy_grid,
+            check_self_collision=check_self_collision,
+            self_collision_exclusions=self_collision_exclusions,
         )
 
     def plan_joint_path(

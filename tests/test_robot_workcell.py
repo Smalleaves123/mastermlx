@@ -308,3 +308,30 @@ def test_validate_trajectory_is_an_execution_gate():
     assert "collision" in report["violations"]
     with pytest.raises(RuntimeError, match="collision"):
         workcell.validate_trajectory(unsafe, raise_on_failure=True)
+
+
+def test_self_collision_is_reported_and_can_be_excluded():
+    robot = RobotModel.from_dh(
+        [
+            {"a": 1.0, "alpha": 0.0, "d": 0.0, "theta": 0.0},
+            {"a": 1.0, "alpha": 0.0, "d": 0.0, "theta": 0.0},
+            {"a": 1.0, "alpha": 0.0, "d": 0.0, "theta": 0.0},
+        ],
+        name="self_collision_robot",
+    )
+    workcell = RobotWorkcell(robot)
+    path = np.array([[0.0, np.pi, np.pi]])
+
+    summary = workcell.path_collision_summary(path, check_self_collision=True)
+    excluded = RobotWorkcell(robot, self_collision_exclusions=((0, 2),))
+    excluded_summary = excluded.path_collision_summary(path, check_self_collision=True)
+
+    assert summary["self_collision"]
+    assert summary["collision"]
+    assert not excluded_summary["self_collision"]
+    report = workcell.validate_trajectory(
+        {"time": [0.0], "position": path},
+        check_self_collision=True,
+    )
+    assert not report["valid"]
+    assert "self_collision" in report["violations"]

@@ -928,6 +928,65 @@ def chain_collision_report(points, obstacles, *, link_radius=0.0):
     })
 
 
+def chain_self_collision_report(points, *, link_radius=0.0, exclusions=()):
+    """Report clearance between non-adjacent chain link segments.
+
+    Adjacent links are excluded by definition. ``exclusions`` may contain
+    additional ``(segment_index, segment_index)`` pairs for robot-specific
+    geometry that is known to overlap without being a collision.
+    """
+
+    points = _as_points(points)
+    link_radius = float(link_radius)
+    if link_radius < 0.0 or not np.isfinite(link_radius):
+        raise ValueError("link_radius must be a non-negative finite value")
+    n_segments = max(0, points.shape[0] - 1)
+    excluded = set()
+    for pair in exclusions:
+        values = tuple(int(value) for value in pair)
+        if len(values) != 2 or min(values) < 0 or max(values) >= n_segments:
+            raise ValueError("self-collision exclusions must contain valid segment-index pairs")
+        excluded.add(tuple(sorted(values)))
+
+    closest = {
+        "kind": "self",
+        "index": None,
+        "obstacle_index": None,
+        "link_pair": None,
+        "clearance": float("inf"),
+    }
+    hits = []
+    collision_tolerance = 1e-12
+    for first in range(n_segments):
+        for second in range(first + 2, n_segments):
+            if (first, second) in excluded:
+                continue
+            clearance = segment_distance(
+                points[first], points[first + 1], points[second], points[second + 1]
+            ) - 2.0 * link_radius
+            if clearance < closest["clearance"]:
+                closest = {
+                    "kind": "self",
+                    "index": first,
+                    "obstacle_index": None,
+                    "link_pair": (first, second),
+                    "clearance": float(clearance),
+                }
+            if clearance <= collision_tolerance:
+                hits.append({
+                    "kind": "self",
+                    "link_pair": (first, second),
+                    "clearance": float(clearance),
+                })
+    return RobotResult({
+        "collision": bool(hits),
+        "self_collision": bool(hits),
+        "minimum_clearance": float(closest["clearance"]),
+        "closest": closest,
+        "hits": hits,
+    })
+
+
 def robot_collision_report(
     robot,
     joint_values=None,
@@ -935,12 +994,29 @@ def robot_collision_report(
     *,
     link_radius=0.0,
     occupancy_grid=None,
+    check_self_collision=False,
+    self_collision_exclusions=(),
 ):
     """Return collision diagnostics for a robot model at one configuration."""
 
     frame_positions = getattr(robot, "frame_positions", robot.positions)
     chain = frame_positions(joint_values)
     report = chain_collision_report(chain, obstacles, link_radius=link_radius)
+    self_report = chain_self_collision_report(
+        chain,
+        link_radius=link_radius,
+        exclusions=self_collision_exclusions,
+    ) if check_self_collision else None
+    report["self_collision"] = False if self_report is None else self_report["self_collision"]
+    report["self_collision_minimum_clearance"] = (
+        float("inf") if self_report is None else self_report["minimum_clearance"]
+    )
+    if self_report is not None and self_report["minimum_clearance"] < report["minimum_clearance"]:
+        report["minimum_clearance"] = self_report["minimum_clearance"]
+        report["closest"] = self_report["closest"]
+    if self_report is not None:
+        report["hits"].extend(self_report["hits"])
+        report["collision"] = bool(report["collision"] or self_report["collision"])
     if occupancy_grid is None:
         return report
     occupancy_clearance = occupancy_grid.polyline_minimum_clearance(chain, radius=link_radius)
@@ -990,6 +1066,8 @@ def path_collision_free(
     link_radius=0.0,
     interpolation_step=0.05,
     occupancy_grid=None,
+    check_self_collision=False,
+    self_collision_exclusions=(),
 ):
     """Return whether every interpolated path sample meets ``clearance``.
 
@@ -1006,15 +1084,27 @@ def path_collision_free(
         link_radius=link_radius,
     )
     if occupancy_grid is None:
-        return bool(np.all(geometric_free))
-    occupancy_free = np.asarray(
-        [
-            occupancy_grid.polyline_collision_free(chain, radius=link_radius)
+        occupancy_free = np.ones(samples.shape[0], dtype=bool)
+    else:
+        occupancy_free = np.asarray(
+            [
+                occupancy_grid.polyline_collision_free(chain, radius=link_radius)
+                for chain in points
+            ],
+            dtype=bool,
+        )
+    if check_self_collision:
+        self_free = np.asarray([
+            not chain_self_collision_report(
+                chain,
+                link_radius=link_radius,
+                exclusions=self_collision_exclusions,
+            )["collision"]
             for chain in points
-        ],
-        dtype=bool,
-    )
-    return bool(np.all(geometric_free & occupancy_free))
+        ], dtype=bool)
+    else:
+        self_free = np.ones(samples.shape[0], dtype=bool)
+    return bool(np.all(geometric_free & occupancy_free & self_free))
 
 
 def path_collision_summary(
@@ -1025,6 +1115,8 @@ def path_collision_summary(
     link_radius=0.0,
     interpolation_step=0.05,
     occupancy_grid=None,
+    check_self_collision=False,
+    self_collision_exclusions=(),
 ):
     """Return batched collision diagnostics along an interpolated joint path.
 
@@ -1051,6 +1143,20 @@ def path_collision_summary(
         )
     else:
         occupancy_clearances = None
+    self_clearances = None
+    if check_self_collision:
+        self_clearances = np.asarray([
+            chain_self_collision_report(
+                chain,
+                link_radius=link_radius,
+                exclusions=self_collision_exclusions,
+            )["minimum_clearance"]
+            for chain in points
+        ], dtype=float)
+        clearances = np.minimum(clearances, self_clearances)
+        summary["collision"] = np.asarray(summary["collision"], dtype=bool) | (
+            self_clearances <= 1e-12
+        )
     collision_indices = np.flatnonzero(summary["collision"])
     finite = clearances[np.isfinite(clearances)]
     result = {
@@ -1066,6 +1172,11 @@ def path_collision_summary(
     }
     if occupancy_clearances is not None:
         result["occupancy_clearances"] = occupancy_clearances
+    if self_clearances is not None:
+        result["self_collision_clearances"] = self_clearances
+        result["self_collision"] = bool(np.any(self_clearances <= 1e-12))
+    else:
+        result["self_collision"] = False
     return RobotResult(result)
 
 
@@ -1077,6 +1188,8 @@ def path_collision_report(
     link_radius=0.0,
     interpolation_step=0.05,
     occupancy_grid=None,
+    check_self_collision=False,
+    self_collision_exclusions=(),
 ):
     """Return collision and clearance diagnostics along a joint-space path."""
 
@@ -1091,6 +1204,8 @@ def path_collision_report(
                 obstacles,
                 link_radius=link_radius,
                 occupancy_grid=occupancy_grid,
+                check_self_collision=check_self_collision,
+                self_collision_exclusions=self_collision_exclusions,
             )
         )
     clearances = np.asarray([report["minimum_clearance"] for report in reports], dtype=float)
@@ -1118,6 +1233,7 @@ __all__ = [
     "chain_collision_summary_batch",
     "SphereObstacle",
     "chain_collision_report",
+    "chain_self_collision_report",
     "path_collision_free",
     "path_collision_summary",
     "path_collision_report",

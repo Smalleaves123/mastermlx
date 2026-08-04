@@ -91,6 +91,26 @@ path = robot.plan_joint_path(
 The planner checks every interpolated edge against analytic obstacles and the
 optional occupancy grid, then performs a final safety check before returning.
 
+Self-collision checking is available as an explicit workcell policy. Adjacent
+links are excluded automatically; robot-specific overlapping pairs can be
+listed in `self_collision_exclusions`:
+
+```python
+workcell = RobotWorkcell(
+    robot,
+    self_collision_exclusions=((0, 3),),
+)
+report = workcell.validate_trajectory(
+    trajectory,
+    check_self_collision=True,
+    raise_on_failure=True,
+)
+```
+
+The same policy can be passed to `plan_joint_path()`, `plan_motion()`, and
+Cartesian task planning so sampled planner edges and the final execution gate
+use the same self-collision rule.
+
 ## Spatial dynamics and constrained trajectories
 
 URDF `<inertial>` blocks are parsed into `LinkInertia` values. Once every child

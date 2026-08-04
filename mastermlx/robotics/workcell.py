@@ -159,7 +159,15 @@ class RobotWorkcell(BaseExperiment):
     serial URDF robots use the same workflow with spatial obstacle queries.
     """
 
-    def __init__(self, robot, world=None, name=None, joint_limits=None, occupancy_grid=None):
+    def __init__(
+        self,
+        robot,
+        world=None,
+        name=None,
+        joint_limits=None,
+        occupancy_grid=None,
+        self_collision_exclusions=(),
+    ):
         from ..sim.world import SimpleWorld
 
         super().__init__()
@@ -180,6 +188,9 @@ class RobotWorkcell(BaseExperiment):
         self.name = robot.name if name is None else str(name)
         self.occupancy_grid = (
             getattr(world, "occupancy_grid", None) if occupancy_grid is None else occupancy_grid
+        )
+        self.self_collision_exclusions = tuple(
+            tuple(int(value) for value in pair) for pair in self_collision_exclusions
         )
         configured_limits = robot.joint_limits if joint_limits is None else joint_limits
         self.joint_limits = validate_joint_limits(configured_limits, self.n_joints)
@@ -225,44 +236,71 @@ class RobotWorkcell(BaseExperiment):
         upper = np.maximum(values - self.joint_limits[:, 1], 0.0)
         return np.max(np.maximum(lower, upper), axis=-1)
 
-    def _state_collision_report(self, joint_values):
+    def _state_collision_report(self, joint_values, *, link_radius=0.0, check_self_collision=False):
         if isinstance(self.robot, URDFRobotModel):
             return self.robot.collision_report(
                 joint_values,
                 self.world.obstacles,
+                link_radius=link_radius,
                 occupancy_grid=self.occupancy_grid,
+                check_self_collision=check_self_collision,
+                self_collision_exclusions=self.self_collision_exclusions,
             )
         return robot_collision_report(
             self.robot,
             joint_values,
             self.world.obstacles,
+            link_radius=link_radius,
             occupancy_grid=self.occupancy_grid,
+            check_self_collision=check_self_collision,
+            self_collision_exclusions=self.self_collision_exclusions,
         )
 
-    def _collision_free_path(self, path, collision_step=0.05, clearance=0.0):
+    def _collision_free_path(
+        self, path, collision_step=0.05, clearance=0.0, *, link_radius=0.0, check_self_collision=False
+    ):
         if isinstance(self.robot, URDFRobotModel):
             return self.robot.path_collision_free(
                 path,
                 self.world.obstacles,
                 clearance=clearance,
+                link_radius=link_radius,
                 interpolation_step=collision_step,
                 occupancy_grid=self.occupancy_grid,
+                check_self_collision=check_self_collision,
+                self_collision_exclusions=self.self_collision_exclusions,
             )
         return path_collision_free(
             self.robot,
             path,
             self.world.obstacles,
             clearance=clearance,
+            link_radius=link_radius,
             interpolation_step=collision_step,
             occupancy_grid=self.occupancy_grid,
+            check_self_collision=check_self_collision,
+            self_collision_exclusions=self.self_collision_exclusions,
         )
 
-    def _collision_free_edge(self, start, end, collision_step, clearance):
+    def _collision_free_edge(
+        self, start, end, collision_step, clearance, *, link_radius=0.0, check_self_collision=False
+    ):
         return self._collision_free_path(
-            np.vstack([start, end]), collision_step=collision_step, clearance=clearance
+            np.vstack([start, end]),
+            collision_step=collision_step,
+            clearance=clearance,
+            link_radius=link_radius,
+            check_self_collision=check_self_collision,
         )
 
-    def path_collision_summary(self, joint_path, *, link_radius=0.0, interpolation_step=0.05):
+    def path_collision_summary(
+        self,
+        joint_path,
+        *,
+        link_radius=0.0,
+        interpolation_step=0.05,
+        check_self_collision=False,
+    ):
         """Return compiled batch collision diagnostics for a joint-space path."""
 
         if isinstance(self.robot, URDFRobotModel):
@@ -272,6 +310,8 @@ class RobotWorkcell(BaseExperiment):
                 link_radius=link_radius,
                 interpolation_step=interpolation_step,
                 occupancy_grid=self.occupancy_grid,
+                check_self_collision=check_self_collision,
+                self_collision_exclusions=self.self_collision_exclusions,
             )
         return path_collision_summary(
             self.robot,
@@ -280,9 +320,19 @@ class RobotWorkcell(BaseExperiment):
             link_radius=link_radius,
             interpolation_step=interpolation_step,
             occupancy_grid=self.occupancy_grid,
+            check_self_collision=check_self_collision,
+            self_collision_exclusions=self.self_collision_exclusions,
         )
 
-    def path_collision_free(self, joint_path, *, clearance=0.0, link_radius=0.0, interpolation_step=0.05):
+    def path_collision_free(
+        self,
+        joint_path,
+        *,
+        clearance=0.0,
+        link_radius=0.0,
+        interpolation_step=0.05,
+        check_self_collision=False,
+    ):
         """Return whether a joint-space path satisfies an obstacle clearance."""
 
         if isinstance(self.robot, URDFRobotModel):
@@ -293,6 +343,8 @@ class RobotWorkcell(BaseExperiment):
                 link_radius=link_radius,
                 interpolation_step=interpolation_step,
                 occupancy_grid=self.occupancy_grid,
+                check_self_collision=check_self_collision,
+                self_collision_exclusions=self.self_collision_exclusions,
             )
         return path_collision_free(
             self.robot,
@@ -302,9 +354,18 @@ class RobotWorkcell(BaseExperiment):
             link_radius=link_radius,
             interpolation_step=interpolation_step,
             occupancy_grid=self.occupancy_grid,
+            check_self_collision=check_self_collision,
+            self_collision_exclusions=self.self_collision_exclusions,
         )
 
-    def path_collision_report(self, joint_path, *, link_radius=0.0, interpolation_step=0.05):
+    def path_collision_report(
+        self,
+        joint_path,
+        *,
+        link_radius=0.0,
+        interpolation_step=0.05,
+        check_self_collision=False,
+    ):
         """Return detailed collision diagnostics for a joint-space path."""
 
         if isinstance(self.robot, URDFRobotModel):
@@ -314,6 +375,8 @@ class RobotWorkcell(BaseExperiment):
                 link_radius=link_radius,
                 interpolation_step=interpolation_step,
                 occupancy_grid=self.occupancy_grid,
+                check_self_collision=check_self_collision,
+                self_collision_exclusions=self.self_collision_exclusions,
             )
         return path_collision_report(
             self.robot,
@@ -322,6 +385,8 @@ class RobotWorkcell(BaseExperiment):
             link_radius=link_radius,
             interpolation_step=interpolation_step,
             occupancy_grid=self.occupancy_grid,
+            check_self_collision=check_self_collision,
+            self_collision_exclusions=self.self_collision_exclusions,
         )
 
     def solve_tcp_path(
@@ -333,6 +398,8 @@ class RobotWorkcell(BaseExperiment):
         position_tolerance=1e-4,
         orientation_tolerance=1e-3,
         check_collisions=True,
+        check_self_collision=False,
+        link_radius=0.0,
     ):
         """Solve ordered TCP targets with each IK solution seeding the next one."""
 
@@ -369,7 +436,11 @@ class RobotWorkcell(BaseExperiment):
                     f"IK did not converge for TCP target {index}: "
                     f"position_error={position_error:.3e}, orientation_error={orientation_error:.3e}"
                 )
-            if check_collisions and self._state_collision_report(q_current)["collision"]:
+            if check_collisions and self._state_collision_report(
+                q_current,
+                link_radius=link_radius,
+                check_self_collision=check_self_collision,
+            )["collision"]:
                 raise RuntimeError(f"IK solution for TCP target {index} is in collision")
             normalized_targets.append(target.copy())
             configurations.append(q_current.copy())
@@ -393,6 +464,8 @@ class RobotWorkcell(BaseExperiment):
         position_tolerance=1e-4,
         orientation_tolerance=1e-3,
         check_collisions=True,
+        check_self_collision=False,
+        link_radius=0.0,
         collision_step=0.05,
         clearance=0.0,
     ):
@@ -443,10 +516,16 @@ class RobotWorkcell(BaseExperiment):
             position_tolerance=position_tolerance,
             orientation_tolerance=orientation_tolerance,
             check_collisions=check_collisions,
+            check_self_collision=check_self_collision,
+            link_radius=link_radius,
         )
         joint_path = np.vstack([q_start, ik_result["joint_targets"]])
         if check_collisions and not self._collision_free_path(
-            joint_path, collision_step=collision_step, clearance=clearance
+            joint_path,
+            collision_step=collision_step,
+            clearance=clearance,
+            link_radius=link_radius,
+            check_self_collision=check_self_collision,
         ):
             raise RuntimeError("interpolated Cartesian path does not satisfy collision clearance")
         return RobotResult({
@@ -467,6 +546,8 @@ class RobotWorkcell(BaseExperiment):
         shortcut_attempts=100,
         collision_step=0.05,
         clearance=0.0,
+        link_radius=0.0,
+        check_self_collision=False,
         workers=1,
         **rrt_kwargs,
     ):
@@ -483,7 +564,13 @@ class RobotWorkcell(BaseExperiment):
             raise ValueError("q_goal must be inside bounds")
 
         direct = np.vstack([q_start, q_goal])
-        if self._collision_free_path(direct, collision_step=collision_step, clearance=clearance):
+        if self._collision_free_path(
+            direct,
+            collision_step=collision_step,
+            clearance=clearance,
+            link_radius=link_radius,
+            check_self_collision=check_self_collision,
+        ):
             return direct
 
         clearance = float(clearance)
@@ -493,11 +580,22 @@ class RobotWorkcell(BaseExperiment):
         if workers < 1:
             raise ValueError("workers must be at least 1")
         def hit(values):
-            report = self._state_collision_report(values)
+            report = self._state_collision_report(
+                values,
+                link_radius=link_radius,
+                check_self_collision=check_self_collision,
+            )
             return bool(report["collision"] or report["minimum_clearance"] < clearance)
 
         def edge_free(start, end, step):
-            return self._collision_free_edge(start, end, step, clearance)
+            return self._collision_free_edge(
+                start,
+                end,
+                step,
+                clearance,
+                link_radius=link_radius,
+                check_self_collision=check_self_collision,
+            )
 
         planner_kwargs = dict(rrt_kwargs)
         planner_kwargs.setdefault("collision_step", collision_step)
@@ -521,9 +619,21 @@ class RobotWorkcell(BaseExperiment):
                 edge_free=edge_free,
                 workers=workers,
             )
-            if self._collision_free_path(candidate, collision_step=collision_step, clearance=clearance):
+            if self._collision_free_path(
+                candidate,
+                collision_step=collision_step,
+                clearance=clearance,
+                link_radius=link_radius,
+                check_self_collision=check_self_collision,
+            ):
                 path = candidate
-        if not self._collision_free_path(path, collision_step=collision_step, clearance=clearance):
+        if not self._collision_free_path(
+            path,
+            collision_step=collision_step,
+            clearance=clearance,
+            link_radius=link_radius,
+            check_self_collision=check_self_collision,
+        ):
             raise RuntimeError("planner returned a path that does not satisfy collision checks")
         return path
 
@@ -657,6 +767,8 @@ class RobotWorkcell(BaseExperiment):
         jerk_limits=None,
         clearance=0.0,
         collision_step=0.05,
+        link_radius=0.0,
+        check_self_collision=False,
         smooth_path=True,
         shortcut_attempts=100,
         workers=1,
@@ -678,6 +790,8 @@ class RobotWorkcell(BaseExperiment):
             shortcut_attempts=shortcut_attempts,
             collision_step=collision_step,
             clearance=clearance,
+            link_radius=link_radius,
+            check_self_collision=check_self_collision,
             workers=workers,
             **planner_kwargs,
         )
@@ -694,7 +808,12 @@ class RobotWorkcell(BaseExperiment):
             if not optimization["collision_free"]:
                 raise RuntimeError("trajectory optimizer did not produce a collision-safe path")
             path = np.asarray(optimization["path"], dtype=float)
-        collision = self.path_collision_report(path, interpolation_step=collision_step)
+        collision = self.path_collision_report(
+            path,
+            link_radius=link_radius,
+            interpolation_step=collision_step,
+            check_self_collision=check_self_collision,
+        )
         deltas = np.diff(path, axis=0)
         planning_report = RobotResult({
             "planner": str(planner),
@@ -727,6 +846,8 @@ class RobotWorkcell(BaseExperiment):
             trajectory,
             tracking=tracking,
             clearance_margin=clearance,
+            link_radius=link_radius,
+            check_self_collision=check_self_collision,
             raise_on_failure=True,
         )
         result = RobotResult({
@@ -773,6 +894,8 @@ class RobotWorkcell(BaseExperiment):
         shortcut_attempts=100,
         collision_step=0.05,
         clearance=0.0,
+        link_radius=0.0,
+        check_self_collision=False,
         workers=1,
         velocity_limits=1.0,
         acceleration_limits=None,
@@ -821,6 +944,8 @@ class RobotWorkcell(BaseExperiment):
             "orientation_tolerance": orientation_tolerance,
             "collision_step": collision_step,
             "clearance": clearance,
+            "link_radius": link_radius,
+            "check_self_collision": check_self_collision,
         }
         pick_task = self.plan_cartesian_task(
             [pick_approach, pick_target, pick_retreat], q_start, **cartesian_kwargs
@@ -831,6 +956,8 @@ class RobotWorkcell(BaseExperiment):
             ik_kwargs=ik_kwargs,
             position_tolerance=position_tolerance,
             orientation_tolerance=orientation_tolerance,
+            check_self_collision=check_self_collision,
+            link_radius=link_radius,
         )
         transfer_path = self.plan_joint_path(
             pick_task["joint_path"][-1],
@@ -841,6 +968,8 @@ class RobotWorkcell(BaseExperiment):
             shortcut_attempts=shortcut_attempts,
             collision_step=collision_step,
             clearance=clearance,
+            link_radius=link_radius,
+            check_self_collision=check_self_collision,
             workers=workers,
             **planner_kwargs,
         )
@@ -893,6 +1022,8 @@ class RobotWorkcell(BaseExperiment):
         safety = self.validate_trajectory(
             trajectory,
             clearance_margin=clearance,
+            link_radius=link_radius,
+            check_self_collision=check_self_collision,
             raise_on_failure=True,
         )
         result = RobotResult({
@@ -1114,6 +1245,7 @@ class RobotWorkcell(BaseExperiment):
         singularity_threshold=1e-8,
         link_radius=0.0,
         interpolation_step=0.05,
+        check_self_collision=False,
     ):
         """Summarize collision clearance, motion limits, and tracking error."""
 
@@ -1148,7 +1280,10 @@ class RobotWorkcell(BaseExperiment):
             raise ValueError("trajectory time must have one value per position sample")
 
         reference_collision = self.path_collision_summary(
-            position, link_radius=link_radius, interpolation_step=interpolation_step
+            position,
+            link_radius=link_radius,
+            interpolation_step=interpolation_step,
+            check_self_collision=check_self_collision,
         )
         reference_clearances = np.asarray(reference_collision["clearances"], dtype=float)
         deltas = np.diff(position, axis=0)
@@ -1162,7 +1297,10 @@ class RobotWorkcell(BaseExperiment):
             if actual.ndim != 2 or actual.shape[1] != self.n_joints or not np.all(np.isfinite(actual)):
                 raise ValueError("tracking actual must have shape (n_steps, n_joints) with finite values")
             tracking_collision = self.path_collision_summary(
-                actual, link_radius=link_radius, interpolation_step=interpolation_step
+                actual,
+                link_radius=link_radius,
+                interpolation_step=interpolation_step,
+                check_self_collision=check_self_collision,
             )
             tracking_clearances = np.asarray(tracking_collision["clearances"], dtype=float)
             tracking_limit_violation = self._joint_limit_violation(actual)
@@ -1232,7 +1370,14 @@ class RobotWorkcell(BaseExperiment):
             "clearance_margin": clearance_margin,
             "link_radius": link_radius,
             "interpolation_step": interpolation_step,
+            "check_self_collision": bool(check_self_collision),
             "clearance_violation": clearance_violation,
+            "self_collision": bool(reference_collision.get("self_collision", False))
+            or bool(
+                tracking_collision.get("self_collision", False)
+                if tracking_clearances is not None
+                else False
+            ),
             "reference_collision": bool(np.any(reference_clearances <= 0.0)),
             "reference_first_collision_index": reference_collision["first_collision_index"],
             "tracking_collision": None if tracking_clearances is None else bool(np.any(tracking_clearances <= 0.0)),
@@ -1286,6 +1431,7 @@ class RobotWorkcell(BaseExperiment):
         check_motion_limits=True,
         check_singularity=False,
         check_time=True,
+        check_self_collision=False,
         raise_on_failure=False,
     ):
         """Validate a trajectory before handing it to an execution adapter.
@@ -1301,6 +1447,7 @@ class RobotWorkcell(BaseExperiment):
             singularity_threshold=singularity_threshold,
             link_radius=link_radius,
             interpolation_step=interpolation_step,
+            check_self_collision=check_self_collision,
         )
         violations = []
         if check_time and not report["time_valid"]:
@@ -1309,6 +1456,8 @@ class RobotWorkcell(BaseExperiment):
             violations.append("joint_limits")
         if check_collision and report["collision"]:
             violations.append("collision")
+        if check_self_collision and report["self_collision"]:
+            violations.append("self_collision")
         if check_clearance and report["clearance_violation"]:
             violations.append("clearance")
         if check_motion_limits and report["motion_limit_violation"]:
