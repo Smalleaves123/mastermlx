@@ -101,7 +101,9 @@ static void knn(
         const double best = heap.empty()
             ? std::numeric_limits<double>::infinity()
             : heap.top().dist;
-        if (diff * diff < best || static_cast<int>(heap.size()) < k) {
+        // Equal-distance points may still have a smaller index and replace
+        // the current worst neighbor, so the far branch is inclusive.
+        if (diff * diff <= best || static_cast<int>(heap.size()) < k) {
             knn(far, query, data, d, k, heap);
         }
     }

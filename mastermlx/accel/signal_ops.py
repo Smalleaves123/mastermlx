@@ -17,6 +17,10 @@ def _load_backend(backend=None):
         backend = get_backend()
     if backend == "numpy":
         return None
+    try:
+        return importlib.import_module("mastermlx.accel._signal_ops")
+    except ImportError:
+        return None
 
 
 @lru_cache(maxsize=3)
@@ -27,10 +31,6 @@ def _load_cpp_backend(backend=None):
         return None
     try:
         return importlib.import_module("mastermlx.accel._signal_cpp")
-    except ImportError:
-        return None
-    try:
-        return importlib.import_module("mastermlx.accel._signal_ops")
     except ImportError:
         return None
 

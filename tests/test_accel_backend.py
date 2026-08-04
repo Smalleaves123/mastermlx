@@ -103,6 +103,19 @@ def test_cpp_kdtree_keeps_training_data_alive():
         tree.query(np.ones((1, 3)), 1)
 
 
+def test_cpp_kdtree_tie_breaking_is_deterministic():
+    from mastermlx.accel.kdtree import _KDTree
+
+    if _KDTree is None:
+        pytest.skip("C++ KDTree extension is unavailable")
+    X = np.zeros((101, 2), dtype=float)
+    tree = _KDTree(X)
+    indices, distances = tree.query(np.zeros((1, 2)), 3)
+
+    assert np.array_equal(indices[0], np.array([0, 1, 2]))
+    assert np.array_equal(distances[0], np.zeros(3))
+
+
 def test_kdtree_fallback_returns_euclidean_distances():
     from mastermlx.accel.kdtree import knn_search
 

@@ -141,6 +141,37 @@ def test_numpy_backend_skips_new_extension_imports(monkeypatch):
         set_backend(old)
 
 
+def test_signal_loaders_fall_back_to_cython_when_cpp_is_missing(monkeypatch):
+    old = get_backend()
+    sentinel = object()
+
+    def fake_import(name):
+        if name.endswith("_signal_cpp"):
+            raise ImportError("C++ signal extension is unavailable")
+        if name.endswith("_signal_ops"):
+            return sentinel
+        raise AssertionError(f"unexpected extension import: {name}")
+
+    try:
+        set_backend("auto")
+        monkeypatch.setattr(signal_ops.importlib, "import_module", fake_import)
+        signal_ops._load_cpp_backend.cache_clear()
+        signal_ops._load_backend.cache_clear()
+        timefreq_ops._load_cpp_backend.cache_clear()
+        timefreq_ops._load_backend.cache_clear()
+
+        assert signal_ops._load_cpp_backend("auto") is None
+        assert signal_ops._load_backend("auto") is sentinel
+        assert timefreq_ops._load_cpp_backend("auto") is None
+        assert timefreq_ops._load_backend("auto") is sentinel
+    finally:
+        signal_ops._load_cpp_backend.cache_clear()
+        signal_ops._load_backend.cache_clear()
+        timefreq_ops._load_cpp_backend.cache_clear()
+        timefreq_ops._load_backend.cache_clear()
+        set_backend(old)
+
+
 def test_kernel_boundaries_reject_invalid_inputs():
     with pytest.raises(ValueError):
         rnn_ops.simple_rnn_forward(np.zeros((0, 2, 1)), np.zeros((1, 1)), np.zeros((1, 1)), np.zeros(1))
