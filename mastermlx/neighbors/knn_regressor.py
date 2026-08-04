@@ -5,7 +5,7 @@ from typing import cast
 
 from ..base import BaseEstimator
 from ..utils import as_2d, check_1d_array, check_2d_array, mean_squared_error
-from ._base import check_metric, check_weights, distance_weights, pairwise_neighbor_distance
+from ._base import check_metric, check_weights, distance_weights, knn_neighbors
 
 
 class KNNRegressor(BaseEstimator):
@@ -34,9 +34,6 @@ class KNNRegressor(BaseEstimator):
         self.y_ = y
         return self
 
-    def _dist(self, X):
-        return pairwise_neighbor_distance(X, self.X_, self.metric)
-
     def predict(self, X):
         if self.X_ is None:
             raise RuntimeError("Model has not been fit yet")
@@ -47,8 +44,7 @@ class KNNRegressor(BaseEstimator):
         if X.shape[1] != X_train.shape[1]:
             raise ValueError("X has a different number of features than the fitted data")
 
-        dist = self._dist(X)
-        nn = np.argpartition(dist, self.k - 1, axis=1)[:, : self.k]
+        nn, dist = knn_neighbors(X, X_train, self.k, self.metric)
         if self.weights == "uniform":
             pred = np.mean(y_train[nn], axis=1)
         else:

@@ -3,14 +3,9 @@ from __future__ import annotations
 import numpy as np
 from typing import Any, cast
 
+from ..accel import pairwise_squared_euclidean
 from ..base import BaseEstimator
 from ..utils import as_2d, check_2d_array
-
-
-def _pairwise_sq_dists(X):
-    diff = X[:, None, :] - X[None, :, :]
-    return np.sum(diff * diff, axis=2)
-
 
 class AffinityPropagation(BaseEstimator):
     """Affinity propagation clustering."""
@@ -32,7 +27,7 @@ class AffinityPropagation(BaseEstimator):
         if not 0.5 <= self.damping < 1.0:
             raise ValueError("damping must be in [0.5, 1)")
 
-        S = -_pairwise_sq_dists(X)
+        S = -pairwise_squared_euclidean(X, X)
         if self.preference is None:
             pref: Any = float(np.median(S))
         elif np.isscalar(self.preference):

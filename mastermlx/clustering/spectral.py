@@ -3,14 +3,9 @@ from __future__ import annotations
 import numpy as np
 
 from ..base import BaseEstimator
+from ..accel.ml_kernels import knn_affinity, rbf_affinity
 from ..utils import as_2d, check_2d_array
 from .kmeans import KMeans
-
-
-def _pairwise_sq_dists(X):
-    diff = X[:, None, :] - X[None, :, :]
-    return np.sum(diff * diff, axis=2)
-
 
 class SpectralClustering(BaseEstimator):
     """Spectral clustering with an RBF or nearest-neighbor affinity."""
@@ -44,20 +39,13 @@ class SpectralClustering(BaseEstimator):
     def _build_affinity(self, X):
         if self.affinity == "rbf":
             gamma = self._resolve_gamma(X.shape[1])
-            dist_sq = _pairwise_sq_dists(X)
-            W = np.exp(-gamma * dist_sq)
-            np.fill_diagonal(W, 0.0)
-            return W
+            return rbf_affinity(X, gamma)
         if self.affinity == "nearest_neighbors":
-            if self.n_neighbors < 1:
-                raise ValueError("n_neighbors must be at least 1")
-            dist_sq = _pairwise_sq_dists(X)
-            W = np.zeros_like(dist_sq)
-            for i in range(X.shape[0]):
-                idx = np.argsort(dist_sq[i])[1 : self.n_neighbors + 1]
-                W[i, idx] = 1.0
-            W = np.maximum(W, W.T)
-            return W
+            if self.n_neighbors < 1 or self.n_neighbors >= X.shape[0]:
+                raise ValueError(
+                    "n_neighbors must be between 1 and n_samples - 1"
+                )
+            return knn_affinity(X, self.n_neighbors)
         raise ValueError("affinity must be 'rbf' or 'nearest_neighbors'")
 
     def fit(self, X, y=None):

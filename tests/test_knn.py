@@ -1,6 +1,7 @@
 import numpy as np
 
 from mastermlx.neighbors import KNNClassifier, KNNRegressor, RadiusNeighborsClassifier, RadiusNeighborsRegressor
+from mastermlx.neighbors._base import knn_neighbors
 
 
 def test_knn_classifier_predicts_single_sample():
@@ -51,6 +52,24 @@ def test_knn_regressor_supports_distance_weights():
     pred = model.predict([0.1])
 
     assert pred < 2.0
+
+
+def test_knn_neighbors_returns_exact_top_k_for_large_training_set():
+    rng = np.random.default_rng(12)
+    X_train = rng.normal(size=(128, 4))
+    X_query = rng.normal(size=(5, 4))
+    k = 7
+
+    indices, distances = knn_neighbors(X_query, X_train, k, "euclidean")
+    all_distances = np.sqrt(np.sum((X_query[:, None, :] - X_train[None, :, :]) ** 2, axis=2))
+    expected = np.argsort(all_distances, axis=1, kind="stable")[:, :k]
+
+    assert indices.shape == (X_query.shape[0], k)
+    assert distances.shape == (X_query.shape[0], k)
+    assert np.array_equal(np.sort(indices, axis=1), np.sort(expected, axis=1))
+    expected_distances = np.take_along_axis(all_distances, expected, axis=1)
+    expected_distances.sort(axis=1)
+    assert np.allclose(np.sort(distances, axis=1), expected_distances)
 
 
 def test_radius_neighbors_classifier_predicts_within_radius():
