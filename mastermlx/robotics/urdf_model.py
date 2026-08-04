@@ -760,6 +760,11 @@ class URDFRobotModel:
         regularized = gram + damping**2 * np.eye(gram.shape[0], dtype=float)
         return jacobian.T @ np.linalg.solve(regularized, velocity)
 
+    def ik(self, target, joint_values=None, **kwargs):
+        """Short alias matching the DH :class:`RobotModel` API."""
+
+        return self.inverse_kinematics(target, joint_values=joint_values, **kwargs)
+
     def inverse_kinematics(
         self,
         target,

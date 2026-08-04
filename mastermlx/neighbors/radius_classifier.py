@@ -48,7 +48,10 @@ class RadiusNeighborsClassifier(BaseEstimator):
             for i in range(X.shape[0]):
                 start, end = int(indptr[i]), int(indptr[i + 1])
                 if start == end:
-                    pred_codes[i] = int(y_codes[nearest[0][i, 0]])
+                    if nearest is None:
+                        raise RuntimeError("nearest-neighbor fallback was not initialized")
+                    nearest_indices, _ = cast(tuple[np.ndarray, np.ndarray], nearest)
+                    pred_codes[i] = int(y_codes[nearest_indices[i, 0]])
                     continue
                 row_indices = indices[start:end]
                 codes = y_codes[row_indices]

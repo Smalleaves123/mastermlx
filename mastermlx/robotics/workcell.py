@@ -6,6 +6,7 @@ import csv
 import json
 from collections.abc import Mapping
 from pathlib import Path
+from typing import Any, cast
 
 import numpy as np
 
@@ -1175,6 +1176,7 @@ class RobotWorkcell(BaseExperiment):
         from ..control import ComputedTorqueController, JointMPCController, JointPDController
         from ..sim.core import SimpleRobotSim
 
+        controller_impl: Any
         if isinstance(controller, str):
             controller_name = controller.lower()
             if controller_name == "pd":
@@ -1227,11 +1229,12 @@ class RobotWorkcell(BaseExperiment):
             if getattr(controller_impl, "n_joints", self.n_joints) != self.n_joints:
                 raise ValueError("controller.n_joints must match the workcell robot")
 
+        robot = cast(Any, self.robot)
         sim = SimpleRobotSim(self.robot, state=state, dt=dt, damping=damping)
         controller_impl.reset(state=sim.state.copy())
-        states = [sim.state.copy()]
-        poses = [sim.pose()]
-        controls = []
+        state_history = [sim.state.copy()]
+        pose_history = [sim.pose()]
+        control_history = []
         command_type = str(getattr(controller_impl, "command_type", "acceleration")).lower()
         if command_type not in {"acceleration", "torque"}:
             raise ValueError("controller command_type must be 'acceleration' or 'torque'")
@@ -1241,19 +1244,19 @@ class RobotWorkcell(BaseExperiment):
                 self.n_joints,
                 "controller output",
             )
-            controls.append(action)
+            control_history.append(action)
             if command_type == "torque":
                 gravity = getattr(controller_impl, "gravity", (0.0, 0.0, -9.81))
-                if callable(getattr(self.robot, "forward_dynamics_batch", None)):
-                    acceleration = self.robot.forward_dynamics_batch(
+                if callable(getattr(robot, "forward_dynamics_batch", None)):
+                    acceleration = robot.forward_dynamics_batch(
                         sim.q[None, :],
                         sim.qd[None, :],
                         action[None, :],
                         gravity=gravity,
                         include_coriolis=True,
                     )[0]
-                elif callable(getattr(self.robot, "forward_dynamics", None)):
-                    acceleration = self.robot.forward_dynamics(
+                elif callable(getattr(robot, "forward_dynamics", None)):
+                    acceleration = robot.forward_dynamics(
                         sim.q,
                         sim.qd,
                         action,
@@ -1265,10 +1268,10 @@ class RobotWorkcell(BaseExperiment):
                 sim.step(acceleration)
             else:
                 sim.step(action)
-            states.append(sim.state.copy())
-            poses.append(sim.pose())
-        states = np.asarray(states)
-        controls = np.asarray(controls)
+            state_history.append(sim.state.copy())
+            pose_history.append(sim.pose())
+        states = np.asarray(state_history)
+        controls = np.asarray(control_history)
         controller_status = controller_impl.status()
         actual = states[1:, : self.n_joints]
         joint_error = actual - reference
@@ -1276,7 +1279,7 @@ class RobotWorkcell(BaseExperiment):
             "time": simulation_time,
             "reference": reference,
             "states": states,
-            "poses": poses,
+            "poses": pose_history,
             "controls": controls,
             "actual": actual,
             "joint_error": joint_error,

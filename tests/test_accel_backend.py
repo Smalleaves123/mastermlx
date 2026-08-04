@@ -131,6 +131,20 @@ def test_kdtree_fallback_returns_euclidean_distances():
     assert np.isclose(distances[0, 0], 0.5)
 
 
+def test_kdtree_fallback_tie_breaking_matches_compiled_contract():
+    from mastermlx.accel.kdtree import knn_search
+
+    old = get_backend()
+    try:
+        set_backend("numpy")
+        indices, distances = knn_search(np.zeros((101, 2)), np.zeros((1, 2)), 10)
+    finally:
+        set_backend(old)
+
+    assert np.array_equal(indices[0], np.arange(10))
+    assert np.array_equal(distances[0], np.zeros(10))
+
+
 def test_kdtree_rejects_empty_and_non_finite_inputs():
     from mastermlx.accel.kdtree import knn_search
 

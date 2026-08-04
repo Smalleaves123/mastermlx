@@ -50,7 +50,7 @@ class KNNClassifier(BaseEstimator):
             if self.weights == "uniform":
                 cnt = np.bincount(codes, minlength=self.n_classes_)
             else:
-                w = distance_weights(dist[i, row])
+                w = distance_weights(dist[i])
                 cnt = np.bincount(codes, weights=w, minlength=self.n_classes_)
             pred_codes[i] = int(np.argmax(cnt))
 

@@ -49,7 +49,6 @@ def test_spectral_embedding_is_finite_and_nontrivial():
 
 
 def test_isomap_geodesic_cpp_and_numpy_paths_match(monkeypatch):
-    X = np.c_[np.arange(8, dtype=float), np.zeros(8)]
     W = np.full((8, 8), np.inf)
     for i in range(8):
         W[i, i] = 0.0

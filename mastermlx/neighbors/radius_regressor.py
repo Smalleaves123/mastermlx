@@ -45,7 +45,10 @@ class RadiusNeighborsRegressor(BaseEstimator):
             for i in range(X.shape[0]):
                 start, end = int(indptr[i]), int(indptr[i + 1])
                 if start == end:
-                    pred[i] = y_train[nearest[0][i, 0]]
+                    if nearest is None:
+                        raise RuntimeError("nearest-neighbor fallback was not initialized")
+                    nearest_indices, _ = cast(tuple[np.ndarray, np.ndarray], nearest)
+                    pred[i] = y_train[nearest_indices[i, 0]]
                     continue
                 row_indices = indices[start:end]
                 vals = y_train[row_indices]

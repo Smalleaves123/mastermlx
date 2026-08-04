@@ -50,7 +50,7 @@ class KNNRegressor(BaseEstimator):
         else:
             pred = np.zeros(X.shape[0], dtype=float)
             for i, row in enumerate(nn):
-                w = distance_weights(dist[i, row])
+                w = distance_weights(dist[i])
                 pred[i] = np.sum(w * y_train[row]) / np.sum(w)
         return pred[0] if pred.shape[0] == 1 else pred
 

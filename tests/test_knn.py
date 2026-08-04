@@ -55,6 +55,21 @@ def test_knn_regressor_supports_distance_weights():
     assert pred < 2.0
 
 
+def test_knn_distance_weights_use_query_neighbor_positions():
+    X = np.arange(10, dtype=float)[:, None]
+    query = [[4.5]]
+
+    classifier = KNNClassifier(k=3, weights="distance").fit(
+        X, np.array([0, 0, 0, 1, 1, 1, 1, 0, 0, 0])
+    )
+    assert classifier.predict(query) == 1
+
+    values = np.arange(10, dtype=float)
+    regressor = KNNRegressor(k=3, weights="distance").fit(X, values)
+    expected = np.average([4.0, 5.0, 3.0], weights=[2.0, 2.0, 2.0 / 3.0])
+    assert np.isclose(regressor.predict(query), expected)
+
+
 def test_knn_neighbors_returns_exact_top_k_for_large_training_set():
     rng = np.random.default_rng(12)
     X_train = rng.normal(size=(128, 4))

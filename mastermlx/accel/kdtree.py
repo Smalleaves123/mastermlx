@@ -40,11 +40,8 @@ def knn_search(X_train, X_query, k):
     sq = np.sum(X_query**2, axis=1)[:, None] + np.sum(X_train**2, axis=1)[None, :] \
          - 2.0 * (X_query @ X_train.T)
     sq = np.maximum(sq, 0.0)
-    if k == X_train.shape[0]:
-        idx = np.argsort(sq, axis=1, kind="stable")[:, :k]
-    else:
-        idx = np.argpartition(sq, k - 1, axis=1)[:, :k]
-        order = np.argsort(np.take_along_axis(sq, idx, axis=1), axis=1, kind="stable")
-        idx = np.take_along_axis(idx, order, axis=1)
+    # Sorting the complete row preserves the same index-based tie-break as
+    # the compiled tree. Partial selection cannot recover global tie order.
+    idx = np.argsort(sq, axis=1, kind="stable")[:, :k]
     row_idx = np.arange(X_query.shape[0])[:, None]
     return idx, np.sqrt(sq[row_idx, idx])

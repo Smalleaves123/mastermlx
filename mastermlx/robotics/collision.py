@@ -948,13 +948,14 @@ def chain_self_collision_report(points, *, link_radius=0.0, exclusions=()):
             raise ValueError("self-collision exclusions must contain valid segment-index pairs")
         excluded.add(tuple(sorted(values)))
 
-    closest = {
+    closest: dict[str, object] = {
         "kind": "self",
         "index": None,
         "obstacle_index": None,
         "link_pair": None,
         "clearance": float("inf"),
     }
+    closest_clearance = float("inf")
     hits = []
     collision_tolerance = 1e-12
     for first in range(n_segments):
@@ -964,7 +965,7 @@ def chain_self_collision_report(points, *, link_radius=0.0, exclusions=()):
             clearance = segment_distance(
                 points[first], points[first + 1], points[second], points[second + 1]
             ) - 2.0 * link_radius
-            if clearance < closest["clearance"]:
+            if clearance < closest_clearance:
                 closest = {
                     "kind": "self",
                     "index": first,
@@ -972,6 +973,7 @@ def chain_self_collision_report(points, *, link_radius=0.0, exclusions=()):
                     "link_pair": (first, second),
                     "clearance": float(clearance),
                 }
+                closest_clearance = float(clearance)
             if clearance <= collision_tolerance:
                 hits.append({
                     "kind": "self",
@@ -981,7 +983,7 @@ def chain_self_collision_report(points, *, link_radius=0.0, exclusions=()):
     return RobotResult({
         "collision": bool(hits),
         "self_collision": bool(hits),
-        "minimum_clearance": float(closest["clearance"]),
+        "minimum_clearance": closest_clearance,
         "closest": closest,
         "hits": hits,
     })

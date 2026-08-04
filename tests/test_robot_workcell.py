@@ -291,6 +291,29 @@ def test_workcell_accepts_spatial_urdf_and_runs_motion_workflow():
     assert result["safety_report"]["workcell"] == "spatial_workcell"
 
 
+def test_workcell_spatial_urdf_supports_tcp_ik_alias():
+    xml = """
+    <robot name="spatial_tcp">
+      <link name="base" />
+      <link name="tip" />
+      <joint name="slide" type="prismatic">
+        <parent link="base" /><child link="tip" />
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <axis xyz="1 0 0" />
+        <limit lower="0" upper="1" />
+      </joint>
+    </robot>
+    """
+    robot = URDFRobotModel.from_urdf(xml, name="spatial_tcp")
+    workcell = RobotWorkcell(robot)
+    target = robot.fk([0.6])[:3, 3]
+
+    result = workcell.solve_tcp_path([target], [0.1], ik_kwargs={"max_iter": 100})
+
+    assert result["joint_targets"].shape == (1, 1)
+    assert np.allclose(result["joint_targets"], [[0.6]], atol=1e-5)
+
+
 def test_validate_trajectory_is_an_execution_gate():
     workcell = _workcell()
     workcell.world.add_obstacle((0.0, 0.0), 0.2)
