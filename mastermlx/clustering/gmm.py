@@ -4,6 +4,7 @@ import numpy as np
 from typing import cast
 
 from ..base import BaseEstimator
+from ..accel.ml_kernels import gmm_log_gaussian, gmm_m_step
 from ..utils import as_2d, check_2d_array
 from ..utils.math import log_sum_exp
 
@@ -33,6 +34,19 @@ class GMM(BaseEstimator):
         quad = np.sum(diff * sol, axis=1)
         return -0.5 * (d * np.log(2.0 * np.pi) + logdet + quad)
 
+    def _log_gaussian_components(self, X):
+        means = cast(np.ndarray, self.means_)
+        covariances = cast(np.ndarray, self.covariances_)
+        precisions = np.empty_like(covariances)
+        log_determinants = np.empty(means.shape[0], dtype=float)
+        for j, cov in enumerate(covariances):
+            sign, logdet = np.linalg.slogdet(cov)
+            if sign <= 0:
+                raise ValueError("Covariance matrix must be positive definite")
+            precisions[j] = np.linalg.inv(cov)
+            log_determinants[j] = logdet
+        return gmm_log_gaussian(X, means, precisions, log_determinants)
+
     def fit(self, X, y=None):
         X = check_2d_array(X)
         n, d = X.shape
@@ -53,24 +67,11 @@ class GMM(BaseEstimator):
         prev = None
         self.lower_bound_ = []
         for _ in range(self.max_iter):
-            log_prob = np.column_stack([
-                np.log(self.weights_[j] + 1e-12) + self._log_gauss(X, self.means_[j], self.covariances_[j])
-                for j in range(k)
-            ])
+            log_prob = self._log_gaussian_components(X) + np.log(self.weights_ + 1e-12)[None, :]
             log_norm = log_sum_exp(log_prob, axis=1)
             resp = np.exp(log_prob - log_norm[:, None])
 
-            nk = resp.sum(axis=0) + 1e-12
-            self.weights_ = nk / n
-            self.means_ = (resp.T @ X) / nk[:, None]
-
-            covs = []
-            for j in range(k):
-                diff = X - self.means_[j]
-                cov = (resp[:, j][:, None] * diff).T @ diff / nk[j]
-                cov += self.reg_covar * np.eye(d)
-                covs.append(cov)
-            self.covariances_ = np.asarray(covs)
+            self.weights_, self.means_, self.covariances_ = gmm_m_step(X, resp, self.reg_covar)
             self.resp_ = resp
 
             lb = np.mean(log_norm)
@@ -85,10 +86,7 @@ class GMM(BaseEstimator):
         if self.means_ is None:
             raise RuntimeError("Model has not been fit yet")
         X = as_2d(X)
-        log_prob = np.column_stack([
-            np.log(cast(np.ndarray, self.weights_)[j] + 1e-12) + self._log_gauss(X, cast(np.ndarray, self.means_)[j], cast(np.ndarray, self.covariances_)[j])
-            for j in range(self.n_components)
-        ])
+        log_prob = self._log_gaussian_components(X) + np.log(cast(np.ndarray, self.weights_) + 1e-12)[None, :]
         log_norm = log_sum_exp(log_prob, axis=1)
         resp = np.exp(log_prob - log_norm[:, None])
         return resp[0] if resp.shape[0] == 1 else resp
@@ -100,8 +98,5 @@ class GMM(BaseEstimator):
 
     def score(self, X, y=None):
         X = check_2d_array(X)
-        log_prob = np.column_stack([
-            np.log(cast(np.ndarray, self.weights_)[j] + 1e-12) + self._log_gauss(X, cast(np.ndarray, self.means_)[j], cast(np.ndarray, self.covariances_)[j])
-            for j in range(self.n_components)
-        ])
+        log_prob = self._log_gaussian_components(X) + np.log(cast(np.ndarray, self.weights_) + 1e-12)[None, :]
         return float(np.mean(log_sum_exp(log_prob, axis=1)))

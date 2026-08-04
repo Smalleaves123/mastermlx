@@ -47,6 +47,14 @@ cpp_exts = [
         language="c++",
     ),
     Extension(
+        "mastermlx.accel._ml_kernels_cpp",
+        ["mastermlx/accel/_ml_kernels_cpp.cpp"],
+        include_dirs=inc_dirs,
+        extra_compile_args=["-O3", *thread_flags],
+        extra_link_args=thread_flags,
+        language="c++",
+    ),
+    Extension(
         "mastermlx.optimize._quad_cpp",
         ["mastermlx/optimize/_quad_cpp.cpp"],
         include_dirs=inc_dirs,

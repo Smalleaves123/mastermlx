@@ -2,13 +2,9 @@ from __future__ import annotations
 
 import numpy as np
 
-from ..accel import pairwise_distances
+from ..accel.ml_kernels import dbscan_neighbors
 from ..base import BaseEstimator
 from ..utils import check_2d_array
-
-
-def _pairwise_distances(X):
-    return pairwise_distances(X, X)
 
 
 class DBSCAN(BaseEstimator):
@@ -28,8 +24,8 @@ class DBSCAN(BaseEstimator):
         if self.min_samples < 1:
             raise ValueError("min_samples must be at least 1")
 
-        distances = _pairwise_distances(X)
-        neighbors = [np.flatnonzero(distances[i] <= self.eps) for i in range(X.shape[0])]
+        indptr, indices, _ = dbscan_neighbors(X, self.eps)
+        neighbors = [indices[indptr[i] : indptr[i + 1]] for i in range(X.shape[0])]
         core_mask = np.array([nn.size >= self.min_samples for nn in neighbors], dtype=bool)
         core_samples = np.flatnonzero(core_mask)
 

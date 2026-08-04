@@ -1,0 +1,195 @@
+"""Accelerated machine-learning kernels with stable NumPy fallbacks."""
+
+from __future__ import annotations
+
+import numpy as np
+
+from ._validate import float_array
+from .backends import _load_cpp_ml_kernels
+
+
+def _matrix(value, name):
+    return float_array(value, 2, name)
+
+
+def rbf_affinity(X, gamma):
+    X = _matrix(X, "X")
+    gamma = float(gamma)
+    if not np.isfinite(gamma):
+        raise ValueError("gamma must be finite")
+    cpp = _load_cpp_ml_kernels()
+    if cpp is not None:
+        return cpp.rbf_affinity(X, gamma)
+    x2 = np.sum(X * X, axis=1)
+    d2 = np.maximum(x2[:, None] + x2[None, :] - 2.0 * (X @ X.T), 0.0)
+    affinity = np.exp(-gamma * d2)
+    np.fill_diagonal(affinity, 0.0)
+    return affinity
+
+
+def knn_affinity(X, n_neighbors):
+    X = _matrix(X, "X")
+    try:
+        n_neighbors = int(n_neighbors)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("n_neighbors must be an integer") from exc
+    n = X.shape[0]
+    if n_neighbors < 1 or n_neighbors >= n:
+        raise ValueError("n_neighbors must be between 1 and n_samples - 1")
+    cpp = _load_cpp_ml_kernels()
+    if cpp is not None:
+        return cpp.knn_affinity(X, n_neighbors)
+    x2 = np.sum(X * X, axis=1)
+    d2 = np.maximum(x2[:, None] + x2[None, :] - 2.0 * (X @ X.T), 0.0)
+    affinity = np.zeros((n, n), dtype=float)
+    neighbors = np.argsort(d2, axis=1)[:, 1 : n_neighbors + 1]
+    rows = np.arange(n)[:, None]
+    affinity[rows, neighbors] = 1.0
+    return np.maximum(affinity, affinity.T)
+
+
+def _csr_from_dense_affinity(affinity):
+    rows, cols = np.nonzero(affinity)
+    n = affinity.shape[0]
+    indptr = np.bincount(rows, minlength=n).cumsum()
+    indptr = np.concatenate(([0], indptr)).astype(np.int64, copy=False)
+    return indptr, cols.astype(np.int64, copy=False), affinity[rows, cols].astype(float, copy=False)
+
+
+def knn_graph(X, n_neighbors):
+    """Return a symmetric binary KNN graph as ``(indptr, indices, data)``."""
+    X = _matrix(X, "X")
+    n_neighbors = int(n_neighbors)
+    n = X.shape[0]
+    if n_neighbors < 1 or n_neighbors >= n:
+        raise ValueError("n_neighbors must be between 1 and n_samples - 1")
+    cpp = _load_cpp_ml_kernels()
+    if cpp is not None:
+        return cpp.knn_graph(X, n_neighbors)
+    return _csr_from_dense_affinity(knn_affinity(X, n_neighbors))
+
+
+def dbscan_neighbors(X, eps):
+    """Return the radius-neighbor graph as CSR arrays."""
+    X = _matrix(X, "X")
+    eps = float(eps)
+    if not np.isfinite(eps) or eps <= 0.0:
+        raise ValueError("eps must be positive and finite")
+    cpp = _load_cpp_ml_kernels()
+    if cpp is not None:
+        return cpp.dbscan_neighbors(X, eps)
+    x2 = np.sum(X * X, axis=1)
+    d2 = np.maximum(x2[:, None] + x2[None, :] - 2.0 * (X @ X.T), 0.0)
+    return _csr_from_dense_affinity((d2 <= eps * eps).astype(float))
+
+
+def csr_propagate(indptr, indices, weights, F):
+    """Multiply a CSR graph by a dense label-distribution matrix."""
+    indptr = np.asarray(indptr, dtype=np.int64)
+    indices = np.asarray(indices, dtype=np.int64)
+    weights = np.asarray(weights, dtype=float)
+    F = _matrix(F, "F")
+    n = F.shape[0]
+    if indptr.ndim != 1 or indptr.shape != (n + 1,):
+        raise ValueError("indptr must have n_samples + 1 entries")
+    if indices.ndim != 1 or weights.ndim != 1 or indices.shape != weights.shape:
+        raise ValueError("indices and weights must be matching 1D arrays")
+    if indptr[0] != 0 or indptr[-1] != indices.size or np.any(np.diff(indptr) < 0):
+        raise ValueError("invalid CSR row pointer")
+    if np.any(indices < 0) or np.any(indices >= n) or not np.isfinite(weights).all():
+        raise ValueError("invalid CSR indices or weights")
+    indptr = np.ascontiguousarray(indptr)
+    indices = np.ascontiguousarray(indices)
+    weights = np.ascontiguousarray(weights)
+    cpp = _load_cpp_ml_kernels()
+    if cpp is not None:
+        return cpp.csr_propagate(indptr, indices, weights, F)
+    out = np.zeros_like(F, dtype=float)
+    for row in range(n):
+        start, end = indptr[row], indptr[row + 1]
+        if start != end:
+            out[row] = np.sum(weights[start:end, None] * F[indices[start:end]], axis=0)
+    return out
+
+
+def kmeans_assign(X, centers):
+    X = _matrix(X, "X")
+    centers = _matrix(centers, "centers")
+    if X.shape[1] != centers.shape[1]:
+        raise ValueError("X and centers must have the same number of features")
+    cpp = _load_cpp_ml_kernels()
+    if cpp is not None:
+        return cpp.kmeans_assign(X, centers)
+    x2 = np.sum(X * X, axis=1)[:, None]
+    c2 = np.sum(centers * centers, axis=1)[None, :]
+    distances = np.maximum(x2 + c2 - 2.0 * (X @ centers.T), 0.0)
+    labels = np.argmin(distances, axis=1).astype(np.int64, copy=False)
+    return labels, distances[np.arange(X.shape[0]), labels]
+
+
+def kmeans_update(X, labels, n_clusters):
+    X = _matrix(X, "X")
+    labels = np.asarray(labels, dtype=np.int64)
+    if labels.ndim != 1 or labels.shape[0] != X.shape[0]:
+        raise ValueError("labels must match the number of samples")
+    n_clusters = int(n_clusters)
+    if n_clusters < 1:
+        raise ValueError("n_clusters must be positive")
+    if np.any(labels < 0) or np.any(labels >= n_clusters):
+        raise ValueError("labels must be between 0 and n_clusters - 1")
+    cpp = _load_cpp_ml_kernels()
+    if cpp is not None:
+        return cpp.kmeans_update(X, labels, n_clusters)
+    sums = np.zeros((n_clusters, X.shape[1]), dtype=float)
+    np.add.at(sums, labels, X)
+    counts = np.bincount(labels, minlength=n_clusters).astype(np.int64)
+    return sums, counts
+
+
+def gmm_log_gaussian(X, means, precisions, log_determinants):
+    X = _matrix(X, "X")
+    means = _matrix(means, "means")
+    precisions = np.asarray(precisions, dtype=float)
+    log_determinants = np.asarray(log_determinants, dtype=float)
+    if precisions.ndim != 3 or precisions.shape != (
+        means.shape[0], means.shape[1], means.shape[1]
+    ):
+        raise ValueError("precisions must have shape (n_components, n_features, n_features)")
+    if log_determinants.shape != (means.shape[0],):
+        raise ValueError("log_determinants must match the number of components")
+    if X.shape[1] != means.shape[1]:
+        raise ValueError("X and means must have the same number of features")
+    if not np.isfinite(precisions).all() or not np.isfinite(log_determinants).all():
+        raise ValueError("precisions and log_determinants must contain finite values")
+    precisions = np.ascontiguousarray(precisions)
+    log_determinants = np.ascontiguousarray(log_determinants)
+    cpp = _load_cpp_ml_kernels()
+    if cpp is not None:
+        return cpp.gmm_log_gaussian(X, means, precisions, log_determinants)
+    diff = X[:, None, :] - means[None, :, :]
+    quad = np.einsum("nkd,kde,nke->nk", diff, precisions, diff)
+    d = X.shape[1]
+    return -0.5 * (d * np.log(2.0 * np.pi) + log_determinants[None, :] + quad)
+
+
+def gmm_m_step(X, responsibilities, reg_covar):
+    X = _matrix(X, "X")
+    responsibilities = _matrix(responsibilities, "responsibilities")
+    if responsibilities.shape[0] != X.shape[0]:
+        raise ValueError("responsibilities must match the number of samples")
+    reg_covar = float(reg_covar)
+    if not np.isfinite(reg_covar) or reg_covar < 0.0:
+        raise ValueError("reg_covar must be non-negative and finite")
+    if np.any(responsibilities < 0.0):
+        raise ValueError("responsibilities must be finite and non-negative")
+    cpp = _load_cpp_ml_kernels()
+    if cpp is not None:
+        return cpp.gmm_m_step(X, responsibilities, reg_covar)
+    n, d = X.shape
+    nk = responsibilities.sum(axis=0) + 1e-12
+    weights = nk / n
+    means = (responsibilities.T @ X) / nk[:, None]
+    diff = X[:, None, :] - means[None, :, :]
+    covariances = np.einsum("nk,nkd,nke->kde", responsibilities, diff, diff) / nk[:, None, None]
+    covariances += reg_covar * np.eye(d)[None, :, :]
+    return weights, means, covariances

@@ -4,6 +4,7 @@ import numpy as np
 from numpy.typing import ArrayLike
 
 from ..accel import pairwise_squared_euclidean
+from ..accel.ml_kernels import kmeans_assign, kmeans_update
 from ..base import BaseEstimator
 from ..utils import as_2d, check_2d_array
 
@@ -53,15 +54,14 @@ class KMeans(BaseEstimator):
         return centers
 
     def _assign_labels(self, X, centers):
-        dist_sq = _squared_euclidean_distances(X, centers)
-        return np.argmin(dist_sq, axis=1), dist_sq
+        return kmeans_assign(X, centers)
 
     def _update_centers(self, X, labels, old_centers, rng):
+        sums, counts = kmeans_update(X, labels, self.n_clusters)
         centers = np.empty_like(old_centers)
         for j in range(self.n_clusters):
-            mask = labels == j
-            if np.any(mask):
-                centers[j] = np.mean(X[mask], axis=0)
+            if counts[j] > 0:
+                centers[j] = sums[j] / counts[j]
             else:
                 centers[j] = X[int(rng.integers(0, X.shape[0]))]
         return centers
@@ -82,8 +82,8 @@ class KMeans(BaseEstimator):
             prev_inertia = None
 
             for it in range(1, self.max_iter + 1):
-                labels, dist_sq = self._assign_labels(X, centers)
-                inertia = float(np.sum(dist_sq[np.arange(X.shape[0]), labels]))
+                labels, min_dist_sq = self._assign_labels(X, centers)
+                inertia = float(np.sum(min_dist_sq))
                 centers = self._update_centers(X, labels, centers, run_rng)
                 shift = np.linalg.norm(centers - prev_centers)
 
@@ -92,8 +92,8 @@ class KMeans(BaseEstimator):
                 prev_inertia = inertia
                 prev_centers = centers.copy()
 
-            labels, dist_sq = self._assign_labels(X, centers)
-            inertia = float(np.sum(dist_sq[np.arange(X.shape[0]), labels]))
+            labels, min_dist_sq = self._assign_labels(X, centers)
+            inertia = float(np.sum(min_dist_sq))
             if inertia < best_inertia:
                 best_inertia = inertia
                 best_centers = centers.copy()

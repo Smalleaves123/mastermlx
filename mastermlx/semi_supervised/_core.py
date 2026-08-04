@@ -1,7 +1,13 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import numpy as np
 
+from ..accel.ml_kernels import csr_propagate as _csr_propagate
+from ..accel.ml_kernels import knn_graph as _accelerated_knn_graph
+from ..accel.ml_kernels import knn_affinity as _accelerated_knn_affinity
+from ..accel.ml_kernels import rbf_affinity as _accelerated_rbf_affinity
 from ..utils import check_1d_array, check_2d_array
 
 
@@ -17,24 +23,42 @@ def pairwise_sqdist(X, Y=None):
 
 
 def rbf_affinity(X, gamma):
-    D2 = pairwise_sqdist(X)
-    A = np.exp(-gamma * D2)
-    np.fill_diagonal(A, 0.0)
-    return A
+    return _accelerated_rbf_affinity(X, gamma)
 
 
 def knn_affinity(X, n_neighbors):
-    X = check_2d_array(X).astype(float)
-    n = X.shape[0]
-    if n_neighbors < 1 or n_neighbors >= n:
-        raise ValueError("n_neighbors must be between 1 and n_samples - 1")
-    D2 = pairwise_sqdist(X)
-    A = np.zeros((n, n), dtype=float)
-    nbr = np.argsort(D2, axis=1)[:, 1 : n_neighbors + 1]
-    for i in range(n):
-        A[i, nbr[i]] = 1.0
-    A = np.maximum(A, A.T)
-    return A
+    return _accelerated_knn_affinity(X, n_neighbors)
+
+
+@dataclass
+class _SparseAffinity:
+    indptr: np.ndarray
+    indices: np.ndarray
+    data: np.ndarray
+
+    def _row_sums(self):
+        rows = np.repeat(np.arange(self.indptr.size - 1), np.diff(self.indptr))
+        return np.bincount(rows, weights=self.data, minlength=self.indptr.size - 1)
+
+    def row_normalized(self):
+        sums = self._row_sums()
+        sums = np.where(sums == 0.0, 1.0, sums)
+        rows = np.repeat(np.arange(sums.size), np.diff(self.indptr))
+        return _SparseAffinity(self.indptr, self.indices, self.data / sums[rows])
+
+    def sym_normalized(self):
+        sums = self._row_sums()
+        sums = np.where(sums == 0.0, 1.0, sums)
+        rows = np.repeat(np.arange(sums.size), np.diff(self.indptr))
+        values = self.data / np.sqrt(sums[rows] * sums[self.indices])
+        return _SparseAffinity(self.indptr, self.indices, values)
+
+    def propagate(self, F):
+        return _csr_propagate(self.indptr, self.indices, self.data, F)
+
+
+def knn_sparse_affinity(X, n_neighbors):
+    return _SparseAffinity(*_accelerated_knn_graph(X, n_neighbors))
 
 
 def row_norm(A):
@@ -70,4 +94,3 @@ def one_hot(y, classes):
 
 def hard_labels(F, classes):
     return classes[np.argmax(F, axis=1)]
-

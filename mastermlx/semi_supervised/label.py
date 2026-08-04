@@ -4,7 +4,16 @@ import numpy as np
 
 from ..base import BaseEstimator
 from ..utils import check_2d_array
-from ._core import hard_labels, knn_affinity, make_y, one_hot, rbf_affinity, row_norm, sym_norm
+from ._core import (
+    _SparseAffinity,
+    hard_labels,
+    knn_sparse_affinity,
+    make_y,
+    one_hot,
+    rbf_affinity,
+    row_norm,
+    sym_norm,
+)
 
 
 class _LabelBase(BaseEstimator):
@@ -30,10 +39,10 @@ class _LabelBase(BaseEstimator):
         return float(self.gamma)
 
     def _affinity(self, X):
+        if self.kernel == "knn":
+            return knn_sparse_affinity(X, self.n_neighbors)
         if self.kernel == "rbf":
             return rbf_affinity(X, self._gamma)
-        if self.kernel == "knn":
-            return knn_affinity(X, self.n_neighbors)
         raise ValueError("kernel must be one of: rbf, knn")
 
     def _resolve_labels(self, y):
@@ -78,13 +87,13 @@ class LabelPropagation(_LabelBase):
         self._gamma = self._resolve_gamma(X.shape[1])
 
         A = self._affinity(X)
-        S = row_norm(A)
+        S = A.row_normalized() if isinstance(A, _SparseAffinity) else row_norm(A)
         F = Y.copy()
         F[~labeled] = 0.0
 
         for it in range(1, self.max_iter + 1):
             prev = F.copy()
-            F = S @ F
+            F = S.propagate(F) if isinstance(S, _SparseAffinity) else S @ F
             F[labeled] = Y[labeled]
             delta = np.max(np.abs(F - prev))
             if delta < self.tol:
@@ -115,7 +124,7 @@ class LabelSpreading(_LabelBase):
         self._gamma = self._resolve_gamma(X.shape[1])
 
         A = self._affinity(X)
-        S = sym_norm(A)
+        S = A.sym_normalized() if isinstance(A, _SparseAffinity) else sym_norm(A)
         F = Y.copy()
         Y0 = Y.copy()
         Y0[~labeled] = 0.0
@@ -126,7 +135,8 @@ class LabelSpreading(_LabelBase):
 
         for it in range(1, self.max_iter + 1):
             prev = F.copy()
-            F = alpha * (S @ F) + (1.0 - alpha) * Y0
+            propagated = S.propagate(F) if isinstance(S, _SparseAffinity) else S @ F
+            F = alpha * propagated + (1.0 - alpha) * Y0
             F[labeled] = (1.0 - alpha) * Y[labeled] + alpha * F[labeled]
             delta = np.max(np.abs(F - prev))
             if delta < self.tol:
