@@ -1,5 +1,6 @@
 import numpy as np
 
+from mastermlx import get_backend, set_backend
 from mastermlx.clustering import MiniBatchKMeans
 from mastermlx.preprocessing import KNNImputer
 from mastermlx.neighbors import NearestCentroid
@@ -20,6 +21,27 @@ def test_minibatch_kmeans_single_init():
     mb = MiniBatchKMeans(n_clusters=2, n_init=1, random_state=0).fit(X)
     assert mb.labels_.shape == (200,)
     assert len(np.unique(mb.labels_)) == 2
+
+
+def test_minibatch_kmeans_cpp_and_numpy_match():
+    rng = np.random.default_rng(3)
+    X = rng.normal(size=(120, 4)).astype(np.float32)
+    old = get_backend()
+    try:
+        set_backend("auto")
+        accelerated = MiniBatchKMeans(
+            n_clusters=3, batch_size=20, max_iter=8, n_init=2, random_state=7
+        ).fit(X)
+        set_backend("numpy")
+        fallback = MiniBatchKMeans(
+            n_clusters=3, batch_size=20, max_iter=8, n_init=2, random_state=7
+        ).fit(X)
+    finally:
+        set_backend(old)
+
+    assert np.allclose(accelerated.cluster_centers_, fallback.cluster_centers_)
+    assert np.array_equal(accelerated.labels_, fallback.labels_)
+    assert np.allclose(accelerated.inertia_, fallback.inertia_)
 
 
 # --- KNNImputer ---

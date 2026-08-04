@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
+from ..accel.ml_kernels import kmeans_assign, kmeans_update
 from ..base import BaseEstimator
 from ..utils import as_2d, check_2d_array
 
@@ -37,20 +38,18 @@ class MiniBatchKMeans(BaseEstimator):
             for _ in range(self.max_iter):
                 batch_idx = rng.choice(n, size=self.batch_size, replace=False)
                 Xb = X[batch_idx]
-                sq = np.sum(Xb**2, axis=1)[:, None] + np.sum(centers**2, axis=1)[None, :] \
-                     - 2.0 * (Xb @ centers.T)
-                labels_b = np.argmin(sq, axis=1)
+                labels_b, _ = kmeans_assign(Xb, centers)
+                sums, batch_counts = kmeans_update(Xb, labels_b, k)
 
                 for j in range(k):
-                    mask = labels_b == j
-                    if np.sum(mask) == 0:
+                    if batch_counts[j] == 0:
                         continue
                     lr = 1.0 / max(counts[j], 1.0)
-                    centers[j] = (1.0 - lr) * centers[j] + lr * np.mean(Xb[mask], axis=0)
-                    counts[j] += np.sum(mask)
+                    centers[j] = (1.0 - lr) * centers[j] + lr * sums[j] / batch_counts[j]
+                    counts[j] += batch_counts[j]
 
             labels, sq_all = self._assign(X, centers)
-            inertia = float(np.mean(sq_all[np.arange(n), labels]))
+            inertia = float(np.mean(sq_all))
             if inertia < best_inertia:
                 best_inertia = inertia
                 self.cluster_centers_ = centers
@@ -60,9 +59,7 @@ class MiniBatchKMeans(BaseEstimator):
         return self
 
     def _assign(self, X, centers):
-        sq = np.sum(X**2, axis=1)[:, None] + np.sum(centers**2, axis=1)[None, :] \
-             - 2.0 * (X @ centers.T)
-        return np.argmin(sq, axis=1), sq
+        return kmeans_assign(X, centers)
 
     def predict(self, X):
         X = as_2d(X).astype(float)
