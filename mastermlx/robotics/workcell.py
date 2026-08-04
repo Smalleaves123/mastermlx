@@ -653,6 +653,7 @@ class RobotWorkcell(BaseExperiment):
         clearance=0.0,
         link_radius=0.0,
         collision_step=0.05,
+        check_self_collision=False,
         velocity_limits=None,
         acceleration_limits=None,
         jerk_limits=None,
@@ -688,6 +689,7 @@ class RobotWorkcell(BaseExperiment):
                 candidate,
                 link_radius=link_radius,
                 interpolation_step=collision_step,
+                check_self_collision=check_self_collision,
             )
             clearances = np.asarray(summary["clearances"], dtype=float)
             finite = clearances[np.isfinite(clearances)]
@@ -720,6 +722,7 @@ class RobotWorkcell(BaseExperiment):
             optimized,
             link_radius=link_radius,
             interpolation_step=collision_step,
+            check_self_collision=check_self_collision,
         )
         result["collision_free"] = bool(
             not collision["collision"] and collision["minimum_clearance"] >= clearance
@@ -801,6 +804,7 @@ class RobotWorkcell(BaseExperiment):
             optimization_kwargs = {} if optimization_kwargs is None else dict(optimization_kwargs)
             optimization_kwargs.setdefault("clearance", clearance)
             optimization_kwargs.setdefault("collision_step", collision_step)
+            optimization_kwargs.setdefault("check_self_collision", check_self_collision)
             optimization = self.optimize_joint_path(
                 path,
                 bounds=bounds,

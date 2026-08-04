@@ -136,6 +136,29 @@ def test_ml_kernel_validation():
         radius_neighbors(X, X, np.inf)
     with pytest.raises(ValueError, match="positive and finite"):
         meanshift_update(X, X, np.nan)
+    old = get_backend()
+    try:
+        set_backend("numpy")
+        with pytest.raises(ValueError, match="non-negative"):
+            hmm_forward([0], [1.0, -0.1], [[1.0, 0.0], [0.0, 1.0]], [[1.0], [1.0]])
+    finally:
+        set_backend(old)
+
+
+def test_knn_affinity_tie_breaking_matches_compiled_contract():
+    _require_cpp_ml_kernels()
+    X = np.zeros((6, 2))
+    accelerated, fallback = _run_both(knn_affinity, X, 2)
+    expected = np.array([
+        [0, 1, 1, 1, 1, 1],
+        [1, 0, 1, 1, 1, 1],
+        [1, 1, 0, 0, 0, 0],
+        [1, 1, 0, 0, 0, 0],
+        [1, 1, 0, 0, 0, 0],
+        [1, 1, 0, 0, 0, 0],
+    ], dtype=float)
+    assert np.array_equal(accelerated, fallback)
+    assert np.array_equal(fallback, expected)
 
 
 def test_cpp_ml_kernels_validate_direct_inputs():

@@ -100,8 +100,9 @@ def knn_affinity(X, n_neighbors):
         return cpp.knn_affinity(X, n_neighbors)
     x2 = np.sum(X * X, axis=1)
     d2 = np.maximum(x2[:, None] + x2[None, :] - 2.0 * (X @ X.T), 0.0)
+    d2[np.diag_indices(n)] = np.inf
     affinity = np.zeros((n, n), dtype=float)
-    neighbors = np.argsort(d2, axis=1)[:, 1 : n_neighbors + 1]
+    neighbors = np.argsort(d2, axis=1, kind="stable")[:, :n_neighbors]
     rows = np.arange(n)[:, None]
     affinity[rows, neighbors] = 1.0
     return np.maximum(affinity, affinity.T)
@@ -226,6 +227,8 @@ def _hmm_inputs(sequence, start, trans, emit):
     if trans.shape[0] != trans.shape[1] or start.shape[0] != trans.shape[0] \
             or emit.shape[0] != trans.shape[0]:
         raise ValueError("invalid HMM array shapes")
+    if np.any(start < 0.0) or np.any(trans < 0.0) or np.any(emit < 0.0):
+        raise ValueError("HMM probabilities must be non-negative")
     if np.any(sequence < 0) or np.any(sequence >= emit.shape[1]):
         raise ValueError("observation index out of range")
     if not np.isfinite(start).all():

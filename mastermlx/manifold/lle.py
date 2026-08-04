@@ -26,7 +26,9 @@ class LLE(BaseTransformer):
 
         D = pairwise_dist(X)
         G = kgraph(D, self.n_neighbors)
-        nbr = np.argsort(G, axis=1)[:, 1 : self.n_neighbors + 1]
+        distances = G.copy()
+        distances[np.diag_indices(n)] = np.inf
+        nbr = np.argsort(distances, axis=1, kind="stable")[:, : self.n_neighbors]
 
         W = np.zeros((n, n), dtype=float)
         eye = np.eye(self.n_neighbors)

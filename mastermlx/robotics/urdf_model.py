@@ -487,6 +487,8 @@ class URDFRobotModel:
         collision_step=0.05,
         clearance=0.0,
         link_radius=0.0,
+        check_self_collision=False,
+        self_collision_exclusions=(),
         workers=1,
         **planner_kwargs,
     ):
@@ -521,7 +523,12 @@ class URDFRobotModel:
 
         def hit(values):
             report = self.collision_report(
-                values, obstacles, link_radius=link_radius, occupancy_grid=occupancy_grid
+                values,
+                obstacles,
+                link_radius=link_radius,
+                occupancy_grid=occupancy_grid,
+                check_self_collision=check_self_collision,
+                self_collision_exclusions=self_collision_exclusions,
             )
             return bool(report["collision"] or report["minimum_clearance"] < clearance)
 
@@ -533,12 +540,16 @@ class URDFRobotModel:
                 link_radius=link_radius,
                 interpolation_step=step,
                 occupancy_grid=occupancy_grid,
+                check_self_collision=check_self_collision,
+                self_collision_exclusions=self_collision_exclusions,
             )
 
         if self.path_collision_free(
             np.vstack([q_start, q_goal]), obstacles, clearance=clearance,
             link_radius=link_radius, interpolation_step=collision_step,
             occupancy_grid=occupancy_grid,
+            check_self_collision=check_self_collision,
+            self_collision_exclusions=self_collision_exclusions,
         ):
             return np.vstack([q_start, q_goal])
         planner_name = str(planner).lower()
@@ -566,11 +577,15 @@ class URDFRobotModel:
             if self.path_collision_free(
                 candidate, obstacles, clearance=clearance, link_radius=link_radius,
                 interpolation_step=collision_step, occupancy_grid=occupancy_grid,
+                check_self_collision=check_self_collision,
+                self_collision_exclusions=self_collision_exclusions,
             ):
                 path = candidate
         if not self.path_collision_free(
             path, obstacles, clearance=clearance, link_radius=link_radius,
             interpolation_step=collision_step, occupancy_grid=occupancy_grid,
+            check_self_collision=check_self_collision,
+            self_collision_exclusions=self_collision_exclusions,
         ):
             raise RuntimeError("planner returned a path that does not satisfy collision checks")
         return path

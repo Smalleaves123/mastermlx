@@ -86,6 +86,24 @@ static void require_hmm_inputs(
         || emit.shape[0] != trans.shape[0]) {
         throw std::invalid_argument("invalid HMM array shapes");
     }
+    const auto* start_values = static_cast<const double*>(start.ptr);
+    const auto* transition = static_cast<const double*>(trans.ptr);
+    const auto* emission = static_cast<const double*>(emit.ptr);
+    for (py::ssize_t i = 0; i < start.shape[0]; ++i) {
+        if (start_values[i] < 0.0) {
+            throw std::invalid_argument("HMM probabilities must be non-negative");
+        }
+    }
+    for (py::ssize_t i = 0; i < trans.shape[0] * trans.shape[1]; ++i) {
+        if (transition[i] < 0.0) {
+            throw std::invalid_argument("HMM probabilities must be non-negative");
+        }
+    }
+    for (py::ssize_t i = 0; i < emit.shape[0] * emit.shape[1]; ++i) {
+        if (emission[i] < 0.0) {
+            throw std::invalid_argument("HMM probabilities must be non-negative");
+        }
+    }
     for (py::ssize_t i = 0; i < sequence.shape[0]; ++i) {
         const auto observation = static_cast<const std::int64_t*>(sequence.ptr)[i];
         if (observation < 0 || observation >= emit.shape[1]) {

@@ -88,6 +88,15 @@ def test_knn_neighbors_returns_exact_top_k_for_large_training_set():
     assert np.allclose(np.sort(distances, axis=1), expected_distances)
 
 
+def test_knn_neighbors_uses_stable_index_ties_for_numpy_distance_metrics():
+    indices, distances = knn_neighbors(
+        np.zeros((1, 2)), np.zeros((6, 2)), 2, "manhattan"
+    )
+
+    assert np.array_equal(indices, [[0, 1]])
+    assert np.array_equal(distances, [[0.0, 0.0]])
+
+
 def test_radius_neighbors_classifier_predicts_within_radius():
     X = np.array([[0.0], [0.3], [1.5], [1.7]])
     y = np.array([0, 0, 1, 1])

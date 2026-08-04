@@ -94,3 +94,26 @@ def test_workcell_optimizer_reports_clearance_and_plan_motion_integration():
     assert tracking["actual"].shape == tracking["reference"].shape
     assert tracking["controls"].shape[1] == 2
     assert np.all(np.isfinite(tracking["joint_error"]))
+
+
+def test_workcell_optimizer_propagates_self_collision_policy():
+    robot = RobotModel.from_dh(
+        [
+            {"a": 1.0, "alpha": 0.0, "d": 0.0, "theta": 0.0},
+            {"a": 1.0, "alpha": 0.0, "d": 0.0, "theta": 0.0},
+            {"a": 1.0, "alpha": 0.0, "d": 0.0, "theta": 0.0},
+        ],
+        name="self_collision_optimizer",
+    )
+    workcell = RobotWorkcell(robot)
+    path = np.array([[0.0, np.pi, np.pi], [0.0, np.pi, np.pi]])
+
+    result = workcell.optimize_joint_path(
+        path,
+        bounds=[[-3.2, 3.2]] * 3,
+        check_self_collision=True,
+        max_iter=1,
+    )
+
+    assert result["collision_summary"]["self_collision"]
+    assert not result["collision_free"]

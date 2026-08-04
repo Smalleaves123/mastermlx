@@ -46,7 +46,7 @@ def knn_neighbors(X, X_fit, k, metric):
             pass
 
     dist = pairwise_distance(X, X_fit, metric=metric)
-    nn = np.argpartition(dist, k - 1, axis=1)[:, :k]
+    nn = np.argsort(dist, axis=1, kind="stable")[:, :k]
     selected_dist = np.take_along_axis(dist, nn, axis=1)
     return nn, selected_dist
 

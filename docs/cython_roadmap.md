@@ -112,7 +112,7 @@ the kinematics module so geometry packing and safety policy stay maintainable.
 Target modules:
 
 - `mastermlx.estimation`
-- `mastermlx.planning` when it lands
+- `mastermlx.planning`
 
 Why:
 

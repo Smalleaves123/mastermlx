@@ -111,6 +111,7 @@ def test_spatial_urdf_exposes_rrt_joint_planning():
         goal_rate=0.25,
         max_iter=3000,
         random_state=0,
+        check_self_collision=True,
     )
 
     assert path.shape[0] > 2

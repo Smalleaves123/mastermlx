@@ -63,7 +63,9 @@ class SpectralClustering(BaseEstimator):
             dist_sq = _pairwise_sq_dists(X)
             W = np.zeros_like(dist_sq)
             for i in range(X.shape[0]):
-                idx = np.argsort(dist_sq[i])[1 : self.n_neighbors + 1]
+                distances = dist_sq[i].copy()
+                distances[i] = np.inf
+                idx = np.argsort(distances, kind="stable")[: self.n_neighbors]
                 W[i, idx] = 1.0
             return np.maximum(W, W.T)
         raise ValueError("affinity must be 'rbf' or 'nearest_neighbors'")

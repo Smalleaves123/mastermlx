@@ -9,6 +9,13 @@
 
 ## Unreleased
 
+- Fixed self-collision policy propagation through workcell path optimization
+  and URDF joint-space planning.
+- Made NumPy neighbor graphs and manifold fallbacks exclude self-neighbors and
+  use deterministic index tie-breaking for duplicate samples.
+- Rejected negative HMM probability inputs consistently in Python and C++
+  kernels.
+
 ## 0.1.14
 
 - Added C++ batched rigid-body mass, gravity, inverse, forward, and Coriolis

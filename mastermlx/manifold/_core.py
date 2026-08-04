@@ -20,7 +20,9 @@ def kgraph(D, k):
         raise ValueError("n_neighbors must be between 1 and n_samples - 1")
 
     A = np.full_like(D, np.inf)
-    order = np.argsort(D, axis=1)[:, 1 : k + 1]
+    distances = D.copy()
+    distances[np.diag_indices(n)] = np.inf
+    order = np.argsort(distances, axis=1, kind="stable")[:, :k]
     for i in range(n):
         A[i, order[i]] = D[i, order[i]]
     A = np.minimum(A, A.T)
