@@ -370,6 +370,67 @@ py::array_t<double> knn_impute(
     return out;
 }
 
+py::tuple radius_neighbors(Matrix X_, Matrix X_fit_, double radius) {
+    if (!std::isfinite(radius) || radius <= 0.0) {
+        throw std::invalid_argument("radius must be positive and finite");
+    }
+    const auto Xb = require_matrix(X_, "X");
+    const auto Fb = require_matrix(X_fit_, "X_fit");
+    if (Xb.shape[1] != Fb.shape[1]) {
+        throw std::invalid_argument("X and X_fit must have the same number of features");
+    }
+    const auto* X = static_cast<const double*>(Xb.ptr);
+    const auto* X_fit = static_cast<const double*>(Fb.ptr);
+    const py::ssize_t n_query = Xb.shape[0];
+    const py::ssize_t n_train = Fb.shape[0];
+    const py::ssize_t d = Xb.shape[1];
+    const double radius_sq = radius * radius;
+    std::vector<std::vector<std::pair<py::ssize_t, double>>> adjacency(
+        static_cast<std::size_t>(n_query));
+    {
+        py::gil_scoped_release release;
+        parallel_rows(n_query, n_train, [&](py::ssize_t begin, py::ssize_t end) {
+            for (py::ssize_t row = begin; row < end; ++row) {
+                const double* query = X + row * d;
+                auto& neighbors = adjacency[static_cast<std::size_t>(row)];
+                for (py::ssize_t train_row = 0; train_row < n_train; ++train_row) {
+                    const double* train = X_fit + train_row * d;
+                    double distance_sq = 0.0;
+                    for (py::ssize_t feature = 0; feature < d; ++feature) {
+                        const double diff = query[feature] - train[feature];
+                        distance_sq += diff * diff;
+                    }
+                    if (distance_sq <= radius_sq) {
+                        neighbors.emplace_back(train_row, std::sqrt(std::max(distance_sq, 0.0)));
+                    }
+                }
+            }
+        });
+    }
+
+    py::array_t<std::int64_t> indptr(n_query + 1);
+    auto* rows = static_cast<std::int64_t*>(indptr.request().ptr);
+    rows[0] = 0;
+    for (py::ssize_t row = 0; row < n_query; ++row) {
+        rows[row + 1] = rows[row] + static_cast<std::int64_t>(
+            adjacency[static_cast<std::size_t>(row)].size());
+    }
+    const py::ssize_t edges = static_cast<py::ssize_t>(rows[n_query]);
+    py::array_t<std::int64_t> indices(edges);
+    py::array_t<double> values(edges);
+    auto* cols = static_cast<std::int64_t*>(indices.request().ptr);
+    auto* data = static_cast<double*>(values.request().ptr);
+    py::ssize_t offset = 0;
+    for (const auto& row : adjacency) {
+        for (const auto& neighbor : row) {
+            cols[offset] = static_cast<std::int64_t>(neighbor.first);
+            data[offset] = neighbor.second;
+            ++offset;
+        }
+    }
+    return py::make_tuple(indptr, indices, values);
+}
+
 py::tuple dbscan_neighbors(Matrix X_, double eps) {
     if (!std::isfinite(eps) || eps <= 0.0) {
         throw std::invalid_argument("eps must be positive and finite");
@@ -680,6 +741,7 @@ PYBIND11_MODULE(_ml_kernels_cpp, m) {
     m.def("knn_affinity", &knn_affinity);
     m.def("knn_graph", &knn_graph);
     m.def("knn_impute", &knn_impute);
+    m.def("radius_neighbors", &radius_neighbors);
     m.def("dbscan_neighbors", &dbscan_neighbors);
     m.def("csr_propagate", &csr_propagate);
     m.def("kmeans_assign", &kmeans_assign);

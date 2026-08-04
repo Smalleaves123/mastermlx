@@ -4,8 +4,9 @@ import numpy as np
 from typing import cast
 
 from ..base import BaseEstimator
+from ..accel.ml_kernels import radius_neighbors
 from ..utils import as_2d, check_1d_array, check_2d_array, mean_squared_error
-from ._base import check_metric, check_weights, distance_weights, pairwise_neighbor_distance
+from ._base import check_metric, check_weights, distance_weights, knn_neighbors, pairwise_neighbor_distance
 
 
 class RadiusNeighborsRegressor(BaseEstimator):
@@ -23,8 +24,8 @@ class RadiusNeighborsRegressor(BaseEstimator):
         y = check_1d_array(y)
         if X.shape[0] != y.shape[0]:
             raise ValueError("X and y must contain the same number of samples")
-        if self.radius <= 0:
-            raise ValueError("radius must be positive")
+        if not np.isfinite(self.radius) or self.radius <= 0:
+            raise ValueError("radius must be positive and finite")
         check_metric(self.metric)
         check_weights(self.weights)
         self.X_ = X
@@ -36,20 +37,37 @@ class RadiusNeighborsRegressor(BaseEstimator):
             raise RuntimeError("Model has not been fit yet")
         X = as_2d(X)
         y_train = cast(np.ndarray, self.y_)
-        dist = pairwise_neighbor_distance(X, cast(np.ndarray, self.X_), self.metric)
         pred = np.zeros(X.shape[0], dtype=float)
-        for i in range(X.shape[0]):
-            mask = dist[i] <= self.radius
-            if not np.any(mask):
-                nearest = int(np.argmin(dist[i]))
-                pred[i] = y_train[nearest]
-                continue
-            vals = y_train[mask]
-            if self.weights == "uniform":
-                pred[i] = np.mean(vals)
-            else:
-                w = distance_weights(dist[i, mask])
-                pred[i] = np.sum(w * vals) / np.sum(w)
+        if self.metric == "euclidean":
+            indptr, indices, distances = radius_neighbors(X, self.X_, self.radius)
+            empty = indptr[1:] == indptr[:-1]
+            nearest = knn_neighbors(X, self.X_, 1, self.metric) if np.any(empty) else None
+            for i in range(X.shape[0]):
+                start, end = int(indptr[i]), int(indptr[i + 1])
+                if start == end:
+                    pred[i] = y_train[nearest[0][i, 0]]
+                    continue
+                row_indices = indices[start:end]
+                vals = y_train[row_indices]
+                if self.weights == "uniform":
+                    pred[i] = np.mean(vals)
+                else:
+                    w = distance_weights(distances[start:end])
+                    pred[i] = np.sum(w * vals) / np.sum(w)
+        else:
+            dist = pairwise_neighbor_distance(X, cast(np.ndarray, self.X_), self.metric)
+            for i in range(X.shape[0]):
+                mask = dist[i] <= self.radius
+                if not np.any(mask):
+                    nearest = int(np.argmin(dist[i]))
+                    pred[i] = y_train[nearest]
+                    continue
+                vals = y_train[mask]
+                if self.weights == "uniform":
+                    pred[i] = np.mean(vals)
+                else:
+                    w = distance_weights(dist[i, mask])
+                    pred[i] = np.sum(w * vals) / np.sum(w)
         return float(pred[0]) if pred.shape[0] == 1 else pred
 
     def score(self, X, y):

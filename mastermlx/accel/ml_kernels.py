@@ -142,6 +142,38 @@ def dbscan_neighbors(X, eps):
     return _csr_from_dense_affinity((d2 <= eps * eps).astype(float))
 
 
+def radius_neighbors(X, X_fit, radius):
+    """Return Euclidean radius neighbors as CSR arrays with distances."""
+    X = _matrix(X, "X")
+    X_fit = _matrix(X_fit, "X_fit")
+    if X.shape[1] != X_fit.shape[1]:
+        raise ValueError("X and X_fit must have the same number of features")
+    radius = float(radius)
+    if not np.isfinite(radius) or radius <= 0.0:
+        raise ValueError("radius must be positive and finite")
+    cpp = _load_cpp_ml_kernels()
+    cpp_radius_neighbors = getattr(cpp, "radius_neighbors", None) if cpp is not None else None
+    if callable(cpp_radius_neighbors):
+        return cpp_radius_neighbors(X, X_fit, radius)
+    distances = np.sqrt(
+        np.maximum(
+            np.sum(X * X, axis=1)[:, None]
+            + np.sum(X_fit * X_fit, axis=1)[None, :]
+            - 2.0 * (X @ X_fit.T),
+            0.0,
+        )
+    )
+    rows, cols = np.nonzero(distances <= radius)
+    n = X.shape[0]
+    indptr = np.bincount(rows, minlength=n).cumsum()
+    indptr = np.concatenate(([0], indptr)).astype(np.int64, copy=False)
+    return (
+        indptr,
+        cols.astype(np.int64, copy=False),
+        distances[rows, cols].astype(float, copy=False),
+    )
+
+
 def csr_propagate(indptr, indices, weights, F):
     """Multiply a CSR graph by a dense label-distribution matrix."""
     indptr = np.asarray(indptr, dtype=np.int64)

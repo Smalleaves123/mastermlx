@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from mastermlx.neighbors import KNNClassifier, KNNRegressor, RadiusNeighborsClassifier, RadiusNeighborsRegressor
 from mastermlx.neighbors._base import knn_neighbors
@@ -90,3 +91,18 @@ def test_radius_neighbors_regressor_predicts_within_radius():
     pred = model.predict([0.1])
 
     assert np.isclose(pred, 0.1, atol=1e-8)
+
+
+def test_radius_neighbors_uses_nearest_fallback_when_radius_is_empty():
+    X = np.array([[0.0], [10.0]])
+    y_classifier = np.array([0, 1])
+    y_regressor = np.array([2.0, 8.0])
+
+    assert RadiusNeighborsClassifier(radius=0.1).fit(X, y_classifier).predict([4.0]) == 0
+    assert np.isclose(RadiusNeighborsRegressor(radius=0.1).fit(X, y_regressor).predict([9.0]), 8.0)
+
+
+@pytest.mark.parametrize("estimator", [RadiusNeighborsClassifier, RadiusNeighborsRegressor])
+def test_radius_neighbors_rejects_nonfinite_radius(estimator):
+    with pytest.raises(ValueError, match="positive and finite"):
+        estimator(radius=np.inf).fit(np.array([[0.0]]), np.array([0.0]))
