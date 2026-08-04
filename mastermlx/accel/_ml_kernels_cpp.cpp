@@ -567,6 +567,59 @@ py::tuple dbscan_labels(
     return py::make_tuple(labels, core_samples);
 }
 
+py::array_t<double> meanshift_update(Matrix X_, Matrix centers_, double bandwidth) {
+    if (!std::isfinite(bandwidth) || bandwidth <= 0.0) {
+        throw std::invalid_argument("bandwidth must be positive and finite");
+    }
+    const auto Xb = require_matrix(X_, "X");
+    const auto Cb = require_matrix(centers_, "centers");
+    if (Xb.shape[1] != Cb.shape[1]) {
+        throw std::invalid_argument("X and centers must have the same number of features");
+    }
+    const auto* X = static_cast<const double*>(Xb.ptr);
+    const auto* centers = static_cast<const double*>(Cb.ptr);
+    const py::ssize_t n_samples = Xb.shape[0];
+    const py::ssize_t n_centers = Cb.shape[0];
+    const py::ssize_t d = Xb.shape[1];
+    const double bandwidth_sq = bandwidth * bandwidth;
+    py::array_t<double> out({n_centers, d});
+    auto* result = static_cast<double*>(out.request().ptr);
+    std::copy(centers, centers + n_centers * d, result);
+    {
+        py::gil_scoped_release release;
+        parallel_rows(n_centers, n_samples, [&](py::ssize_t begin, py::ssize_t end) {
+            std::vector<double> sums(static_cast<std::size_t>(d));
+            for (py::ssize_t row = begin; row < end; ++row) {
+                std::fill(sums.begin(), sums.end(), 0.0);
+                const double* center = centers + row * d;
+                py::ssize_t count = 0;
+                for (py::ssize_t sample = 0; sample < n_samples; ++sample) {
+                    const double* point = X + sample * d;
+                    double distance_sq = 0.0;
+                    for (py::ssize_t feature = 0; feature < d; ++feature) {
+                        const double diff = point[feature] - center[feature];
+                        distance_sq += diff * diff;
+                    }
+                    if (distance_sq <= bandwidth_sq) {
+                        for (py::ssize_t feature = 0; feature < d; ++feature) {
+                            sums[static_cast<std::size_t>(feature)] += point[feature];
+                        }
+                        ++count;
+                    }
+                }
+                if (count > 0) {
+                    double* output = result + row * d;
+                    for (py::ssize_t feature = 0; feature < d; ++feature) {
+                        output[feature] = sums[static_cast<std::size_t>(feature)]
+                            / static_cast<double>(count);
+                    }
+                }
+            }
+        });
+    }
+    return out;
+}
+
 py::array_t<double> csr_propagate(
     py::array_t<std::int64_t, py::array::c_style | py::array::forcecast> indptr_,
     py::array_t<std::int64_t, py::array::c_style | py::array::forcecast> indices_,
@@ -831,6 +884,7 @@ PYBIND11_MODULE(_ml_kernels_cpp, m) {
     m.def("radius_neighbors", &radius_neighbors);
     m.def("dbscan_neighbors", &dbscan_neighbors);
     m.def("dbscan_labels", &dbscan_labels);
+    m.def("meanshift_update", &meanshift_update);
     m.def("csr_propagate", &csr_propagate);
     m.def("kmeans_assign", &kmeans_assign);
     m.def("kmeans_update", &kmeans_update);

@@ -192,6 +192,30 @@ def dbscan_labels(indptr, indices, min_samples):
     return labels, core_samples
 
 
+def meanshift_update(X, centers, bandwidth):
+    """Move each center to the mean of samples within its bandwidth."""
+    X = _matrix(X, "X")
+    centers = _matrix(centers, "centers")
+    if X.shape[1] != centers.shape[1]:
+        raise ValueError("X and centers must have the same number of features")
+    bandwidth = float(bandwidth)
+    if not np.isfinite(bandwidth) or bandwidth <= 0.0:
+        raise ValueError("bandwidth must be positive and finite")
+    cpp = _load_cpp_ml_kernels()
+    cpp_meanshift_update = getattr(cpp, "meanshift_update", None) if cpp is not None else None
+    if callable(cpp_meanshift_update):
+        return cpp_meanshift_update(X, centers, bandwidth)
+
+    updates = centers.copy()
+    bandwidth_sq = bandwidth * bandwidth
+    for row, center in enumerate(centers):
+        distances = np.sum((X - center) ** 2, axis=1)
+        mask = distances <= bandwidth_sq
+        if np.any(mask):
+            updates[row] = np.mean(X[mask], axis=0)
+    return updates
+
+
 def radius_neighbors(X, X_fit, radius):
     """Return Euclidean radius neighbors as CSR arrays with distances."""
     X = _matrix(X, "X")

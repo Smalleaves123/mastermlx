@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
+from ..accel.ml_kernels import meanshift_update
 from ..base import BaseEstimator
 from ..utils import as_2d, check_2d_array
 
@@ -43,23 +44,30 @@ class MeanShift(BaseEstimator):
 
     def fit(self, X, y=None):
         X = check_2d_array(X)
-        if self.bandwidth <= 0:
-            raise ValueError("bandwidth must be positive")
+        if not np.isfinite(self.bandwidth) or self.bandwidth <= 0:
+            raise ValueError("bandwidth must be positive and finite")
+        if self.max_iter < 1:
+            raise ValueError("max_iter must be at least 1")
+        if not np.isfinite(self.tol) or self.tol < 0:
+            raise ValueError("tol must be non-negative and finite")
 
-        shifted = []
-        max_iter_seen = 0
-        for seed in X:
-            center = seed.copy()
-            for it in range(1, self.max_iter + 1):
-                new_center = self._shift_point(X, center)
-                shift = np.linalg.norm(new_center - center)
-                center = new_center
-                if shift < self.tol:
-                    break
-            shifted.append(center)
-            max_iter_seen = max(max_iter_seen, it)
+        shifted = np.asarray(X, dtype=float).copy()
+        active = np.ones(X.shape[0], dtype=bool)
+        iterations = np.zeros(X.shape[0], dtype=int)
+        for it in range(1, self.max_iter + 1):
+            active_indices = np.flatnonzero(active)
+            if active_indices.size == 0:
+                break
+            previous = shifted[active_indices].copy()
+            updated = meanshift_update(X, previous, self.bandwidth)
+            shifted[active_indices] = updated
+            shifts = np.linalg.norm(updated - previous, axis=1)
+            done = (shifts < self.tol) | (it == self.max_iter)
+            iterations[active_indices[done]] = it
+            active[active_indices[done]] = False
+        max_iter_seen = int(np.max(iterations)) if iterations.size else 0
 
-        centers = self._merge_centers(np.asarray(shifted))
+        centers = self._merge_centers(shifted)
         if centers.size == 0:
             centers = np.mean(X, axis=0, keepdims=True)
 

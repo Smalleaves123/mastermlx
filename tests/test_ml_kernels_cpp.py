@@ -16,6 +16,7 @@ from mastermlx.accel.ml_kernels import (
     knn_graph,
     rbf_affinity,
     radius_neighbors,
+    meanshift_update,
 )
 
 
@@ -75,6 +76,7 @@ def test_ml_kernels_match_numpy_fallback_on_non_contiguous_inputs():
     radius_fit = np.asfortranarray(np.array([[0.0, 0.0], [0.6, 0.0], [2.0, 0.0]], dtype=np.float32))
     dbscan_indptr = np.array([0, 2, 4, 6, 8], dtype=np.int64)
     dbscan_indices = np.array([0, 1, 0, 1, 2, 3, 2, 3], dtype=np.int64)
+    meanshift_centers = np.asfortranarray(rng.normal(size=(3, 4)).astype(np.float32))
 
     for func, args in (
         (rbf_affinity, (X, 0.7)),
@@ -84,6 +86,7 @@ def test_ml_kernels_match_numpy_fallback_on_non_contiguous_inputs():
         (knn_impute, (query_missing, fit_missing, 2, "distance")),
         (dbscan_neighbors, (X, 2.0)),
         (dbscan_labels, (dbscan_indptr, dbscan_indices, 2)),
+        (meanshift_update, (X, meanshift_centers, 1.5)),
         (csr_propagate, (csr_indptr, csr_indices, csr_weights, responsibilities[:3])),
         (kmeans_assign, (X, centers)),
         (kmeans_update, (X, labels, 3)),
@@ -121,6 +124,8 @@ def test_ml_kernel_validation():
         radius_neighbors(X, X, 0.0)
     with pytest.raises(ValueError, match="positive and finite"):
         radius_neighbors(X, X, np.inf)
+    with pytest.raises(ValueError, match="positive and finite"):
+        meanshift_update(X, X, np.nan)
 
 
 def test_cpp_ml_kernels_validate_direct_inputs():
@@ -198,3 +203,19 @@ def test_dbscan_labels_numpy_fallback_handles_old_cpp_extension(monkeypatch):
 
     assert np.array_equal(labels, np.array([0, 0, 1]))
     assert np.array_equal(core_samples, np.array([0, 1, 2]))
+
+
+def test_meanshift_numpy_fallback_handles_old_cpp_extension(monkeypatch):
+    import mastermlx.accel.ml_kernels as kernels
+
+    old = get_backend()
+    try:
+        set_backend("auto")
+        monkeypatch.setattr(kernels, "_load_cpp_ml_kernels", lambda: object())
+        updates = kernels.meanshift_update(
+            np.array([[0.0], [0.2], [2.0]]), np.array([[0.1], [2.0]]), 0.25
+        )
+    finally:
+        set_backend(old)
+
+    assert np.allclose(updates, np.array([[0.1], [2.0]]))
