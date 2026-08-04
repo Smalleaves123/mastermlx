@@ -10,6 +10,7 @@ from mastermlx.accel.ml_kernels import (
     gmm_m_step,
     kmeans_assign,
     kmeans_update,
+    knn_impute,
     knn_affinity,
     knn_graph,
     rbf_affinity,
@@ -56,6 +57,8 @@ def test_ml_kernels_match_numpy_fallback_on_non_contiguous_inputs():
     covariances = np.stack([np.eye(4) * (0.8 + 0.2 * i) for i in range(3)])
     precisions = np.linalg.inv(covariances)
     logdet = np.linalg.slogdet(covariances)[1]
+    query_missing = np.array([[np.nan, 0.5, 1.0, 1.5], [2.0, 2.5, np.nan, 3.5]])
+    fit_missing = np.array([[0.0, 0.0, 0.0, 0.0], [1.0, 1.0, 1.0, 1.0], [3.0, 3.0, 3.0, 3.0]])
     csr_indptr = np.array([0, 2, 3, 5])
     csr_indices = np.array([1, 2, 0, 0, 1])
     csr_weights = np.array([0.4, 0.6, 1.0, 0.25, 0.75])
@@ -64,6 +67,7 @@ def test_ml_kernels_match_numpy_fallback_on_non_contiguous_inputs():
         (rbf_affinity, (X, 0.7)),
         (knn_affinity, (X, 3)),
         (knn_graph, (X, 3)),
+        (knn_impute, (query_missing, fit_missing, 2, "distance")),
         (dbscan_neighbors, (X, 2.0)),
         (csr_propagate, (csr_indptr, csr_indices, csr_weights, responsibilities[:3])),
         (kmeans_assign, (X, centers)),

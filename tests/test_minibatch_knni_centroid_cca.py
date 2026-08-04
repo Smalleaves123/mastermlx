@@ -40,6 +40,30 @@ def test_knni_all_complete():
     assert np.allclose(X, Xt)
 
 
+def test_knni_handles_missing_values_in_every_feature():
+    X = np.arange(20, dtype=float).reshape(5, 4)
+    X[0, 0] = np.nan
+    X[1, 1] = np.nan
+    X[2, 2] = np.nan
+    X[3, 3] = np.nan
+
+    Xt = KNNImputer(n_neighbors=2, weights="uniform").fit_transform(X)
+
+    assert np.isfinite(Xt).all()
+    assert Xt.shape == X.shape
+
+
+def test_knni_transform_supports_query_size_different_from_training_size():
+    X_fit = np.arange(20, dtype=float).reshape(5, 4)
+    query = np.array([[np.nan, 1.0, 2.0, 3.0], [4.0, 5.0, np.nan, 7.0]])
+    imputer = KNNImputer(n_neighbors=2).fit(X_fit)
+
+    transformed = imputer.transform(query)
+
+    assert transformed.shape == query.shape
+    assert np.isfinite(transformed).all()
+
+
 # --- NearestCentroid ---
 def test_centroid_basic():
     X = np.vstack([np.random.randn(30, 3) + [0, 0, 0],

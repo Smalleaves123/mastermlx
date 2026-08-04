@@ -12,6 +12,65 @@ def _matrix(value, name):
     return float_array(value, 2, name)
 
 
+def _matrix_allow_nan(value, name):
+    try:
+        array = np.asarray(value, dtype=np.float64)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} must be numeric") from exc
+    if array.ndim != 2 or array.size == 0 or any(size == 0 for size in array.shape):
+        raise ValueError(f"{name} must be a non-empty 2D array")
+    if np.isinf(array).any():
+        raise ValueError(f"{name} must not contain infinite values")
+    return np.ascontiguousarray(array)
+
+
+def knn_impute(X, X_fit, n_neighbors, weights="distance"):
+    """Impute missing query values from missing-aware nearest neighbors."""
+    X = _matrix_allow_nan(X, "X")
+    X_fit = _matrix_allow_nan(X_fit, "X_fit")
+    if X.shape[1] != X_fit.shape[1]:
+        raise ValueError("X and X_fit must have the same number of features")
+    try:
+        n_neighbors = int(n_neighbors)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("n_neighbors must be an integer") from exc
+    if n_neighbors < 1:
+        raise ValueError("n_neighbors must be at least 1")
+    if weights not in {"uniform", "distance"}:
+        raise ValueError("weights must be 'uniform' or 'distance'")
+
+    cpp = _load_cpp_ml_kernels()
+    if cpp is not None:
+        return cpp.knn_impute(X, X_fit, n_neighbors, weights == "distance")
+
+    output = X.copy()
+    for row in range(X.shape[0]):
+        query = X[row]
+        query_valid = np.isfinite(query)
+        for column in np.flatnonzero(~query_valid):
+            train_valid = np.isfinite(X_fit[:, column])
+            candidates = np.flatnonzero(train_valid)
+            if candidates.size == 0:
+                continue
+            common = query_valid[None, :] & np.isfinite(X_fit[candidates])
+            usable = np.any(common, axis=1)
+            candidates = candidates[usable]
+            common = common[usable]
+            if candidates.size == 0:
+                continue
+            diff = np.where(common, X_fit[candidates] - query[None, :], 0.0)
+            distances = np.sqrt(np.sum(diff * diff, axis=1))
+            order = np.argsort(distances, kind="stable")[:n_neighbors]
+            values = X_fit[candidates[order], column]
+            if weights == "uniform":
+                output[row, column] = np.mean(values)
+            else:
+                selected = distances[order]
+                factors = 1.0 / np.maximum(selected, 1e-12)
+                output[row, column] = np.sum(factors * values) / np.sum(factors)
+    return output
+
+
 def rbf_affinity(X, gamma):
     X = _matrix(X, "X")
     gamma = float(gamma)

@@ -45,6 +45,7 @@ _ML_KERNEL_API = (
     "kmeans_update",
     "gmm_log_gaussian",
     "gmm_m_step",
+    "knn_impute",
 )
 
 

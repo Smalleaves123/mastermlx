@@ -35,6 +35,25 @@ static py::buffer_info require_matrix(const Matrix& value, const char* name) {
     return info;
 }
 
+static py::buffer_info require_imputation_matrix(
+    const Matrix& value, const char* name) {
+    auto info = value.request();
+    if (info.ndim != 2) {
+        throw std::invalid_argument(std::string(name) + " must be a 2D array");
+    }
+    if (info.shape[0] <= 0 || info.shape[1] <= 0) {
+        throw std::invalid_argument(std::string(name) + " must be non-empty");
+    }
+    const auto* data = static_cast<const double*>(info.ptr);
+    const py::ssize_t size = info.shape[0] * info.shape[1];
+    for (py::ssize_t i = 0; i < size; ++i) {
+        if (std::isinf(data[i])) {
+            throw std::invalid_argument(std::string(name) + " must not contain infinite values");
+        }
+    }
+    return info;
+}
+
 static py::buffer_info require_vector(const Vector& value, const char* name, py::ssize_t expected) {
     auto info = value.request();
     if (info.ndim != 1 || info.shape[0] != expected) {
@@ -265,6 +284,90 @@ py::tuple knn_graph(Matrix X_, py::ssize_t n_neighbors) {
         }
     }
     return py::make_tuple(indptr, indices, values);
+}
+
+py::array_t<double> knn_impute(
+    Matrix X_, Matrix X_fit_, py::ssize_t n_neighbors, bool distance_weighted) {
+    const auto Xb = require_imputation_matrix(X_, "X");
+    const auto Fb = require_imputation_matrix(X_fit_, "X_fit");
+    if (Xb.shape[1] != Fb.shape[1]) {
+        throw std::invalid_argument("X and X_fit must have the same number of features");
+    }
+    if (n_neighbors < 1) {
+        throw std::invalid_argument("n_neighbors must be at least 1");
+    }
+
+    const auto* X = static_cast<const double*>(Xb.ptr);
+    const auto* X_fit = static_cast<const double*>(Fb.ptr);
+    const py::ssize_t n_query = Xb.shape[0];
+    const py::ssize_t n_train = Fb.shape[0];
+    const py::ssize_t d = Xb.shape[1];
+    py::array_t<double> out({n_query, d});
+    auto* result = static_cast<double*>(out.request().ptr);
+    std::copy(X, X + n_query * d, result);
+
+    {
+        py::gil_scoped_release release;
+        parallel_rows(n_query, d, [&](py::ssize_t begin, py::ssize_t end) {
+            std::vector<std::pair<double, py::ssize_t>> candidates;
+            candidates.reserve(static_cast<std::size_t>(n_train));
+            for (py::ssize_t row = begin; row < end; ++row) {
+                const double* query = X + row * d;
+                double* target = result + row * d;
+                for (py::ssize_t column = 0; column < d; ++column) {
+                    if (!std::isnan(query[column])) {
+                        continue;
+                    }
+                    candidates.clear();
+                    for (py::ssize_t train_row = 0; train_row < n_train; ++train_row) {
+                        const double value = X_fit[train_row * d + column];
+                        if (!std::isfinite(value)) {
+                            continue;
+                        }
+                        const double* train = X_fit + train_row * d;
+                        double distance = 0.0;
+                        py::ssize_t overlap = 0;
+                        for (py::ssize_t feature = 0; feature < d; ++feature) {
+                            if (!std::isfinite(query[feature])
+                                || !std::isfinite(train[feature])) {
+                                continue;
+                            }
+                            const double diff = query[feature] - train[feature];
+                            distance += diff * diff;
+                            ++overlap;
+                        }
+                        if (overlap > 0) {
+                            candidates.emplace_back(distance, train_row);
+                        }
+                    }
+                    if (candidates.empty()) {
+                        continue;
+                    }
+                    const py::ssize_t k = std::min(
+                        n_neighbors, static_cast<py::ssize_t>(candidates.size()));
+                    select_nearest_neighbors(candidates, k);
+                    if (!distance_weighted) {
+                        double total = 0.0;
+                        for (py::ssize_t index = 0; index < k; ++index) {
+                            total += X_fit[candidates[static_cast<std::size_t>(index)].second * d + column];
+                        }
+                        target[column] = total / static_cast<double>(k);
+                    } else {
+                        double weighted_total = 0.0;
+                        double weight_total = 0.0;
+                        for (py::ssize_t index = 0; index < k; ++index) {
+                            const auto& candidate = candidates[static_cast<std::size_t>(index)];
+                            const double weight = 1.0 / std::max(std::sqrt(candidate.first), 1e-12);
+                            weighted_total += weight * X_fit[candidate.second * d + column];
+                            weight_total += weight;
+                        }
+                        target[column] = weighted_total / weight_total;
+                    }
+                }
+            }
+        });
+    }
+    return out;
 }
 
 py::tuple dbscan_neighbors(Matrix X_, double eps) {
@@ -576,6 +679,7 @@ PYBIND11_MODULE(_ml_kernels_cpp, m) {
     m.def("rbf_affinity", &rbf_affinity);
     m.def("knn_affinity", &knn_affinity);
     m.def("knn_graph", &knn_graph);
+    m.def("knn_impute", &knn_impute);
     m.def("dbscan_neighbors", &dbscan_neighbors);
     m.def("csr_propagate", &csr_propagate);
     m.def("kmeans_assign", &kmeans_assign);
