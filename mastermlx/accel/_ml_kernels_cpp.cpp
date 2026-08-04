@@ -55,6 +55,32 @@ static void require_same_features(const py::buffer_info& Xb, const py::buffer_in
     }
 }
 
+static bool neighbor_distance_less(
+    const std::pair<double, py::ssize_t>& left,
+    const std::pair<double, py::ssize_t>& right) {
+    if (left.first != right.first) {
+        return left.first < right.first;
+    }
+    return left.second < right.second;
+}
+
+static void select_nearest_neighbors(
+    std::vector<std::pair<double, py::ssize_t>>& distances,
+    py::ssize_t n_neighbors) {
+    const auto k = static_cast<std::size_t>(n_neighbors);
+    if (k < distances.size()) {
+        std::nth_element(
+            distances.begin(),
+            distances.begin() + static_cast<std::ptrdiff_t>(k),
+            distances.end(),
+            neighbor_distance_less);
+    }
+    std::sort(
+        distances.begin(),
+        distances.begin() + static_cast<std::ptrdiff_t>(k),
+        neighbor_distance_less);
+}
+
 template <typename Fn>
 static void parallel_rows(py::ssize_t rows, py::ssize_t work, Fn&& fn) {
     if (rows < 4 || work < 1 || static_cast<long double>(rows) * work < 1048576.0L) {
@@ -149,13 +175,7 @@ py::array_t<double> knn_affinity(Matrix X_, py::ssize_t n_neighbors) {
                     }
                     distances.emplace_back(d2, j);
                 }
-                std::sort(distances.begin(), distances.end(),
-                    [](const auto& left, const auto& right) {
-                        if (left.first != right.first) {
-                            return left.first < right.first;
-                        }
-                        return left.second < right.second;
-                    });
+                select_nearest_neighbors(distances, n_neighbors);
                 double* row = result + i * n;
                 for (py::ssize_t p = 0; p < n_neighbors; ++p) {
                     row[distances[static_cast<std::size_t>(p)].second] = 1.0;
@@ -196,13 +216,7 @@ static std::vector<std::vector<py::ssize_t>> build_knn_adjacency(
                 }
                 distances.emplace_back(d2, j);
             }
-            std::sort(distances.begin(), distances.end(),
-                [](const auto& left, const auto& right) {
-                    if (left.first != right.first) {
-                        return left.first < right.first;
-                    }
-                    return left.second < right.second;
-                });
+            select_nearest_neighbors(distances, n_neighbors);
             auto& row = directed[static_cast<std::size_t>(i)];
             row.reserve(static_cast<std::size_t>(n_neighbors));
             for (py::ssize_t p = 0; p < n_neighbors; ++p) {
