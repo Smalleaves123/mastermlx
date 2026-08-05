@@ -302,3 +302,32 @@ def test_urdf_parser_and_chain_conversion():
     limited_chain, limits = urdf_to_dh_chain(xml, return_limits=True)
     assert len(limited_chain) == 2
     assert np.allclose(limits, [[-1.0, 1.0], [-2.0, 2.0]])
+
+
+def test_urdf_chain_conversion_follows_path_for_shuffled_joints():
+    xml = """
+    <robot name="shuffled_planar2r">
+      <link name="base" />
+      <link name="link1" />
+      <link name="link2" />
+      <joint name="joint2" type="revolute">
+        <parent link="link1" />
+        <child link="link2" />
+        <origin xyz="1 0 0" rpy="0 0 0" />
+        <axis xyz="0 0 1" />
+        <limit lower="-2.0" upper="2.0" />
+      </joint>
+      <joint name="joint1" type="revolute">
+        <parent link="base" />
+        <child link="link1" />
+        <origin xyz="1 0 0" rpy="0 0 0" />
+        <axis xyz="0 0 1" />
+        <limit lower="-1.0" upper="1.0" />
+      </joint>
+    </robot>
+    """
+
+    chain, limits = urdf_to_dh_chain(xml, return_limits=True)
+
+    assert [link.a for link in chain] == [1.0, 1.0]
+    assert np.allclose(limits, [[-1.0, 1.0], [-2.0, 2.0]])

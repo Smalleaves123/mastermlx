@@ -414,18 +414,11 @@ def urdf_to_dh_chain(xml_text, base_link=None, tip_link=None, *, return_limits=F
     if not joints:
         return ([], None) if return_limits else []
 
-    if base_link is None:
-        base_link = joints[0].parent
-    if tip_link is None:
-        tip_link = joints[-1].child
-
     chain = []
     limits = []
-    current = base_link
-    for joint in joints:
-        if joint.parent != current:
-            continue
-        if joint.joint_type not in {"revolute", "prismatic"}:
+    path = _find_serial_joint_path(joints, links, base_link=base_link, tip_link=tip_link)
+    for joint in path:
+        if joint.joint_type == "fixed":
             continue
         xyz = np.asarray(joint.origin_xyz, dtype=float)
         rpy = np.asarray(joint.origin_rpy, dtype=float)
@@ -437,16 +430,11 @@ def urdf_to_dh_chain(xml_text, base_link=None, tip_link=None, *, return_limits=F
         d = float(xyz[2])
         theta = 0.0
         alpha = 0.0
-        if np.isclose(xyz[1], 0.0):
-            pass
         if joint.joint_type == "prismatic":
             chain.append(DHLink(a=a, alpha=alpha, d=d, theta=theta, joint_type="prismatic", offset=0.0))
         else:
             chain.append(DHLink(a=a, alpha=alpha, d=d, theta=theta, joint_type="revolute", offset=0.0))
         limits.append(joint.limits)
-        current = joint.child
-        if current == tip_link:
-            break
     if return_limits:
         return chain, np.asarray(limits, dtype=float) if limits and all(limit is not None for limit in limits) else None
     return chain
