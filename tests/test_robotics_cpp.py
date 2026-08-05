@@ -25,6 +25,7 @@ def test_robotics_backend_report_is_consistent():
     assert report["requested"] == get_backend()
     assert report["active"] in {"numpy", "cython", "cpp"}
     assert isinstance(report["cpp_kinematics"], bool)
+    assert isinstance(report["cpp_spatial"], bool)
 
 
 def test_cpp_batch_kinematics_matches_numpy_with_base_tool():

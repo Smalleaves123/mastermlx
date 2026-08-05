@@ -64,12 +64,14 @@ def robotics_backend_report() -> dict[str, str | bool]:
     from .dynamics import _load_cpp_dynamics
     from .trajectory import _load_cpp_retiming
     from .transforms import _load_cpp_transforms
+    from .urdf_parser import _load_cpp_spatial
 
     cpp_collision = _load_cpp_collision(requested)
     cpp_dynamics = _load_cpp_dynamics(requested)
     cpp_retiming = _load_cpp_retiming(requested)
     cpp_ik = _load_cpp_ik(requested)
     cpp_transforms = _load_cpp_transforms(requested)
+    cpp_spatial = _load_cpp_spatial(requested)
     cython = _cy_forward_kinematics_batch_dh is not None
     if requested == "numpy":
         active = "numpy"
@@ -90,6 +92,7 @@ def robotics_backend_report() -> dict[str, str | bool]:
         "cpp_retiming": cpp_retiming is not None,
         "cpp_ik": cpp_ik is not None,
         "cpp_transforms": cpp_transforms is not None,
+        "cpp_spatial": cpp_spatial is not None,
         "cython_kinematics": cython,
     }
 

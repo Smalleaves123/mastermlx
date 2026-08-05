@@ -1,6 +1,8 @@
 import numpy as np
 
+from mastermlx import get_backend, set_backend
 from mastermlx.robotics import URDFRobotModel, URDFSerialChain
+from mastermlx.robotics.urdf_parser import _load_cpp_spatial
 
 
 def _spatial_urdf(joint_order="normal"):
@@ -51,6 +53,37 @@ def test_spatial_urdf_preserves_joint_axes_origins_and_path_order():
     assert chain.joint_types == ("revolute", "revolute", "prismatic")
     assert chain.n_joints == 3
     assert np.allclose(chain.joint_limits, [[-1.2, 1.2], [-1.0, 1.0], [0.0, 0.4]])
+
+
+def test_cpp_spatial_urdf_batch_kinematics_matches_numpy():
+    if _load_cpp_spatial("auto") is None:
+        return
+    chain = URDFSerialChain.from_urdf(_spatial_urdf("shuffled"))
+    values = np.array([[0.2, -0.3, 0.1], [-0.4, 0.5, 0.2]])
+    base = np.array(
+        [[0.0, -1.0, 0.0, 0.2], [1.0, 0.0, 0.0, -0.1], [0.0, 0.0, 1.0, 0.3], [0.0, 0.0, 0.0, 1.0]]
+    )
+    tool = np.eye(4)
+    tool[:3, 3] = [0.1, 0.0, 0.2]
+    old = get_backend()
+    try:
+        set_backend("numpy")
+        reference = (
+            chain.forward_kinematics_batch(values, base=base, tool=tool),
+            chain.positions_batch(values, base=base, tool=tool),
+            chain.geometric_jacobian_batch(values, base=base, tool=tool),
+        )
+        set_backend("auto")
+        accelerated = (
+            chain.forward_kinematics_batch(values, base=base, tool=tool),
+            chain.positions_batch(values, base=base, tool=tool),
+            chain.geometric_jacobian_batch(values, base=base, tool=tool),
+        )
+    finally:
+        set_backend(old)
+
+    for actual, expected in zip(accelerated, reference):
+        assert np.allclose(actual, expected, atol=1e-12)
 
 
 def test_spatial_urdf_jacobian_matches_position_finite_difference():

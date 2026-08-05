@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import numpy as np
 
+from ..config import get_backend
 from .dynamics import normalize_link_inertias
+from .urdf_parser import _load_cpp_spatial
 
 
 def _inputs(robot, link_inertias):
@@ -15,6 +17,69 @@ def _inputs(robot, link_inertias):
             "spatial dynamics requires one complete LinkInertia for every URDF child link"
         )
     return normalize_link_inertias(values, n_bodies)
+
+
+def _compiled_batch(
+    robot, inertias, joint_values, joint_velocities, gravity, epsilon, compute_coriolis
+):
+    cpp = _load_cpp_spatial(get_backend())
+    if cpp is None or not callable(getattr(cpp, "spatial_dynamics_batch_urdf", None)):
+        return None
+    origin_xyz, origin_rpy, axes, joint_types = robot.chain._compiled_arrays()
+    masses = np.ascontiguousarray([inertia.mass for inertia in inertias], dtype=float)
+    center_of_mass = np.ascontiguousarray(
+        [inertia.center_of_mass for inertia in inertias], dtype=float
+    )
+    inertia_matrices = np.ascontiguousarray([inertia.inertia for inertia in inertias], dtype=float)
+    values = np.ascontiguousarray(np.asarray(joint_values, dtype=float))
+    velocities = np.ascontiguousarray(np.asarray(joint_velocities, dtype=float))
+    result = cpp.spatial_dynamics_batch_urdf(
+        origin_xyz,
+        origin_rpy,
+        axes,
+        joint_types,
+        masses,
+        center_of_mass,
+        inertia_matrices,
+        values,
+        velocities,
+        np.ascontiguousarray(gravity, dtype=float),
+        float(epsilon),
+        bool(compute_coriolis),
+        base=getattr(robot, "base", None),
+    )
+    return tuple(np.asarray(value, dtype=float) for value in result)
+
+
+def _compiled_inverse_batch(
+    robot, inertias, joint_values, joint_velocities, joint_accelerations, gravity
+):
+    cpp = _load_cpp_spatial(get_backend())
+    if cpp is None or not callable(getattr(cpp, "inverse_dynamics_batch_urdf", None)):
+        return None
+    origin_xyz, origin_rpy, axes, joint_types = robot.chain._compiled_arrays()
+    masses = np.ascontiguousarray([inertia.mass for inertia in inertias], dtype=float)
+    center_of_mass = np.ascontiguousarray(
+        [inertia.center_of_mass for inertia in inertias], dtype=float
+    )
+    inertia_matrices = np.ascontiguousarray([inertia.inertia for inertia in inertias], dtype=float)
+    return np.asarray(
+        cpp.inverse_dynamics_batch_urdf(
+            origin_xyz,
+            origin_rpy,
+            axes,
+            joint_types,
+            masses,
+            center_of_mass,
+            inertia_matrices,
+            np.ascontiguousarray(joint_values, dtype=float),
+            np.ascontiguousarray(joint_velocities, dtype=float),
+            np.ascontiguousarray(joint_accelerations, dtype=float),
+            np.ascontiguousarray(gravity, dtype=float),
+            base=getattr(robot, "base", None),
+        ),
+        dtype=float,
+    )
 
 
 def _validate_q(robot, joint_values):
@@ -63,11 +128,126 @@ def _mass_and_gravity(robot, joint_values, inertias, gravity):
     return 0.5 * (matrix + matrix.T), forces
 
 
+def _validate_batch_values(robot, values, name, *, check_limits=True):
+    values = np.asarray(values, dtype=float)
+    if values.ndim != 2 or values.shape[1] != robot.n_joints or values.shape[0] < 1:
+        raise ValueError(f"{name} must have shape (n_samples, {robot.n_joints})")
+    if not np.all(np.isfinite(values)):
+        raise ValueError(f"{name} must contain only finite values")
+    if check_limits and robot.joint_limits is not None:
+        for row in values:
+            robot.validate_joint_values(row, check_limits=True)
+    return np.ascontiguousarray(values)
+
+
+def spatial_dynamics_batch(
+    robot,
+    joint_values,
+    joint_velocities,
+    *,
+    gravity=(0.0, 0.0, -9.81),
+    link_inertias=None,
+    epsilon=1e-6,
+    compute_coriolis=True,
+):
+    """Return batched ``M(q)``, gravity, and Coriolis terms for a URDF chain."""
+
+    values = _validate_batch_values(robot, joint_values, "joint_values")
+    velocities = _validate_batch_values(
+        robot, joint_velocities, "joint_velocities", check_limits=False
+    )
+    if velocities.shape != values.shape:
+        raise ValueError("joint_velocities must have the same shape as joint_values")
+    gravity = np.asarray(gravity, dtype=float).reshape(-1)
+    if gravity.shape != (3,) or not np.all(np.isfinite(gravity)):
+        raise ValueError("gravity must be a finite 3-vector")
+    epsilon = float(epsilon)
+    if epsilon <= 0.0 or not np.isfinite(epsilon):
+        raise ValueError("epsilon must be a positive finite value")
+    inertias = _inputs(robot, link_inertias)
+    compiled = _compiled_batch(
+        robot, inertias, values, velocities, gravity, epsilon, compute_coriolis
+    )
+    if compiled is not None:
+        return compiled
+    samples = values.shape[0]
+    matrices = np.empty((samples, robot.n_joints, robot.n_joints), dtype=float)
+    forces = np.empty((samples, robot.n_joints), dtype=float)
+    coriolis = np.zeros_like(forces)
+    for index, (configuration, velocity) in enumerate(zip(values, velocities)):
+        matrices[index], forces[index] = _mass_and_gravity(
+            robot, configuration, inertias, gravity
+        )
+        if compute_coriolis:
+            coriolis[index] = spatial_coriolis_forces(
+                robot,
+                configuration,
+                velocity,
+                link_inertias=inertias,
+                epsilon=epsilon,
+            )
+    return matrices, forces, coriolis
+
+
+def spatial_inverse_dynamics_batch(
+    robot,
+    joint_values,
+    joint_velocities,
+    joint_accelerations,
+    *,
+    gravity=(0.0, 0.0, -9.81),
+    link_inertias=None,
+    include_coriolis=True,
+):
+    """Return inverse-dynamics torques for a batch of general URDF states."""
+
+    values = _validate_batch_values(robot, joint_values, "joint_values")
+    velocities = _validate_batch_values(
+        robot, joint_velocities, "joint_velocities", check_limits=False
+    )
+    accelerations = np.asarray(joint_accelerations, dtype=float)
+    if velocities.shape != values.shape or accelerations.shape != values.shape:
+        raise ValueError("joint velocities and accelerations must match joint_values")
+    if not np.all(np.isfinite(accelerations)):
+        raise ValueError("joint_accelerations must contain only finite values")
+    gravity = np.asarray(gravity, dtype=float).reshape(-1)
+    if gravity.shape != (3,) or not np.all(np.isfinite(gravity)):
+        raise ValueError("gravity must be a finite 3-vector")
+    inertias = _inputs(robot, link_inertias)
+    compiled = _compiled_inverse_batch(
+        robot,
+        inertias,
+        values,
+        velocities if include_coriolis else np.zeros_like(velocities),
+        accelerations,
+        gravity,
+    )
+    if compiled is not None:
+        return compiled
+    matrices, forces, coriolis = spatial_dynamics_batch(
+        robot,
+        values,
+        velocities,
+        gravity=gravity,
+        link_inertias=inertias,
+        compute_coriolis=include_coriolis,
+    )
+    result = np.einsum("nij,nj->ni", matrices, accelerations) + forces
+    if include_coriolis:
+        result += coriolis
+    return result
+
+
 def spatial_mass_matrix(robot, joint_values=None, *, link_inertias=None):
     """Return ``M(q)`` for a general serial URDF chain."""
 
     q = _validate_q(robot, joint_values)
     inertias = _inputs(robot, link_inertias)
+    compiled = _compiled_batch(
+        robot, inertias, q[None, :], np.zeros((1, robot.n_joints)), np.zeros(3), 1e-6, False
+    )
+    if compiled is not None:
+        return compiled[0][0]
     return _mass_and_gravity(robot, q, inertias, np.zeros(3))[0]
 
 
@@ -80,7 +260,13 @@ def spatial_gravity_forces(
     gravity = np.asarray(gravity, dtype=float).reshape(-1)
     if gravity.shape != (3,) or not np.all(np.isfinite(gravity)):
         raise ValueError("gravity must be a finite 3-vector")
-    return _mass_and_gravity(robot, q, _inputs(robot, link_inertias), gravity)[1]
+    inertias = _inputs(robot, link_inertias)
+    compiled = _compiled_batch(
+        robot, inertias, q[None, :], np.zeros((1, robot.n_joints)), gravity, 1e-6, False
+    )
+    if compiled is not None:
+        return compiled[1][0]
+    return _mass_and_gravity(robot, q, inertias, gravity)[1]
 
 
 def spatial_coriolis_forces(
@@ -101,6 +287,11 @@ def spatial_coriolis_forces(
     if epsilon <= 0.0 or not np.isfinite(epsilon):
         raise ValueError("epsilon must be a positive finite value")
     inertias = _inputs(robot, link_inertias)
+    compiled = _compiled_batch(
+        robot, inertias, q[None, :], qd[None, :], np.zeros(3), epsilon, True
+    )
+    if compiled is not None:
+        return compiled[2][0]
     derivatives = np.empty((robot.n_joints, robot.n_joints, robot.n_joints), dtype=float)
     for coordinate in range(robot.n_joints):
         delta = np.zeros(robot.n_joints, dtype=float)
@@ -143,6 +334,25 @@ def spatial_inverse_dynamics(
     gravity = np.asarray(gravity, dtype=float).reshape(-1)
     if gravity.shape != (3,) or not np.all(np.isfinite(gravity)):
         raise ValueError("gravity must be a finite 3-vector")
+    compiled_inverse = _compiled_inverse_batch(
+        robot,
+        inertias,
+        q[None, :],
+        qd[None, :] if include_coriolis else np.zeros((1, robot.n_joints)),
+        qdd[None, :],
+        gravity,
+    )
+    if compiled_inverse is not None:
+        return compiled_inverse[0]
+    compiled = _compiled_batch(
+        robot, inertias, q[None, :], qd[None, :], gravity, 1e-6, include_coriolis
+    )
+    if compiled is not None:
+        matrix, gravity_term, coriolis = (value[0] for value in compiled)
+        result = matrix @ qdd + gravity_term
+        if include_coriolis:
+            result += coriolis
+        return result
     matrix, gravity_term = _mass_and_gravity(robot, q, inertias, gravity)
     result = matrix @ qdd + gravity_term
     if include_coriolis:
@@ -175,6 +385,15 @@ def spatial_forward_dynamics(
     gravity = np.asarray(gravity, dtype=float).reshape(-1)
     if gravity.shape != (3,) or not np.all(np.isfinite(gravity)):
         raise ValueError("gravity must be a finite 3-vector")
+    compiled = _compiled_batch(
+        robot, inertias, q[None, :], qd[None, :], gravity, 1e-6, include_coriolis
+    )
+    if compiled is not None:
+        matrix, gravity_term, coriolis = (value[0] for value in compiled)
+        rhs = torques - gravity_term
+        if include_coriolis:
+            rhs -= coriolis
+        return np.linalg.solve(matrix, rhs)
     matrix, gravity_term = _mass_and_gravity(robot, q, inertias, gravity)
     rhs = torques - gravity_term
     if include_coriolis:
@@ -228,8 +447,10 @@ def spatial_computed_torque(
 __all__ = [
     "spatial_computed_torque",
     "spatial_coriolis_forces",
+    "spatial_dynamics_batch",
     "spatial_forward_dynamics",
     "spatial_gravity_forces",
     "spatial_inverse_dynamics",
+    "spatial_inverse_dynamics_batch",
     "spatial_mass_matrix",
 ]

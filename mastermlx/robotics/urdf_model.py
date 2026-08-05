@@ -23,9 +23,11 @@ from .dynamics import LinkInertia, normalize_link_inertias
 from .spatial_dynamics import (
     spatial_computed_torque,
     spatial_coriolis_forces,
+    spatial_dynamics_batch,
     spatial_forward_dynamics,
     spatial_gravity_forces,
     spatial_inverse_dynamics,
+    spatial_inverse_dynamics_batch,
     spatial_mass_matrix,
 )
 from .urdf_parser import URDFSerialChain
@@ -182,9 +184,7 @@ class URDFRobotModel:
         if self.joint_limits is not None:
             for row in values:
                 self.validate_joint_values(row, check_limits=True)
-        return np.asarray(
-            [self.frame_positions(row) for row in values], dtype=float
-        )
+        return self.chain.positions_batch(values, base=self.base, tool=self.tool)
 
     def collision_meshes(self, joint_values=None):
         """Return transformed collision meshes for all links in the chain."""
@@ -605,6 +605,19 @@ class URDFRobotModel:
             self, joint_values, link_inertias=self.link_inertias if link_inertias is None else link_inertias
         )
 
+    def mass_matrix_batch(self, joint_values, *, link_inertias=None):
+        """Return one spatial mass matrix per URDF configuration."""
+
+        values = np.asarray(joint_values, dtype=float)
+        matrices, _, _ = spatial_dynamics_batch(
+            self,
+            values,
+            np.zeros_like(values),
+            link_inertias=self.link_inertias if link_inertias is None else link_inertias,
+            compute_coriolis=False,
+        )
+        return matrices
+
     def gravity_forces(
         self, joint_values=None, *, gravity=(0.0, 0.0, -9.81), link_inertias=None
     ):
@@ -616,6 +629,22 @@ class URDFRobotModel:
             gravity=gravity,
             link_inertias=self.link_inertias if link_inertias is None else link_inertias,
         )
+
+    def gravity_forces_batch(
+        self, joint_values, *, gravity=(0.0, 0.0, -9.81), link_inertias=None
+    ):
+        """Return gravity forces for a batch of URDF configurations."""
+
+        values = np.asarray(joint_values, dtype=float)
+        _, forces, _ = spatial_dynamics_batch(
+            self,
+            values,
+            np.zeros_like(values),
+            gravity=gravity,
+            link_inertias=self.link_inertias if link_inertias is None else link_inertias,
+            compute_coriolis=False,
+        )
+        return forces
 
     def coriolis_forces(
         self, joint_values, joint_velocities, *, link_inertias=None, epsilon=1e-6
@@ -629,6 +658,21 @@ class URDFRobotModel:
             link_inertias=self.link_inertias if link_inertias is None else link_inertias,
             epsilon=epsilon,
         )
+
+    def coriolis_forces_batch(
+        self, joint_values, joint_velocities, *, link_inertias=None, epsilon=1e-6
+    ):
+        """Return Coriolis and centrifugal forces for a batch of states."""
+
+        _, _, coriolis = spatial_dynamics_batch(
+            self,
+            joint_values,
+            joint_velocities,
+            link_inertias=self.link_inertias if link_inertias is None else link_inertias,
+            epsilon=epsilon,
+            compute_coriolis=True,
+        )
+        return coriolis
 
     def inverse_dynamics(
         self,
@@ -647,6 +691,33 @@ class URDFRobotModel:
             joint_values,
             joint_velocities,
             joint_accelerations,
+            gravity=gravity,
+            link_inertias=self.link_inertias if link_inertias is None else link_inertias,
+            include_coriolis=include_coriolis,
+        )
+
+    def inverse_dynamics_batch(
+        self,
+        joint_values,
+        joint_velocities,
+        joint_accelerations,
+        *,
+        gravity=(0.0, 0.0, -9.81),
+        link_inertias=None,
+        include_coriolis=True,
+    ):
+        """Return spatial inverse-dynamics torques for a batch of states."""
+
+        values = np.asarray(joint_values, dtype=float)
+        velocities = np.asarray(joint_velocities, dtype=float)
+        accelerations = np.asarray(joint_accelerations, dtype=float)
+        if accelerations.shape != values.shape or not np.all(np.isfinite(accelerations)):
+            raise ValueError("joint_accelerations must match joint_values and be finite")
+        return spatial_inverse_dynamics_batch(
+            self,
+            values,
+            velocities,
+            accelerations,
             gravity=gravity,
             link_inertias=self.link_inertias if link_inertias is None else link_inertias,
             include_coriolis=include_coriolis,
@@ -673,6 +744,36 @@ class URDFRobotModel:
             link_inertias=self.link_inertias if link_inertias is None else link_inertias,
             include_coriolis=include_coriolis,
         )
+
+    def forward_dynamics_batch(
+        self,
+        joint_values,
+        joint_velocities,
+        joint_torques,
+        *,
+        gravity=(0.0, 0.0, -9.81),
+        link_inertias=None,
+        include_coriolis=True,
+    ):
+        """Return spatial accelerations for a batch of applied torques."""
+
+        values = np.asarray(joint_values, dtype=float)
+        velocities = np.asarray(joint_velocities, dtype=float)
+        torques = np.asarray(joint_torques, dtype=float)
+        if torques.shape != values.shape or not np.all(np.isfinite(torques)):
+            raise ValueError("joint_torques must match joint_values and be finite")
+        matrices, forces, coriolis = spatial_dynamics_batch(
+            self,
+            values,
+            velocities,
+            gravity=gravity,
+            link_inertias=self.link_inertias if link_inertias is None else link_inertias,
+            compute_coriolis=include_coriolis,
+        )
+        rhs = torques - forces
+        if include_coriolis:
+            rhs -= coriolis
+        return np.asarray([np.linalg.solve(matrix, row) for matrix, row in zip(matrices, rhs)])
 
     def computed_torque_control(
         self,

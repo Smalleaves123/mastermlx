@@ -37,6 +37,7 @@ development model.
   - C++ typed batch collision details with reusable hit and closest-element buffers
   - Path-level collision summaries composed from compiled kinematic and geometry batches
   - Batch rigid-body mass, gravity, and inverse/forward dynamics APIs with reusable outputs
+  - C++ recursive Newton-Euler inverse dynamics for arbitrary-axis/RPY URDF chains
   - C++ quintic retiming with velocity, acceleration, and jerk limits
   - C++ batch piecewise trajectory sampling with reusable output buffers
   - C++ batch trajectory peak diagnostics with reusable output buffers
@@ -94,8 +95,7 @@ Suggested kernels:
 
 For robotics, the next C++ candidates should be chosen in this order:
 
-1. Compiled recursive Newton-Euler dynamics for high-rate torque control.
-2. Tune broad-phase and detailed-hit allocation policies from the scaling
+1. Tune broad-phase and detailed-hit allocation policies from the scaling
    profile on representative large workcell workloads.
 
 The `bench_robotics_scaling.py` profile is the baseline for collision tuning:

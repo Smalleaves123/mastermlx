@@ -80,9 +80,11 @@ from .occupancy import VoxelOccupancyGrid
 from .spatial_dynamics import (
     spatial_computed_torque,
     spatial_coriolis_forces,
+    spatial_dynamics_batch,
     spatial_forward_dynamics,
     spatial_gravity_forces,
     spatial_inverse_dynamics,
+    spatial_inverse_dynamics_batch,
     spatial_mass_matrix,
 )
 from .results import JointTrajectory, RobotResult
@@ -154,9 +156,11 @@ __all__ = [
     "smooth_joint_path",
     "spatial_computed_torque",
     "spatial_coriolis_forces",
+    "spatial_dynamics_batch",
     "spatial_forward_dynamics",
     "spatial_gravity_forces",
     "spatial_inverse_dynamics",
+    "spatial_inverse_dynamics_batch",
     "spatial_mass_matrix",
     "parse_urdf",
     "RobotModel",

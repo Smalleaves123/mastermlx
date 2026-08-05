@@ -9,6 +9,10 @@
 
 ## Unreleased
 
+- Added optional C++ batched arbitrary-axis/RPY URDF kinematics and recursive
+  Newton-Euler inverse dynamics, with NumPy fallbacks and parity tests.
+- Added `bench_robotics_spatial.py` and updated the robotics acceleration
+  roadmap with measured backend comparisons.
 - Fixed self-collision policy propagation through workcell path optimization
   and URDF joint-space planning.
 - Made NumPy neighbor graphs and manifold fallbacks exclude self-neighbors and

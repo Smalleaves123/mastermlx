@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
+import importlib
 import xml.etree.ElementTree as ET
 
 import numpy as np
 
+from ..config import get_backend
 from .kinematics import DHLink
 from .dynamics import LinkInertia
 from .transforms import homogeneous_transform, rpy_to_matrix
@@ -60,6 +63,20 @@ def _axis_angle_matrix(axis, angle):
     c = np.cos(float(angle))
     s = np.sin(float(angle))
     return np.eye(3, dtype=float) * c + (1.0 - c) * np.outer(axis, axis) + s * K
+
+
+@lru_cache(maxsize=3)
+def _load_cpp_spatial(backend=None):
+    """Load optional C++ kernels for general URDF spatial chains."""
+
+    if backend is None:
+        backend = get_backend()
+    if backend != "auto":
+        return None
+    try:
+        return importlib.import_module("mastermlx.robotics._spatial_cpp")
+    except ImportError:
+        return None
 
 
 def _find_serial_joint_path(joints, links, base_link=None, tip_link=None):
@@ -189,6 +206,34 @@ class URDFSerialChain:
             raise ValueError("joint_values must contain only finite values")
         return values
 
+    def _compiled_arrays(self):
+        origin_xyz = np.ascontiguousarray(
+            np.asarray([joint.origin_xyz for joint in self.joints], dtype=float)
+        )
+        origin_rpy = np.ascontiguousarray(
+            np.asarray([joint.origin_rpy for joint in self.joints], dtype=float)
+        )
+        axes = []
+        joint_types = []
+        for joint in self.joints:
+            if joint.joint_type == "fixed":
+                axes.append((0.0, 0.0, 0.0))
+                joint_types.append(0)
+            elif joint.joint_type in {"revolute", "continuous"}:
+                axes.append(_normalize_joint_axis(joint.axis))
+                joint_types.append(1)
+            elif joint.joint_type == "prismatic":
+                axes.append(_normalize_joint_axis(joint.axis))
+                joint_types.append(2)
+            else:
+                raise ValueError(f"Unknown URDF joint type: {joint.joint_type!r}")
+        return (
+            origin_xyz,
+            origin_rpy,
+            np.ascontiguousarray(np.asarray(axes, dtype=float)),
+            np.ascontiguousarray(np.asarray(joint_types, dtype=np.int8)),
+        )
+
     def _forward_with_geometry(self, joint_values=None, base=None, tool=None):
         q = self.validate_joint_values(joint_values)
         T = np.eye(4, dtype=float) if base is None else np.asarray(base, dtype=float)
@@ -235,6 +280,17 @@ class URDFSerialChain:
         values = np.asarray(joint_values, dtype=float)
         if values.ndim != 2 or values.shape[1] != self.n_joints:
             raise ValueError(f"joint_values must have shape (n_samples, {self.n_joints})")
+        if values.shape[0] < 1 or not np.all(np.isfinite(values)):
+            raise ValueError("joint_values must contain at least one finite sample")
+        values = np.ascontiguousarray(values)
+        cpp = _load_cpp_spatial(get_backend())
+        if cpp is not None and callable(getattr(cpp, "forward_kinematics_batch_urdf", None)):
+            return np.asarray(
+                cpp.forward_kinematics_batch_urdf(
+                    *self._compiled_arrays(), values, base=base, tool=tool
+                ),
+                dtype=float,
+            )
         return np.asarray(
             [self.forward_kinematics(row, base=base, tool=tool) for row in values], dtype=float
         )
@@ -244,6 +300,25 @@ class URDFSerialChain:
             joint_values, base=base, tool=tool, return_all=True
         )
         return np.asarray([frame[:3, 3] for frame in frames], dtype=float)
+
+    def positions_batch(self, joint_values, *, base=None, tool=None):
+        values = np.asarray(joint_values, dtype=float)
+        if values.ndim != 2 or values.shape[1] != self.n_joints:
+            raise ValueError(f"joint_values must have shape (n_samples, {self.n_joints})")
+        if values.shape[0] < 1 or not np.all(np.isfinite(values)):
+            raise ValueError("joint_values must contain at least one finite sample")
+        values = np.ascontiguousarray(values)
+        cpp = _load_cpp_spatial(get_backend())
+        if cpp is not None and callable(getattr(cpp, "chain_positions_batch_urdf", None)):
+            return np.asarray(
+                cpp.chain_positions_batch_urdf(
+                    *self._compiled_arrays(), values, base=base, tool=tool
+                ),
+                dtype=float,
+            )
+        return np.asarray(
+            [self.positions(row, base=base, tool=tool) for row in values], dtype=float
+        )
 
     def geometric_jacobian(self, joint_values=None, *, base=None, tool=None):
         T, _, origins, axes = self._forward_with_geometry(
@@ -263,6 +338,17 @@ class URDFSerialChain:
         values = np.asarray(joint_values, dtype=float)
         if values.ndim != 2 or values.shape[1] != self.n_joints:
             raise ValueError(f"joint_values must have shape (n_samples, {self.n_joints})")
+        if values.shape[0] < 1 or not np.all(np.isfinite(values)):
+            raise ValueError("joint_values must contain at least one finite sample")
+        values = np.ascontiguousarray(values)
+        cpp = _load_cpp_spatial(get_backend())
+        if cpp is not None and callable(getattr(cpp, "geometric_jacobian_batch_urdf", None)):
+            return np.asarray(
+                cpp.geometric_jacobian_batch_urdf(
+                    *self._compiled_arrays(), values, base=base, tool=tool
+                ),
+                dtype=float,
+            )
         return np.asarray(
             [self.geometric_jacobian(row, base=base, tool=tool) for row in values], dtype=float
         )

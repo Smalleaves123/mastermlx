@@ -11,6 +11,7 @@ This directory contains the first executable benchmark entry points for `masterm
 - `bench_workflows.py` runs a fast smoke benchmark for tabular readiness, signal health, and robot workcell reports
 - `bench_graphs.py` compares Python and optional C++ kernels on CSR graph traversal, shortest paths, and analysis
 - `bench_robotics.py` compares NumPy and compiled paths for batched robot kinematics, transform composition and pose interpolation, clearance summaries, path-level and detailed collision reports, broad-phase collision checks, trajectory sampling and peaks, retiming, IK, velocity mapping, and bounded planning workers
+- `bench_robotics_spatial.py` compares NumPy and C++ paths for arbitrary-axis/RPY URDF kinematics and spatial dynamics
 - `bench_robotics_scaling.py` profiles AABB broad-phase scaling, detailed collision-buffer capacity and reuse, plus batched rigid-body dynamics
 - `bench_neural.py` compares NumPy and compiled paths for recurrent layers, Conv1D packing, IIR filtering, and ridge extraction
 
@@ -26,6 +27,7 @@ python benchmarks/bench_signal.py
 python benchmarks/bench_workflows.py
 python benchmarks/bench_graphs.py
 python benchmarks/bench_robotics.py
+python benchmarks/bench_robotics_spatial.py
 python benchmarks/bench_robotics_scaling.py
 PYTHONPATH=. python benchmarks/bench_neural.py
 ```
