@@ -1,8 +1,10 @@
 """Joint-space time scaling, paths, smoothing, and sampled trajectories."""
 
+from pathlib import Path
+
+import matplotlib.pyplot as plt
 import numpy as np
 
-from common import check_release
 from mastermlx.robotics import (
     cubic_time_scaling,
     joint_trajectory,
@@ -15,7 +17,6 @@ from mastermlx.robotics import (
 )
 
 
-check_release()
 q0 = np.array([0.0, 0.5])
 qf = np.array([1.0, 1.5])
 s_cubic, ds_cubic, dds_cubic = cubic_time_scaling(2.0, 1.0)
@@ -48,3 +49,22 @@ print("planned_return_shapes:", [value.shape for value in planned])
 
 print("trajectory_samples:", positions.shape[0])
 print("planned_position_shape:", planned[1].shape)
+
+output_dir = Path(__file__).resolve().parents[1] / "outputs" / "robotics"
+output_dir.mkdir(parents=True, exist_ok=True)
+figure, axes = plt.subplots(3, 1, figsize=(9, 8), sharex=True)
+axes[0].plot(times, positions)
+axes[0].set_ylabel("position")
+axes[0].set_title("Quintic joint trajectory")
+axes[1].plot(times, velocities)
+axes[1].set_ylabel("velocity")
+axes[2].plot(times, accelerations)
+axes[2].set_ylabel("acceleration")
+axes[2].set_xlabel("time (s)")
+for axis in axes:
+    axis.grid(alpha=0.3)
+figure.tight_layout()
+output_path = output_dir / "trajectory_demo.png"
+figure.savefig(output_path, dpi=140, bbox_inches="tight")
+plt.close(figure)
+print("plot:", output_path)

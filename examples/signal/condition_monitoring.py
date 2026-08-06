@@ -2,7 +2,6 @@
 
 import numpy as np
 
-from common import check_release
 from mastermlx.signal import (
     OnlineCUSUMDetector,
     SignalFeatureTransformer,
@@ -14,7 +13,6 @@ from mastermlx.signal import (
 )
 
 
-check_release()
 sample_rate = 1000.0
 time = np.arange(4000) / sample_rate
 healthy = np.sin(2.0 * np.pi * 80.0 * time)

@@ -2,11 +2,9 @@
 
 import inspect
 
-from common import check_release
 import mastermlx.robotics as robotics
 
 
-check_release()
 groups = {
     "model_and_kinematics": [
         "DHLink", "RobotModel", "forward_kinematics", "geometric_jacobian",

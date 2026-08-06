@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from pathlib import Path
+
+import matplotlib.pyplot as plt
 import numpy as np
 
 from mastermlx.signal import (
@@ -52,6 +55,26 @@ def main():
     print("peak_features_shape:", peak_features.shape)
     print("spectral_features_shape:", spectral_features.shape)
     print("reconstruction_error:", reconstruction_error)
+
+    output_dir = Path(__file__).resolve().parents[1] / "outputs" / "signal"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    figure, axes = plt.subplots(2, 1, figsize=(10, 7), sharex=False)
+    axes[0].plot(np.arange(x.size) / sample_rate, x, label="input")
+    axes[0].plot(np.arange(reconstructed.size) / sample_rate, reconstructed, "--", label="reconstructed")
+    axes[0].set_title("Multi-tone signal and inverse FFT")
+    axes[0].set_xlabel("time (s)")
+    axes[0].legend()
+    axes[1].plot(freqs, spectrum)
+    axes[1].set_xlim(0.0, 512.0)
+    axes[1].set_title("Amplitude spectrum")
+    axes[1].set_xlabel("frequency (Hz)")
+    axes[1].set_ylabel("amplitude")
+    axes[1].grid(alpha=0.3)
+    figure.tight_layout()
+    output_path = output_dir / "fourier_demo.png"
+    figure.savefig(output_path, dpi=140, bbox_inches="tight")
+    plt.close(figure)
+    print("plot:", output_path)
 
 
 if __name__ == "__main__":

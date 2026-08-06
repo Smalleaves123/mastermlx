@@ -2,12 +2,10 @@
 
 import numpy as np
 
-from common import check_release
 from mastermlx.robotics import RobotModel, RobotWorkcell
 from mastermlx.sim import SimpleWorld
 
 
-check_release()
 robot = RobotModel.from_dh(
     [
         {"a": 1.0, "alpha": 0.0, "d": 0.0, "theta": 0.0},

@@ -2,7 +2,6 @@
 
 import numpy as np
 
-from common import check_release
 from mastermlx.robotics import (
     compose_transform,
     euler_to_matrix,
@@ -19,7 +18,6 @@ from mastermlx.robotics import (
 )
 
 
-check_release()
 rotation = rot_z(np.pi / 4.0)
 translation = np.array([1.0, 2.0, 3.0])
 transform = homogeneous_transform(rotation, translation)

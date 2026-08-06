@@ -2,11 +2,9 @@
 
 import numpy as np
 
-from common import check_release
 from mastermlx import KMeans, LinearRegression, PCA
 
 
-check_release()
 X = np.array([[0.0, 0.0], [1.0, 1.0], [2.0, 2.0], [3.0, 3.0]])
 y = np.array([1.0, 3.0, 5.0, 7.0])
 

@@ -9,6 +9,12 @@ adapters without changing the robot model or workcell APIs.
 
 `RobotSimulation` follows a small Gym-like contract without requiring Gym:
 
+The runnable examples are:
+
+- `examples/robotics/simulation_loop_demo.py` for target tracking
+- `examples/robotics/pick_place_simulation.py` for attachment state
+- `examples/robotics/batch_rollout_demo.py` for vectorized dynamics
+
 ```python
 from mastermlx.sim import RobotSimulation, SimpleWorld
 

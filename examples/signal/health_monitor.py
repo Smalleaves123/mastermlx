@@ -2,11 +2,9 @@
 
 import numpy as np
 
-from common import check_release
 from mastermlx.signal import SignalHealthMonitor, windowed_vibration_features
 
 
-check_release()
 sample_rate = 1000.0
 time = np.arange(3000) / sample_rate
 signal = np.sin(2.0 * np.pi * 50.0 * time)

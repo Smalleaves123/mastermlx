@@ -1,8 +1,10 @@
 """DH kinematics, Jacobians, batch evaluation, and inverse kinematics."""
 
+from pathlib import Path
+
+import matplotlib.pyplot as plt
 import numpy as np
 
-from common import check_release
 from mastermlx.robotics import (
     DHLink,
     RobotModel,
@@ -15,7 +17,6 @@ from mastermlx.robotics import (
 )
 
 
-check_release()
 links = [
     DHLink(a=1.0, alpha=0.0, d=0.0, theta=0.0),
     DHLink(a=1.0, alpha=0.0, d=0.0, theta=0.0),
@@ -50,3 +51,9 @@ print("jacobian_shape:", jacobian.shape)
 chain_points = robot.positions(q)
 plot = plot_chain(chain_points[:, :2], annotate=True)
 print("plot_axes_type:", type(plot).__name__)
+output_dir = Path(__file__).resolve().parents[1] / "outputs" / "robotics"
+output_dir.mkdir(parents=True, exist_ok=True)
+output_path = output_dir / "kinematics_demo.png"
+plot.get_figure().savefig(output_path, dpi=140, bbox_inches="tight")
+plt.close(plot.get_figure())
+print("plot:", output_path)

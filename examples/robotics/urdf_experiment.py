@@ -2,7 +2,6 @@
 
 import numpy as np
 
-from common import check_release
 from mastermlx.robotics import (
     RobotExperiment,
     RobotModel,
@@ -12,7 +11,6 @@ from mastermlx.robotics import (
 )
 
 
-check_release()
 xml = """
 <robot name="example_planar2r">
   <link name="base" />

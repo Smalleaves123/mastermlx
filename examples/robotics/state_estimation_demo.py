@@ -2,11 +2,9 @@
 
 import numpy as np
 
-from common import check_release
 from mastermlx.robotics import PlanarPoseEKF, wrap_angle
 
 
-check_release()
 filter_ = PlanarPoseEKF(
     x0=np.array([0.0, 0.0, 0.0]),
     P0=np.eye(3) * 0.1,
