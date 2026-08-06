@@ -128,6 +128,17 @@ def main():
         auto_torque_time, _ = _measure(
             lambda: robot.inverse_dynamics_batch(configurations, velocities, accelerations)
         )
+        set_backend("numpy")
+        forward_torques = robot.inverse_dynamics_batch(
+            configurations, velocities, accelerations
+        )
+        numpy_forward_time, _ = _measure(
+            lambda: robot.forward_dynamics_batch(configurations, velocities, forward_torques)
+        )
+        set_backend("auto")
+        auto_forward_time, _ = _measure(
+            lambda: robot.forward_dynamics_batch(configurations, velocities, forward_torques)
+        )
         coriolis_configurations = configurations[:256]
         coriolis_velocities = velocities[:256]
         set_backend("numpy")
@@ -146,6 +157,10 @@ def main():
         print(
             f"  inverse_dynamics  numpy={numpy_torque_time:.5f}s  auto={auto_torque_time:.5f}s  "
             f"speedup={numpy_torque_time / auto_torque_time:.2f}x"
+        )
+        print(
+            f"  forward_dynamics  numpy={numpy_forward_time:.5f}s  auto={auto_forward_time:.5f}s  "
+            f"speedup={numpy_forward_time / auto_forward_time:.2f}x"
         )
         print(
             f"  coriolis (256 x 7-DOF)  numpy={numpy_coriolis_time:.5f}s  "

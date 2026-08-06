@@ -4,7 +4,6 @@ import numpy as np
 from numpy.typing import ArrayLike
 
 from ..base import BaseEstimator
-from ..utils.array import batch_iterator
 from ..utils.math import sigmoid
 from ..utils.metrics import accuracy
 from ..utils.validation import check_1d_array, check_2d_array, check_same_rows
@@ -24,6 +23,7 @@ class LogisticRegression(BaseEstimator):
         self.coef_ = None
         self.intercept_ = None
         self.loss_ = []
+        self.n_iter_ = 0
         self.multi_class_ = False
 
     def _add_bias(self, X):
@@ -32,10 +32,25 @@ class LogisticRegression(BaseEstimator):
         return X
 
     def fit(self, X: ArrayLike, y: ArrayLike | None = None) -> "LogisticRegression":
-        X = check_2d_array(X)
+        X = np.ascontiguousarray(check_2d_array(X), dtype=float)
         y = check_1d_array(y)
         X, y = check_same_rows(X, y)
-        bs = min(self.batch_size or X.shape[0], X.shape[0])
+        if not np.isfinite(self.lr) or self.lr <= 0:
+            raise ValueError("lr must be positive and finite")
+        n_iter = int(self.n_iter)
+        if n_iter < 1:
+            raise ValueError("n_iter must be at least 1")
+        if self.batch_size is not None:
+            batch_size = int(self.batch_size)
+            if batch_size < 1:
+                raise ValueError("batch_size must be at least 1")
+        else:
+            batch_size = X.shape[0]
+        if self.tol < 0 or not np.isfinite(self.tol):
+            raise ValueError("tol must be non-negative and finite")
+
+        bs = min(batch_size, X.shape[0])
+        full_batch = bs == X.shape[0]
 
         classes = np.unique(y)
         self.loss_ = []
@@ -45,24 +60,30 @@ class LogisticRegression(BaseEstimator):
             y_min, y_max = classes[0], classes[1]
             y_bin = (y == y_max).astype(float)
 
-            Xb = self._add_bias(X)
+            Xb = np.ascontiguousarray(self._add_bias(X), dtype=float)
             rng = np.random.default_rng(self.random_state)
             w = rng.normal(scale=0.01, size=Xb.shape[1])
 
             prev = None
-            for epoch in range(self.n_iter):
-                for xb, yb in batch_iterator(Xb, y_bin, batch_size=bs, shuffle=True,
-                                              random_state=rng.integers(0, 1 << 31)):
-                    z = xb @ w
+            for epoch in range(n_iter):
+                if full_batch:
+                    z = Xb @ w
                     p = sigmoid(z)
-                    grad = (xb.T @ (p - yb)) / xb.shape[0]
-                    w -= self.lr * grad
+                    w -= self.lr * (Xb.T @ (p - y_bin)) / Xb.shape[0]
+                else:
+                    indices = rng.permutation(Xb.shape[0])
+                    for start in range(0, Xb.shape[0], bs):
+                        batch_idx = indices[start:start + bs]
+                        xb = Xb[batch_idx]
+                        yb = y_bin[batch_idx]
+                        z = xb @ w
+                        p = sigmoid(z)
+                        w -= self.lr * (xb.T @ (p - yb)) / xb.shape[0]
 
                 z = Xb @ w
-                p = sigmoid(z)
-                eps = 1e-12
-                loss = -np.mean(y_bin * np.log(p + eps) + (1.0 - y_bin) * np.log(1.0 - p + eps))
+                loss = float(np.mean(np.logaddexp(0.0, z) - y_bin * z))
                 self.loss_.append(loss)
+                self.n_iter_ = epoch + 1
 
                 if prev is not None and abs(prev - loss) < self.tol:
                     break
@@ -82,7 +103,7 @@ class LogisticRegression(BaseEstimator):
         y_idx = np.searchsorted(classes, y)
         y_onehot = np.eye(n_classes)[y_idx]
 
-        Xb = self._add_bias(X)
+        Xb = np.ascontiguousarray(self._add_bias(X), dtype=float)
         rng = np.random.default_rng(self.random_state)
         W = rng.normal(scale=0.01, size=(Xb.shape[1], n_classes))
 
@@ -92,19 +113,27 @@ class LogisticRegression(BaseEstimator):
             return exp / np.sum(exp, axis=1, keepdims=True)
 
         prev = None
-        for epoch in range(self.n_iter):
-            for xb, yb in batch_iterator(Xb, y_onehot, batch_size=bs, shuffle=True,
-                                          random_state=rng.integers(0, 1 << 31)):
-                logits = xb @ W
+        for epoch in range(n_iter):
+            if full_batch:
+                logits = Xb @ W
                 p = _softmax(logits)
-                grad = (xb.T @ (p - yb)) / xb.shape[0]
-                W -= self.lr * grad
+                W -= self.lr * (Xb.T @ (p - y_onehot)) / Xb.shape[0]
+            else:
+                indices = rng.permutation(Xb.shape[0])
+                for start in range(0, Xb.shape[0], bs):
+                    batch_idx = indices[start:start + bs]
+                    xb = Xb[batch_idx]
+                    yb = y_onehot[batch_idx]
+                    logits = xb @ W
+                    p = _softmax(logits)
+                    W -= self.lr * (xb.T @ (p - yb)) / xb.shape[0]
 
             logits = Xb @ W
-            p = _softmax(logits)
-            eps = 1e-12
-            loss = -np.mean(np.sum(y_onehot * np.log(p + eps), axis=1))
+            shifted = logits - np.max(logits, axis=1, keepdims=True)
+            log_norm = np.max(logits, axis=1) + np.log(np.sum(np.exp(shifted), axis=1))
+            loss = float(np.mean(log_norm - np.sum(y_onehot * logits, axis=1)))
             self.loss_.append(loss)
+            self.n_iter_ = epoch + 1
 
             if prev is not None and abs(prev - loss) < self.tol:
                 break

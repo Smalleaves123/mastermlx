@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import json
+from pathlib import Path
 import time
 import warnings
 
@@ -60,11 +62,21 @@ def _fit_score(
     reference_model = reference_factory().fit(X_train, y_train)
     ours_score = score(ours_model, X_test, y_test)
     reference_score = score(reference_model, X_test, y_test)
+    result = {
+        "name": name,
+        "mastermlx_seconds": ours_time,
+        "reference_seconds": reference_time,
+        "time_ratio": ours_time / reference_time,
+        "mastermlx_quality": ours_score,
+        "reference_quality": reference_score,
+        "quality_label": quality_label,
+    }
     print(
         f"{name:24s} mastermlx={ours_time:8.5f}s  sklearn={reference_time:8.5f}s  "
         f"time={ours_time / reference_time:6.2f}x  "
         f"{quality_label}={ours_score:.6f}/{reference_score:.6f}"
     )
+    return result
 
 
 def _linear_quality(model, X, y):
@@ -139,13 +151,23 @@ def _print_scipy_primitives(rng):
             lambda: cdist(X_distance, Y_distance, metric="sqeuclidean"),
         ),
     )
+    results = []
     for name, ours, scipy_function in comparisons:
         ours_time = _measure(ours, repeats=3)
         scipy_time = _measure(scipy_function, repeats=3)
+        result = {
+            "name": name,
+            "mastermlx_seconds": ours_time,
+            "reference_seconds": scipy_time,
+            "time_ratio": ours_time / scipy_time,
+            "reference": "scipy",
+        }
+        results.append(result)
         print(
             f"{name:24s} mastermlx={ours_time:8.5f}s  scipy={scipy_time:8.5f}s  "
             f"time={ours_time / scipy_time:6.2f}x"
         )
+    return results
 
 
 def main():
@@ -153,10 +175,14 @@ def main():
     parser.add_argument(
         "--backend", choices=("auto", "numpy", "cython"), default="auto", help="mastermlx backend"
     )
+    parser.add_argument(
+        "--json-output", type=Path, help="write benchmark results to a JSON file"
+    )
     args = parser.parse_args()
     set_backend(args.backend)
     rng = np.random.default_rng(42)
     print(f"mastermlx backend: {get_backend()}")
+    results = []
 
     X, y = make_classification(
         n_samples=5000, n_features=20, n_informative=10, random_state=42
@@ -165,7 +191,7 @@ def main():
     X_train, X_test = X[:split], X[split:]
     y_train, y_test = y[:split], y[split:]
     print("\nscikit-learn estimators")
-    _fit_score(
+    results.append(_fit_score(
         "LogisticRegression",
         lambda: LogisticRegression(lr=0.1, n_iter=100, random_state=0),
         lambda: SklearnLogisticRegression(max_iter=100, random_state=0),
@@ -175,10 +201,10 @@ def main():
         y_test,
         _classification_quality,
         "accuracy",
-    )
+    ))
 
     X_blobs, labels = make_blobs(n_samples=3000, n_features=10, centers=5, random_state=42)
-    _fit_score(
+    results.append(_fit_score(
         "KMeans",
         lambda: KMeans(5, n_init=1, random_state=0),
         lambda: SklearnKMeans(5, n_init=1, random_state=0),
@@ -188,12 +214,12 @@ def main():
         labels,
         _cluster_quality,
         "ARI",
-    )
+    ))
 
     X_reg, y_reg = make_regression(
         n_samples=3000, n_features=15, n_informative=10, noise=1.0, random_state=42
     )
-    _fit_score(
+    results.append(_fit_score(
         "LinearRegression",
         LinearRegression,
         SklearnLinearRegression,
@@ -203,8 +229,8 @@ def main():
         y_reg[2400:],
         _linear_quality,
         "MSE",
-    )
-    _fit_score(
+    ))
+    results.append(_fit_score(
         "RidgeRegression",
         lambda: RidgeRegression(alpha=1.0),
         lambda: SklearnRidge(alpha=1.0),
@@ -214,10 +240,10 @@ def main():
         y_reg[2400:],
         _linear_quality,
         "MSE",
-    )
+    ))
 
     X_pca = rng.normal(size=(2000, 50))
-    _fit_score(
+    results.append(_fit_score(
         "PCA",
         lambda: PCA(5),
         lambda: SklearnPCA(5),
@@ -227,10 +253,10 @@ def main():
         None,
         _pca_quality,
         "reconstruction_MSE",
-    )
+    ))
 
     X_nmf = np.abs(rng.normal(size=(1200, 30)))
-    _fit_score(
+    results.append(_fit_score(
         "NMF",
         lambda: NMF(5, max_iter=100, random_state=0),
         lambda: SklearnNMF(5, max_iter=100, random_state=0),
@@ -240,9 +266,17 @@ def main():
         None,
         _nmf_quality,
         "reconstruction_MSE",
-    )
+    ))
 
-    _print_scipy_primitives(rng)
+    results.extend(_print_scipy_primitives(rng))
+
+    if args.json_output is not None:
+        payload = {
+            "backend": get_backend(),
+            "results": results,
+        }
+        args.json_output.parent.mkdir(parents=True, exist_ok=True)
+        args.json_output.write_text(json.dumps(payload, indent=2) + "\n")
 
 
 if __name__ == "__main__":

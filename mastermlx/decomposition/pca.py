@@ -15,8 +15,21 @@ except ImportError:  # pragma: no cover - SciPy is an optional comparison depend
 def _compute_svd(X):
     """Use SciPy's LAPACK driver when available, with a NumPy-only fallback."""
 
+    if X.shape[0] >= 10 * X.shape[1] and X.shape[1] < 1000:
+        covariance = X.T @ X
+        eigenvalues, eigenvectors = np.linalg.eigh(covariance)
+        order = np.argsort(eigenvalues)[::-1]
+        eigenvalues = np.maximum(eigenvalues[order], 0.0)
+        return None, np.sqrt(eigenvalues), eigenvectors[:, order].T
+
     if _scipy_svd is not None:
-        return _scipy_svd(X, full_matrices=False, lapack_driver="gesdd")
+        return _scipy_svd(
+            X,
+            full_matrices=False,
+            lapack_driver="gesdd",
+            check_finite=False,
+            overwrite_a=True,
+        )
     return np.linalg.svd(X, full_matrices=False)
 
 
@@ -31,7 +44,7 @@ class PCA(BaseTransformer):
         self.explained_variance_ratio_ = None
 
     def fit(self, X, y=None):
-        X = check_2d_array(X)
+        X = np.ascontiguousarray(check_2d_array(X), dtype=float)
         self._set_n_features(X)
         n, m = X.shape
         if self.n_components is None:

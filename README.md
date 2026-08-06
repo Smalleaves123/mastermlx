@@ -100,6 +100,7 @@ For the recommended use cases and workflow conventions, see:
 The repository includes lightweight benchmark scripts for the main product surfaces:
 
 - `benchmarks/bench_models.py` compares core estimators against scikit-learn baselines
+- `benchmarks/bench_ml_comparison.py` compares ML estimators with scikit-learn and SciPy
 - `benchmarks/bench_accel.py` measures the compiled acceleration layer against NumPy fallbacks
 - `benchmarks/bench_tabular.py` exercises the higher-level tabular workflow
 - `benchmarks/bench_signal.py` exercises the signal-processing pipeline and streaming helpers

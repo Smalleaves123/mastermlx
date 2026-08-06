@@ -773,7 +773,9 @@ class URDFRobotModel:
         rhs = torques - forces
         if include_coriolis:
             rhs -= coriolis
-        return np.asarray([np.linalg.solve(matrix, row) for matrix, row in zip(matrices, rhs)])
+        if matrices.shape[1] == 0:
+            return np.zeros_like(rhs)
+        return np.linalg.solve(matrices, rhs[..., None])[..., 0]
 
     def computed_torque_control(
         self,

@@ -40,6 +40,13 @@ PYTHONPATH=. python benchmarks/bench_neural.py
 python benchmarks/bench_workflows.py --output outputs/workflows
 ```
 
+`bench_ml_comparison.py` can export machine-readable timing and quality results:
+
+```bash
+PYTHONPATH=. python benchmarks/bench_ml_comparison.py \
+  --json-output outputs/ml_comparison.json
+```
+
 For Cython-backed sections, install the development extras first:
 
 ```bash
@@ -68,5 +75,5 @@ the shell, for example `OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1`.
 
 ## Expected outputs
 
-The scripts print plain-text summaries to stdout.
-If you want to keep artifacts, redirect output into `outputs/` or wrap the scripts in a small runner that writes CSV or JSON.
+The scripts print plain-text summaries to stdout. The ML comparison benchmark
+also writes JSON when `--json-output` is provided.

@@ -383,8 +383,10 @@ def forward_dynamics_batch(
             rhs[index] = torques[index] - gravity_term
     if include_coriolis and np.any(velocities):
         rhs -= coriolis_forces_batch(links, inertias, values, velocities, base=base)
-    for index, matrix in enumerate(matrices):
-        result[index] = np.linalg.solve(matrix, rhs[index])
+    if matrices.shape[1] == 0:
+        result.fill(0.0)
+    else:
+        result[:] = np.linalg.solve(matrices, rhs[..., None])[..., 0]
     return result
 
 
