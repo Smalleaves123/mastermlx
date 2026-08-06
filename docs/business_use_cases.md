@@ -36,6 +36,21 @@ motions, plans the loaded transfer through the workcell, retimes the full
 cycle, and returns time-aligned open/close gripper events for an execution
 adapter.
 
+## Robot Inspection Simulation
+
+Use `RobotWorkcell.plan_inspection()` to evaluate a camera or TCP scan route:
+
+1. provide ordered scan poses and surface inspection points
+2. solve reachability and continuous Cartesian motion through the workcell
+3. evaluate sensor footprint, range, field of view, and obstacle occlusion
+4. retime the route and report scan duration plus dwell time
+5. return coverage, reachability, occlusion, safety violations, and an
+   execution-ready decision
+
+This is a lightweight geometric inspection simulator. It is useful for
+coverage studies, camera placement experiments, and route comparison before
+adding a rendering or physics-engine adapter.
+
 ## Tabular Data Readiness
 
 Use `DataReadinessReport` before training or inference:

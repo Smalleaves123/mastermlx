@@ -881,6 +881,201 @@ class RobotWorkcell(BaseExperiment):
         path = np.concatenate(segments, axis=0)
         return RobotResult({"ik": ik_result, "joint_path": path})
 
+    def plan_inspection(
+        self,
+        scan_poses,
+        q_start,
+        *,
+        inspection_points=None,
+        coverage_radius=0.1,
+        min_range=0.0,
+        max_range=np.inf,
+        field_of_view=None,
+        optical_axis=(0.0, 0.0, 1.0),
+        dwell_time=0.0,
+        required_coverage=1.0,
+        steps_per_segment=10,
+        ik_kwargs=None,
+        position_tolerance=1e-4,
+        orientation_tolerance=1e-3,
+        check_collisions=True,
+        check_self_collision=False,
+        link_radius=0.0,
+        collision_step=0.05,
+        clearance=0.0,
+        velocity_limits=1.0,
+        acceleration_limits=None,
+        jerk_limits=None,
+        retime_kwargs=None,
+        raise_on_failure=False,
+    ):
+        """Plan a camera/TCP inspection route and return business diagnostics."""
+
+        from .inspection import (
+            evaluate_inspection_coverage,
+            normalize_inspection_points,
+            normalize_scan_targets,
+        )
+
+        scan_poses = normalize_scan_targets(scan_poses)
+        points = normalize_inspection_points(
+            [target if target.shape == (3,) else target[:3, 3] for target in scan_poses]
+            if inspection_points is None
+            else inspection_points
+        )
+        q_start = _joint_vector(q_start, self.n_joints, "q_start")
+        self._check_joint_limits(q_start, "q_start")
+        steps_per_segment = int(steps_per_segment)
+        if steps_per_segment < 1:
+            raise ValueError("steps_per_segment must be at least 1")
+        dwell_time = float(dwell_time)
+        required_coverage = float(required_coverage)
+        if dwell_time < 0.0 or not np.isfinite(dwell_time):
+            raise ValueError("dwell_time must be non-negative and finite")
+        if required_coverage < 0.0 or required_coverage > 1.0 or not np.isfinite(required_coverage):
+            raise ValueError("required_coverage must be in [0, 1]")
+
+        ik_options = {} if ik_kwargs is None else dict(ik_kwargs)
+        reachable = np.zeros(len(scan_poses), dtype=bool)
+        joint_targets = []
+        position_errors = np.full(len(scan_poses), np.inf, dtype=float)
+        orientation_errors = np.full(len(scan_poses), np.inf, dtype=float)
+        reachability_errors = [None] * len(scan_poses)
+        q_seed = q_start.copy()
+        for index, target in enumerate(scan_poses):
+            try:
+                solved = self.solve_tcp_path(
+                    [target],
+                    q_seed,
+                    ik_kwargs=ik_options,
+                    position_tolerance=position_tolerance,
+                    orientation_tolerance=orientation_tolerance,
+                    check_collisions=check_collisions,
+                    check_self_collision=check_self_collision,
+                    link_radius=link_radius,
+                )
+                q_seed = solved["joint_targets"][0].copy()
+                reachable[index] = True
+                joint_targets.append(q_seed.copy())
+                position_errors[index] = solved["position_errors"][0]
+                orientation_errors[index] = solved["orientation_errors"][0]
+            except (RuntimeError, ValueError, TypeError) as error:
+                reachability_errors[index] = str(error)
+
+        coverage = evaluate_inspection_coverage(
+            scan_poses,
+            points,
+            reachable,
+            getattr(self.world, "obstacles", ()),
+            coverage_radius=coverage_radius,
+            min_range=min_range,
+            max_range=max_range,
+            field_of_view=field_of_view,
+            optical_axis=optical_axis,
+        )
+        reachable_targets = [target for target, flag in zip(scan_poses, reachable) if flag]
+        task = None
+        trajectory = None
+        safety = None
+        path_error = None
+        path_planned = False
+        if reachable_targets:
+            try:
+                task = self.plan_cartesian_task(
+                    reachable_targets,
+                    q_start,
+                    steps_per_segment=steps_per_segment,
+                    ik_kwargs=ik_options,
+                    position_tolerance=position_tolerance,
+                    orientation_tolerance=orientation_tolerance,
+                    check_collisions=check_collisions,
+                    check_self_collision=check_self_collision,
+                    link_radius=link_radius,
+                    collision_step=collision_step,
+                    clearance=clearance,
+                )
+                retime_options = {} if retime_kwargs is None else dict(retime_kwargs)
+                trajectory = self.retime_joint_path(
+                    task["joint_path"],
+                    velocity_limits=velocity_limits,
+                    acceleration_limits=acceleration_limits,
+                    jerk_limits=jerk_limits,
+                    **retime_options,
+                )
+                safety = self.validate_trajectory(
+                    trajectory,
+                    clearance_margin=clearance,
+                    link_radius=link_radius,
+                    check_self_collision=check_self_collision,
+                    raise_on_failure=False,
+                )
+                path_planned = bool(safety["valid"])
+            except (RuntimeError, ValueError, TypeError) as error:
+                path_error = str(error)
+
+        scan_waypoint_times = None
+        total_time = None
+        if trajectory is not None and path_planned:
+            waypoint_indices = (np.arange(len(reachable_targets)) + 1) * steps_per_segment
+            waypoint_time = np.concatenate([[0.0], np.cumsum(trajectory["durations"])])
+            scan_waypoint_times = waypoint_time[waypoint_indices]
+            total_time = float(trajectory.duration + dwell_time * len(reachable_targets))
+
+        violations = []
+        if not np.all(reachable):
+            violations.append("unreachable_scan_pose")
+        if not path_planned:
+            violations.append("scan_path")
+        if coverage["coverage_rate"] < required_coverage:
+            violations.append("coverage")
+        if safety is not None:
+            violations.extend(item for item in safety["violations"] if item not in violations)
+        report = RobotResult({
+            "n_scan_poses": len(scan_poses),
+            "n_inspection_points": int(points.shape[0]),
+            "reachable_scan_poses": reachable,
+            "reachability_rate": float(np.mean(reachable)),
+            "first_unreachable_scan_index": next(
+                (index for index, flag in enumerate(reachable) if not flag), None
+            ),
+            "position_errors": position_errors,
+            "orientation_errors": orientation_errors,
+            "reachability_errors": reachability_errors,
+            "coverage_rate": coverage["coverage_rate"],
+            "covered_points": coverage["covered"],
+            "covered_by_scan_index": coverage["covered_by_scan_index"],
+            "occluded_points": coverage["occluded"],
+            "occlusion_rate": coverage["occlusion_rate"],
+            "n_covered_points": int(np.sum(coverage["covered"])),
+            "n_occluded_points": int(np.sum(coverage["occluded"])),
+            "required_coverage": required_coverage,
+            "path_planned": path_planned,
+            "path_error": path_error,
+            "scan_duration": None if trajectory is None else trajectory.duration,
+            "dwell_time": dwell_time,
+            "total_inspection_time": total_time,
+            "violations": violations,
+            "valid": not violations,
+            "execution_ready": not violations,
+        })
+        result = RobotResult({
+            "scan_poses": scan_poses,
+            "inspection_points": points,
+            "joint_targets": np.asarray(joint_targets, dtype=float)
+            if joint_targets
+            else np.empty((0, self.n_joints)),
+            "task": task,
+            "trajectory": trajectory,
+            "safety_report": safety,
+            "scan_waypoint_times": scan_waypoint_times,
+            "inspection_report": report,
+        })
+        self._store_report(report)
+        self._store_artifact("inspection", result)
+        if raise_on_failure and not report["valid"]:
+            raise RuntimeError("inspection failed validation: " + ", ".join(violations))
+        return result
+
     def plan_pick_and_place(
         self,
         pick_target,

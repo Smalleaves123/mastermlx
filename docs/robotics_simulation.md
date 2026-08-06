@@ -14,6 +14,7 @@ The runnable examples are:
 - `examples/robotics/simulation_loop_demo.py` for target tracking
 - `examples/robotics/pick_place_simulation.py` for attachment state
 - `examples/robotics/batch_rollout_demo.py` for vectorized dynamics
+- `examples/robotics/inspection_simulation.py` for coverage and scan timing
 
 ```python
 from mastermlx.sim import RobotSimulation, SimpleWorld

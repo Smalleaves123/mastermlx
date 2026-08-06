@@ -344,7 +344,7 @@ matrices for dashboards, alarm histories, or downstream models.
 - `plan_joint_path`
 - `smooth_joint_path`
 - `plan_joint_trajectory`
-- `RobotWorkcell` for joint-limited TCP and continuous Cartesian task planning, clearance-aware paths, velocity/acceleration/jerk-constrained retiming, singularity diagnostics, virtual tracking, and safety exports
+- `RobotWorkcell` for joint-limited TCP and continuous Cartesian task planning, collision-aware inspection coverage, clearance-aware paths, velocity/acceleration/jerk-constrained retiming, singularity diagnostics, virtual tracking, and safety exports
 - `RobotModel` exposes both concise (`fk`, `ik`, `jacobian`) and canonical long-form names, plus compiled batch FK/Jacobian evaluation
 - `RobotModel.positions_batch` provides batched end-effector workspace positions
 - `RobotModel.end_effector_velocity` and `RobotModel.end_effector_velocity_batch` provide velocity-level task-space mappings

@@ -88,7 +88,7 @@ For copy-and-run tutorials covering robotics and core ML APIs, see the
 
 - `DataReadinessReport` for schema, quality, drift, and contract checks
 - `SignalHealthExperiment` for sensor health scoring and vibration monitoring
-- `RobotWorkcell.plan_motion()` and `RobotWorkcell.plan_pick_and_place()` for collision-aware motion, task cycles, retiming, tracking, and safety reports
+- `RobotWorkcell.plan_motion()`, `RobotWorkcell.plan_pick_and_place()`, and `RobotWorkcell.plan_inspection()` for collision-aware motion, task cycles, scan coverage, retiming, tracking, and safety reports
 
 For the recommended use cases and workflow conventions, see:
 
