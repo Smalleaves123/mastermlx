@@ -127,6 +127,7 @@ jobs:
         run: |
           python benchmarks/bench_models.py
           python benchmarks/bench_ml_comparison.py --json-output /tmp/ml_comparison.json
+          python benchmarks/bench_signal_comparison.py --json-output /tmp/signal_comparison.json
           python benchmarks/bench_tabular.py
           python benchmarks/bench_signal.py
           python benchmarks/bench_workflows.py

@@ -104,6 +104,7 @@ The repository includes lightweight benchmark scripts for the main product surfa
 - `benchmarks/bench_accel.py` measures the compiled acceleration layer against NumPy fallbacks
 - `benchmarks/bench_tabular.py` exercises the higher-level tabular workflow
 - `benchmarks/bench_signal.py` exercises the signal-processing pipeline and streaming helpers
+- `benchmarks/bench_signal_comparison.py` compares signal primitives against SciPy
 
 For the benchmark design, dataset choices, and expected output format, see:
 

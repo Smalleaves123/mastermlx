@@ -217,5 +217,6 @@ The repository already contains the first executable scripts for these surfaces:
 - [`benchmarks/bench_accel.py`](../benchmarks/bench_accel.py)
 - [`benchmarks/bench_tabular.py`](../benchmarks/bench_tabular.py)
 - [`benchmarks/bench_signal.py`](../benchmarks/bench_signal.py)
+- [`benchmarks/bench_signal_comparison.py`](../benchmarks/bench_signal_comparison.py)
 
 These scripts are intentionally lightweight so they can be used during development without becoming a maintenance burden.
