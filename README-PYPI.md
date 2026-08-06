@@ -11,6 +11,8 @@ It gives you a broad set of classic ML algorithms, math utilities, and optional 
 - Optional C++ and Cython backends for speed-critical paths
 - Pure Python fallback when compiled extensions are not available
 
+To force a NumPy-only source build, set `MASTERML_DISABLE_EXTENSIONS=1`.
+
 ## Install
 
 ```bash
@@ -62,4 +64,3 @@ If the compiled backend is missing, `mastermlx` falls back to NumPy automaticall
 ## License
 
 MIT
-

@@ -1,7 +1,16 @@
 from setuptools import setup, Extension
+import os
 import warnings
 import sys
 import numpy as np
+
+if os.environ.get("MASTERML_DISABLE_EXTENSIONS", "").lower() in {"1", "true", "yes"}:
+    warnings.warn(
+        "MASTERML_DISABLE_EXTENSIONS is enabled; building the NumPy-only package.",
+        RuntimeWarning,
+    )
+    setup(ext_modules=[])
+    raise SystemExit(0)
 
 extensions = []
 inc_dirs = [np.get_include()]

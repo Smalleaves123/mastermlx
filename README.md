@@ -126,6 +126,8 @@ The library includes optional compiled helpers for:
 - Convolution and max pooling
 
 If the compiled backend is missing, `mastermlx` falls back to the NumPy implementation automatically.
+Source builds can explicitly disable native extensions with
+`MASTERML_DISABLE_EXTENSIONS=1` when no compiler is available.
 
 ## Releases
 
