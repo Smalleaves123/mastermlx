@@ -29,12 +29,113 @@ class CircleObstacle:
 Obstacle: TypeAlias = CircleObstacle | SphereObstacle | BoxObstacle | CapsuleObstacle
 
 
+def _position3(value, name="position"):
+    position = np.asarray(value, dtype=float).reshape(-1)
+    if position.size == 2:
+        position = np.concatenate([position, [0.0]])
+    if position.size != 3 or not np.all(np.isfinite(position)):
+        raise ValueError(f"{name} must be a finite 2D or 3D position")
+    return position
+
+
+@dataclass
+class SimulationObject:
+    """Lightweight movable object used by task-level simulation."""
+
+    name: str
+    position: np.ndarray
+    radius: float = 0.05
+    graspable: bool = True
+    attached: bool = field(default=False, init=False)
+    _initial_position: np.ndarray = field(default=None, init=False, repr=False)
+    _attachment_offset: np.ndarray = field(default=None, init=False, repr=False)
+
+    def __post_init__(self):
+        self.name = str(self.name)
+        self.position = _position3(self.position)
+        self.radius = float(self.radius)
+        if not self.name:
+            raise ValueError("object name must not be empty")
+        if self.radius <= 0.0 or not np.isfinite(self.radius):
+            raise ValueError("object radius must be positive and finite")
+        self._initial_position = self.position.copy()
+        self._attachment_offset = np.zeros(3, dtype=float)
+
+    def reset(self):
+        self.position = self._initial_position.copy()
+        self.attached = False
+        self._attachment_offset.fill(0.0)
+
+    def attach(self, tcp_position):
+        self._attachment_offset = self.position - _position3(tcp_position, "tcp_position")
+        self.attached = True
+
+    def sync(self, tcp_position):
+        if self.attached:
+            self.position = _position3(tcp_position, "tcp_position") + self._attachment_offset
+
+    def detach(self):
+        was_attached = self.attached
+        self.attached = False
+        self._attachment_offset.fill(0.0)
+        return was_attached
+
+
 @dataclass
 class SimpleWorld:
     """Minimal 2D world containing one robot and circular obstacles."""
 
     robot: RobotModel
     obstacles: list[Obstacle] = field(default_factory=list)
+    objects: list[SimulationObject] = field(default_factory=list)
+
+    def add_object(self, name, position, radius=0.05, graspable=True):
+        """Add a movable object with a canonical three-dimensional position."""
+
+        if any(item.name == str(name) for item in self.objects):
+            raise ValueError(f"simulation object {name!r} already exists")
+        item = SimulationObject(name, position, radius=radius, graspable=graspable)
+        self.objects.append(item)
+        return item
+
+    def reset_objects(self):
+        for item in self.objects:
+            item.reset()
+
+    def attached_object_name(self):
+        for item in self.objects:
+            if item.attached:
+                return item.name
+        return None
+
+    def grasp_object(self, tcp_position, max_distance=0.1):
+        """Attach the nearest graspable object within ``max_distance``."""
+
+        tcp_position = _position3(tcp_position, "tcp_position")
+        max_distance = float(max_distance)
+        candidates = [
+            item for item in self.objects
+            if item.graspable and not item.attached
+            and np.linalg.norm(item.position - tcp_position) <= max_distance
+        ]
+        if not candidates:
+            return None
+        item = min(candidates, key=lambda value: np.linalg.norm(value.position - tcp_position))
+        item.attach(tcp_position)
+        return {"command": "grasp", "object": item.name}
+
+    def release_object(self):
+        """Release the currently attached object, if any."""
+
+        for item in self.objects:
+            if item.attached:
+                item.detach()
+                return {"command": "release", "object": item.name}
+        return None
+
+    def sync_attached_objects(self, tcp_position):
+        for item in self.objects:
+            item.sync(tcp_position)
 
     def add_obstacle(self, center, radius):
         values = tuple(map(float, center))
@@ -207,6 +308,13 @@ def load_world_config(config):
             world.add_capsule(obstacle["start"], obstacle["end"], obstacle["radius"])
         else:
             raise ValueError("obstacle kind must be one of: circle, sphere, box, capsule")
+    for item in data.get("objects", []):
+        world.add_object(
+            item["name"],
+            item["position"],
+            radius=item.get("radius", 0.05),
+            graspable=item.get("graspable", True),
+        )
     state = data.get("state")
     if state is not None:
         state = np.asarray(state, dtype=float).reshape(-1)
