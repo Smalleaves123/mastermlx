@@ -6,6 +6,7 @@ import numpy as np
 from typing import Any
 
 from ..base import BaseEstimator
+from ..utils.validation import check_X_y
 from .search_core import (
     _param_grid_iter,
     _sample_param_distributions,
@@ -32,8 +33,7 @@ class GridSearchCV(BaseEstimator):
         self.cv_results_ = None
 
     def fit(self, X, y=None, groups=None):
-        X = np.asarray(X)
-        y = np.asarray(y)
+        X, y = check_X_y(X, y)
         candidates = list(_param_grid_iter(self.param_grid))
         result = _summarize_search(
             self.estimator,
@@ -107,8 +107,7 @@ class RandomizedSearchCV(BaseEstimator):
         self.cv_results_ = None
 
     def fit(self, X, y=None, groups=None):
-        X = np.asarray(X)
-        y = np.asarray(y)
+        X, y = check_X_y(X, y)
         if self.n_iter < 1:
             raise ValueError("n_iter must be at least 1")
         candidates = _sample_param_distributions(

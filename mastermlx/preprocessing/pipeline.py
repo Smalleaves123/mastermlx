@@ -6,7 +6,7 @@ from numpy.typing import ArrayLike
 
 from ..base import BaseEstimator
 from ..utils.estimator import clone
-from ..utils.validation import check_X
+from ..utils.validation import check_X, check_X_y
 
 
 class Pipeline(BaseEstimator):
@@ -25,7 +25,11 @@ class Pipeline(BaseEstimator):
     def _validate_steps(self):
         if not self.steps:
             raise ValueError("steps must be non-empty")
+        if any(not isinstance(step, (list, tuple)) or len(step) != 2 for step in self.steps):
+            raise TypeError("each pipeline step must be a (name, estimator) pair")
         names = [name for name, _ in self.steps]
+        if any(not isinstance(name, str) or not name or "__" in name for name in names):
+            raise ValueError("step names must be non-empty strings without '__'")
         if len(names) != len(set(names)):
             raise ValueError("step names must be unique")
         return self.steps
@@ -42,12 +46,14 @@ class Pipeline(BaseEstimator):
 
     def get_params(self, deep=True):
         params = {"steps": self.steps}
+        if not deep:
+            return params
         for name, step in self.steps:
             params[name] = step
-            if deep and hasattr(step, "get_params"):
+            if hasattr(step, "get_params"):
                 for key, value in step.get_params().items():
                     params[f"{name}__{key}"] = value
-            elif deep and hasattr(step, "__dict__"):
+            elif hasattr(step, "__dict__"):
                 for key, value in step.__dict__.items():
                     if key.endswith("_") or key.startswith("_") or callable(value):
                         continue
@@ -55,6 +61,7 @@ class Pipeline(BaseEstimator):
         return params
 
     def set_params(self, **params):
+        self._validate_steps()
         steps = list(self.steps)
         name_to_idx = {name: idx for idx, (name, _) in enumerate(steps)}
 
@@ -82,11 +89,15 @@ class Pipeline(BaseEstimator):
             steps[name_to_idx[name]] = (step_name, step)
 
         self.steps = steps
+        self._validate_steps()
         return self
 
     def fit(self, X: ArrayLike, y: ArrayLike | None = None) -> "Pipeline":
         steps = self._validate_steps()
-        Xt = check_X(X)
+        if y is None:
+            Xt = check_X(X)
+        else:
+            Xt, y = check_X_y(X, y)
         self.n_features_in_ = Xt.shape[1]
         self.steps_ = None
         fitted = []
@@ -168,6 +179,7 @@ class Pipeline(BaseEstimator):
         return last.decision_function(Xt)
 
     def score(self, X: ArrayLike, y: ArrayLike) -> float:
+        X, y = check_X_y(X, y)
         Xt = self._transform_input(X)
         last = self._fitted_steps()[-1][1]
         if hasattr(last, "score"):

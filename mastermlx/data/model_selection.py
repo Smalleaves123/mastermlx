@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import copy
 import time
 from typing import Any
 
@@ -20,6 +19,8 @@ from ..utils.metrics import (
     root_mean_squared_error,
 )
 from ..utils.random import resolve_rng
+from ..utils.estimator import clone
+from ..utils.validation import check_X_y
 from .cv import KFold
 
 
@@ -118,10 +119,7 @@ def _run_cv(
     error_score="raise",
     return_estimator=False,
 ):
-    X = np.asarray(X)
-    y = np.asarray(y)
-    if X.shape[0] != y.shape[0]:
-        raise ValueError("X and y must contain the same number of samples")
+    X, y = check_X_y(X, y)
 
     splitter = cv if cv is not None else KFold(n_splits=5, shuffle=True, random_state=0)
     scorers, multi = _resolve_scorers(scoring)
@@ -136,7 +134,7 @@ def _run_cv(
     for train_idx, test_idx in _split_cv(splitter, X, y, groups=groups):
         model = None
         try:
-            model = copy.deepcopy(estimator)
+            model = clone(estimator)
             t0 = time.perf_counter()
             model.fit(X[train_idx], y[train_idx])
             fit_times.append(time.perf_counter() - t0)
@@ -237,17 +235,14 @@ def cross_validate(
 def cross_val_predict(estimator, X, y, cv=None, groups=None, method="predict"):
     """Generate out-of-fold predictions for each sample."""
 
-    X = np.asarray(X)
-    y = np.asarray(y)
-    if X.shape[0] != y.shape[0]:
-        raise ValueError("X and y must contain the same number of samples")
+    X, y = check_X_y(X, y)
 
     splitter = cv if cv is not None else KFold(n_splits=5, shuffle=True, random_state=0)
     out = None
     seen = np.zeros(X.shape[0], dtype=bool)
 
     for train_idx, test_idx in _split_cv(splitter, X, y, groups=groups):
-        model = copy.deepcopy(estimator)
+        model = clone(estimator)
         model.fit(X[train_idx], y[train_idx])
         if not hasattr(model, method):
             raise AttributeError(f"Estimator does not define method '{method}'")
@@ -271,10 +266,7 @@ def cross_val_predict(estimator, X, y, cv=None, groups=None, method="predict"):
 def learning_curve(estimator, X, y, train_sizes=None, cv=None, scoring=None, shuffle=False, random_state=None, groups=None):
     """Compute learning curves for different training set sizes."""
 
-    X = np.asarray(X)
-    y = np.asarray(y)
-    if X.shape[0] != y.shape[0]:
-        raise ValueError("X and y must contain the same number of samples")
+    X, y = check_X_y(X, y)
 
     if train_sizes is None:
         train_sizes = np.linspace(0.1, 1.0, 5)
@@ -311,7 +303,7 @@ def learning_curve(estimator, X, y, train_sizes=None, cv=None, scoring=None, shu
             base_train_idx = rng.permutation(base_train_idx)
         for size_idx, size in enumerate(sizes):
             sub_train = base_train_idx[:size]
-            model = copy.deepcopy(estimator)
+            model = clone(estimator)
             model.fit(X[sub_train], y[sub_train])
 
             if scorer is None:
@@ -342,10 +334,7 @@ def validation_curve(
 ):
     """Compute train and test scores for different values of one parameter."""
 
-    X = np.asarray(X)
-    y = np.asarray(y)
-    if X.shape[0] != y.shape[0]:
-        raise ValueError("X and y must contain the same number of samples")
+    X, y = check_X_y(X, y)
 
     values = list(param_range)
     if not values:
@@ -360,7 +349,7 @@ def validation_curve(
 
     for value_idx, value in enumerate(values):
         for fold_idx, (train_idx, test_idx) in enumerate(splits):
-            model = copy.deepcopy(estimator)
+            model = clone(estimator)
             if hasattr(model, "set_params"):
                 model.set_params(**{param_name: value})
             else:

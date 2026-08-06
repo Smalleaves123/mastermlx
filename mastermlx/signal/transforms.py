@@ -68,6 +68,8 @@ class SignalPipeline(SignalTransformer):
 
     def get_params(self, deep=True):
         params = {"steps": self.steps}
+        if not deep:
+            return params
         for name, step in self.steps:
             params[name] = step
             if deep and hasattr(step, "get_params"):
