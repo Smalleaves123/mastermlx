@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from mastermlx.linear_models import LogisticRegression
 from mastermlx.preprocessing import Pipeline, PolynomialFeatures, StandardScaler
@@ -49,6 +50,29 @@ def test_pipeline_set_params_updates_nested_step():
     pipe.set_params(poly__degree=3)
 
     assert pipe.steps[0][1].degree == 3
+
+
+def test_pipeline_shallow_params_only_expose_constructor_steps():
+    pipe = Pipeline(
+        [
+            ("poly", PolynomialFeatures(degree=2, include_bias=False)),
+            ("scale", StandardScaler()),
+        ]
+    )
+
+    assert pipe.get_params(deep=False) == {"steps": pipe.steps}
+    assert "poly__degree" in pipe.get_params()
+
+
+def test_pipeline_validates_y_shape_and_step_names():
+    pipe = Pipeline([("scale", StandardScaler())])
+
+    with pytest.raises(ValueError, match="Expected y to be 1D"):
+        pipe.fit([[0.0], [1.0]], [[0.0], [1.0]])
+    with pytest.raises(ValueError, match="same number of samples"):
+        pipe.fit([[0.0], [1.0]], [0.0])
+    with pytest.raises(ValueError, match="without '__'"):
+        Pipeline([("bad__name", StandardScaler())]).fit([[0.0]], [0.0])
 
 
 def test_pipeline_fit_transform_runs_transform_chain():

@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 from mastermlx.base import BaseExperiment, BaseReport, BaseResult, export_reports
+from mastermlx.data import KFold, cross_validate
 from mastermlx.linear_models import LinearRegression, LogisticRegression
 from mastermlx.preprocessing import Pipeline, PolynomialFeatures, StandardScaler
 from mastermlx.utils import (
@@ -21,6 +22,23 @@ class _Layer:
     def __init__(self):
         self.dW_ = np.array([3.0, 4.0])
         self.db_ = np.array([0.0, 0.0])
+
+
+class _BareEstimator:
+    def __init__(self, bias=0.0):
+        self.bias = bias
+        self.fit_calls = 0
+
+    def fit(self, X, y):
+        self.fit_calls += 1
+        self.mean_ = float(np.mean(y)) + self.bias
+        return self
+
+    def predict(self, X):
+        return np.full(np.asarray(X).shape[0], self.mean_)
+
+    def score(self, X, y):
+        return -float(np.mean((self.predict(X) - y) ** 2))
 
 
 def test_base_estimator_params_round_trip():
@@ -61,6 +79,38 @@ def test_clone_produces_independent_copy():
     assert cloned.steps[0][1].degree == 4
 
 
+def test_clone_reconstructs_unfitted_estimators_and_plain_estimators():
+    model = LogisticRegression(lr=0.2, n_iter=20, random_state=7).fit(
+        [[0.0], [1.0]], [0, 1]
+    )
+    cloned_model = clone(model)
+
+    assert cloned_model.lr == model.lr
+    assert cloned_model.coef_ is None
+    assert cloned_model.intercept_ is None
+    assert not hasattr(cloned_model, "classes_")
+
+    bare = _BareEstimator(bias=0.5).fit([[0.0], [1.0]], [0.0, 1.0])
+    cloned_bare = clone(bare)
+
+    assert cloned_bare.bias == 0.5
+    assert cloned_bare.fit_calls == 0
+    assert not hasattr(cloned_bare, "mean_")
+
+
+def test_cross_validate_clones_without_reusing_fit_state():
+    estimator = _BareEstimator().fit([[0.0], [1.0]], [0.0, 1.0])
+    result = cross_validate(
+        estimator,
+        np.arange(6, dtype=float).reshape(-1, 1),
+        np.arange(6, dtype=float),
+        cv=KFold(n_splits=3),
+        return_estimator=True,
+    )
+
+    assert [model.fit_calls for model in result["estimator"]] == [1, 1, 1]
+
+
 def test_set_params_helper_supports_nested_objects():
     model = LogisticRegression(lr=0.1, n_iter=1000)
     set_params(model, lr=0.3, n_iter=2000)
@@ -90,6 +140,11 @@ def test_common_validation_tracks_features_and_fit_state():
         LinearRegression().predict([[0.0, 1.0]])
     with pytest.raises(ValueError, match="different number of features"):
         model.predict([[0.0, 1.0, 2.0]])
+
+    with pytest.raises(ValueError, match="Expected 2D array"):
+        check_X([1.0, 2.0])
+    with pytest.raises(ValueError, match="Expected y to be 1D"):
+        check_X_y([[1.0], [2.0]], [[0.0], [1.0]])
 
 
 def test_scaler_uses_common_fit_state_and_feature_check():

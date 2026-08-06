@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from mastermlx.data import GridSearchCV, GroupKFold, KFold, RandomizedSearchCV, StratifiedKFold
 from mastermlx.linear_models import LogisticRegression, SGDClassifier
@@ -231,3 +232,20 @@ def test_search_exposes_probability_and_decision_methods():
 
     assert prob_search.predict_proba(X).shape == (6, 2)
     assert decision_search.decision_function(X).shape == (6,)
+
+
+def test_search_validates_feature_and_label_shapes_before_cv():
+    X = np.arange(6, dtype=float).reshape(-1, 1)
+    y = np.arange(6, dtype=float)
+    searches = [
+        GridSearchCV(_BareEstimator(), {"bias": [0.0]}, cv=KFold(n_splits=2)),
+        RandomizedSearchCV(
+            _BareEstimator(), {"bias": [0.0]}, n_iter=1, cv=KFold(n_splits=2), random_state=0
+        ),
+    ]
+
+    for search in searches:
+        with pytest.raises(ValueError, match="Expected 2D array"):
+            search.fit(X.ravel(), y)
+        with pytest.raises(ValueError, match="Expected y to be 1D"):
+            search.fit(X, y.reshape(-1, 1))
