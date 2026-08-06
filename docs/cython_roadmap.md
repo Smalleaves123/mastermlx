@@ -35,6 +35,7 @@ development model.
   - C++ AABB broad-phase collision filtering for workcell path checks
   - C++ typed batch collision summaries for minimum clearance and closest elements
   - C++ typed batch collision details with reusable hit and closest-element buffers
+  - C++ chain-level AABB candidate pruning, precomputed obstacle bounds, and parallel collision batches
   - Path-level collision summaries composed from compiled kinematic and geometry batches
   - Batch rigid-body mass, gravity, and inverse/forward dynamics APIs with reusable outputs
   - C++ recursive Newton-Euler inverse dynamics for arbitrary-axis/RPY URDF chains
@@ -93,10 +94,9 @@ Suggested kernels:
 - trajectory sampling
 - quaternion / transform composition helpers
 
-For robotics, the next C++ candidates should be chosen in this order:
-
-1. Tune broad-phase and detailed-hit allocation policies from the scaling
-   profile on representative large workcell workloads.
+The collision broad-phase and detailed-hit allocation tuning batch is complete.
+Keep `bench_robotics_scaling.py` as the regression baseline before changing
+candidate pruning or operational hit-buffer capacities again.
 
 The `bench_robotics_scaling.py` profile is the baseline for collision tuning:
 compare exact clearance with broad-phase filtering as distant obstacle counts

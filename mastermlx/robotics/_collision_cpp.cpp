@@ -7,6 +7,7 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace py = pybind11;
@@ -235,6 +236,89 @@ static double aabb_distance(
     return std::sqrt(squared);
 }
 
+template <typename Fn>
+static void parallel_rows(py::ssize_t rows, py::ssize_t work, Fn&& fn) {
+    if (rows < 4 || work < 1 || static_cast<long double>(rows) * work < 4096.0L) {
+        fn(0, rows);
+        return;
+    }
+    const unsigned hardware = std::thread::hardware_concurrency();
+    const unsigned available = hardware == 0 ? 1u : hardware;
+    const unsigned workers = std::min<unsigned>(
+        std::min<unsigned>(available, 8u), static_cast<unsigned>(rows));
+    if (workers <= 1) {
+        fn(0, rows);
+        return;
+    }
+    const py::ssize_t chunk = (rows + workers - 1) / workers;
+    std::vector<std::thread> threads;
+    threads.reserve(workers);
+    for (unsigned worker = 0; worker < workers; ++worker) {
+        const py::ssize_t begin = worker * chunk;
+        const py::ssize_t end = std::min(rows, begin + chunk);
+        if (begin < end) {
+            threads.emplace_back([&fn, begin, end]() { fn(begin, end); });
+        }
+    }
+    for (auto& thread : threads) {
+        thread.join();
+    }
+}
+
+static void chain_bounds(
+    const double* chain,
+    py::ssize_t n_points,
+    py::ssize_t point_dims,
+    double* lower,
+    double* upper) {
+    for (py::ssize_t index = 0; index < point_dims; ++index) {
+        lower[index] = chain[index];
+        upper[index] = chain[index];
+    }
+    for (py::ssize_t point = 1; point < n_points; ++point) {
+        const double* values = chain + point * point_dims;
+        for (py::ssize_t index = 0; index < point_dims; ++index) {
+            lower[index] = std::min(lower[index], values[index]);
+            upper[index] = std::max(upper[index], values[index]);
+        }
+    }
+}
+
+static void validate_obstacles(
+    const py::buffer_info& types,
+    const py::buffer_info& dims,
+    py::ssize_t point_dims) {
+    const auto* type_data = static_cast<const std::int8_t*>(types.ptr);
+    const auto* dim_data = static_cast<const std::int8_t*>(dims.ptr);
+    for (py::ssize_t index = 0; index < types.shape[0]; ++index) {
+        if (type_data[index] < 0 || type_data[index] > 2) {
+            throw std::invalid_argument("obstacle type must be 0, 1, or 2");
+        }
+        if (dim_data[index] < 1 || dim_data[index] > point_dims) {
+            throw std::invalid_argument("obstacle dimensions must fit inside points");
+        }
+    }
+}
+
+static void packed_obstacle_bounds(
+    const py::buffer_info& types,
+    const py::buffer_info& dims,
+    const py::buffer_info& params,
+    std::vector<double>& lower,
+    std::vector<double>& upper) {
+    const py::ssize_t n_obstacles = types.shape[0];
+    const auto* type_data = static_cast<const std::int8_t*>(types.ptr);
+    const auto* dim_data = static_cast<const std::int8_t*>(dims.ptr);
+    const auto* parameter_data = static_cast<const double*>(params.ptr);
+    lower.resize(static_cast<std::size_t>(3 * n_obstacles));
+    upper.resize(static_cast<std::size_t>(3 * n_obstacles));
+    for (py::ssize_t obstacle = 0; obstacle < n_obstacles; ++obstacle) {
+        obstacle_bounds(
+            parameter_data + obstacle * params.shape[1], type_data[obstacle], dim_data[obstacle],
+            lower.data() + 3 * obstacle, upper.data() + 3 * obstacle);
+    }
+}
+
 static void validate_inputs(
     const py::buffer_info& points,
     const py::buffer_info& types,
@@ -274,41 +358,50 @@ static py::array_t<double> chain_clearance_batch(
     const auto* type_data = static_cast<const std::int8_t*>(types.ptr);
     const auto* dim_data = static_cast<const std::int8_t*>(dims.ptr);
     const auto* parameter_data = static_cast<const double*>(params.ptr);
-    for (py::ssize_t index = 0; index < n_obstacles; ++index) {
-        if (type_data[index] < 0 || type_data[index] > 2) {
-            throw std::invalid_argument("obstacle type must be 0, 1, or 2");
-        }
-        if (dim_data[index] < 1 || dim_data[index] > point_dims) {
-            throw std::invalid_argument("obstacle dimensions must fit inside points");
-        }
-    }
+    validate_obstacles(types, dims, point_dims);
+    std::vector<double> obstacle_lower;
+    std::vector<double> obstacle_upper;
+    packed_obstacle_bounds(types, dims, params, obstacle_lower, obstacle_upper);
 
     py::array_t<double> output(py::array::ShapeContainer(std::vector<py::ssize_t>{samples}));
     auto* output_data = static_cast<double*>(output.request().ptr);
     {
         py::gil_scoped_release release;
-        for (py::ssize_t sample = 0; sample < samples; ++sample) {
-            double minimum = std::numeric_limits<double>::infinity();
-            for (py::ssize_t obstacle = 0; obstacle < n_obstacles; ++obstacle) {
-                const py::ssize_t obstacle_dims = dim_data[obstacle];
-                const double* obstacle_params = parameter_data + obstacle * params.shape[1];
-                const std::int8_t obstacle_type = type_data[obstacle];
-                for (py::ssize_t point_index = 0; point_index < n_points; ++point_index) {
-                    const double* point = point_data + (sample * n_points + point_index) * point_dims;
-                    minimum = std::min(minimum, point_clearance(point, obstacle_params, obstacle_type, obstacle_dims));
+        parallel_rows(samples, n_obstacles * (2 * n_points - 1), [&](py::ssize_t begin, py::ssize_t end) {
+            for (py::ssize_t sample = begin; sample < end; ++sample) {
+                double minimum = std::numeric_limits<double>::infinity();
+                const double* chain = point_data + sample * n_points * point_dims;
+                double chain_lower[3] = {0.0, 0.0, 0.0};
+                double chain_upper[3] = {0.0, 0.0, 0.0};
+                chain_bounds(chain, n_points, point_dims, chain_lower, chain_upper);
+                for (py::ssize_t obstacle = 0; obstacle < n_obstacles; ++obstacle) {
+                    const py::ssize_t obstacle_dims = dim_data[obstacle];
+                    const double* obstacle_params = parameter_data + obstacle * params.shape[1];
+                    const std::int8_t obstacle_type = type_data[obstacle];
+                    const double lower_bound = aabb_distance(
+                        chain_lower, chain_upper, obstacle_lower.data() + 3 * obstacle,
+                        obstacle_upper.data() + 3 * obstacle, obstacle_dims);
+                    if (lower_bound > 0.0 && lower_bound >= minimum) {
+                        continue;
+                    }
+                    for (py::ssize_t point_index = 0; point_index < n_points; ++point_index) {
+                        const double* point = chain + point_index * point_dims;
+                        minimum = std::min(
+                            minimum, point_clearance(point, obstacle_params, obstacle_type, obstacle_dims));
+                    }
+                    for (py::ssize_t segment_index = 0; segment_index + 1 < n_points; ++segment_index) {
+                        const double* start = chain + segment_index * point_dims;
+                        const double* end = start + point_dims;
+                        minimum = std::min(
+                            minimum,
+                            segment_clearance(start, end, obstacle_params, obstacle_type, obstacle_dims, box_samples));
+                    }
                 }
-                for (py::ssize_t segment_index = 0; segment_index + 1 < n_points; ++segment_index) {
-                    const double* start = point_data + (sample * n_points + segment_index) * point_dims;
-                    const double* end = point_data + (sample * n_points + segment_index + 1) * point_dims;
-                    minimum = std::min(
-                        minimum,
-                        segment_clearance(start, end, obstacle_params, obstacle_type, obstacle_dims, box_samples));
-                }
+                output_data[sample] = minimum == std::numeric_limits<double>::infinity()
+                    ? minimum
+                    : minimum - link_radius;
             }
-            output_data[sample] = minimum == std::numeric_limits<double>::infinity()
-                ? minimum
-                : minimum - link_radius;
-        }
+        });
     }
     return output;
 }
@@ -333,55 +426,51 @@ static py::array_t<bool> chain_collision_free_batch(
     const auto* type_data = static_cast<const std::int8_t*>(types.ptr);
     const auto* dim_data = static_cast<const std::int8_t*>(dims.ptr);
     const auto* parameter_data = static_cast<const double*>(params.ptr);
+    validate_obstacles(types, dims, point_dims);
+    std::vector<double> obstacle_lower;
+    std::vector<double> obstacle_upper;
+    packed_obstacle_bounds(types, dims, params, obstacle_lower, obstacle_upper);
     py::array_t<bool> output(py::array::ShapeContainer(std::vector<py::ssize_t>{samples}));
     auto* output_data = static_cast<bool*>(output.request().ptr);
 
     {
         py::gil_scoped_release release;
-        for (py::ssize_t sample = 0; sample < samples; ++sample) {
-            bool free = true;
-            for (py::ssize_t obstacle = 0; obstacle < n_obstacles && free; ++obstacle) {
-                const py::ssize_t obstacle_dims = dim_data[obstacle];
-                const std::int8_t obstacle_type = type_data[obstacle];
-                const double* obstacle_params = parameter_data + obstacle * params.shape[1];
-                double obstacle_lower[3] = {0.0, 0.0, 0.0};
-                double obstacle_upper[3] = {0.0, 0.0, 0.0};
-                obstacle_bounds(obstacle_params, obstacle_type, obstacle_dims, obstacle_lower, obstacle_upper);
-                for (py::ssize_t point_index = 0; point_index < n_points && free; ++point_index) {
-                    const double* point = point_data + (sample * n_points + point_index) * point_dims;
-                    double point_lower[3] = {0.0, 0.0, 0.0};
-                    double point_upper[3] = {0.0, 0.0, 0.0};
-                    for (py::ssize_t index = 0; index < obstacle_dims; ++index) {
-                        point_lower[index] = point[index];
-                        point_upper[index] = point[index];
-                    }
+        parallel_rows(samples, n_obstacles * (2 * n_points - 1), [&](py::ssize_t begin, py::ssize_t end) {
+            for (py::ssize_t sample = begin; sample < end; ++sample) {
+                bool free = true;
+                const double* chain = point_data + sample * n_points * point_dims;
+                double chain_lower[3] = {0.0, 0.0, 0.0};
+                double chain_upper[3] = {0.0, 0.0, 0.0};
+                chain_bounds(chain, n_points, point_dims, chain_lower, chain_upper);
+                for (py::ssize_t obstacle = 0; obstacle < n_obstacles && free; ++obstacle) {
+                    const py::ssize_t obstacle_dims = dim_data[obstacle];
+                    const std::int8_t obstacle_type = type_data[obstacle];
+                    const double* obstacle_params = parameter_data + obstacle * params.shape[1];
                     const double lower_bound = aabb_distance(
-                        point_lower, point_upper, obstacle_lower, obstacle_upper, obstacle_dims) - link_radius;
-                    if (lower_bound <= clearance
-                        && point_clearance(point, obstacle_params, obstacle_type, obstacle_dims) - link_radius < clearance) {
-                        free = false;
+                        chain_lower, chain_upper, obstacle_lower.data() + 3 * obstacle,
+                        obstacle_upper.data() + 3 * obstacle, obstacle_dims) - link_radius;
+                    if (lower_bound > clearance) {
+                        continue;
+                    }
+                    for (py::ssize_t point_index = 0; point_index < n_points && free; ++point_index) {
+                        const double* point = chain + point_index * point_dims;
+                        if (point_clearance(point, obstacle_params, obstacle_type, obstacle_dims)
+                                - link_radius < clearance) {
+                            free = false;
+                        }
+                    }
+                    for (py::ssize_t segment = 0; segment + 1 < n_points && free; ++segment) {
+                        const double* start = chain + segment * point_dims;
+                        const double* end = start + point_dims;
+                        if (segment_clearance(start, end, obstacle_params, obstacle_type, obstacle_dims, box_samples)
+                                - link_radius < clearance) {
+                            free = false;
+                        }
                     }
                 }
-                for (py::ssize_t segment = 0; segment + 1 < n_points && free; ++segment) {
-                    const double* start = point_data + (sample * n_points + segment) * point_dims;
-                    const double* end = point_data + (sample * n_points + segment + 1) * point_dims;
-                    double segment_lower[3] = {0.0, 0.0, 0.0};
-                    double segment_upper[3] = {0.0, 0.0, 0.0};
-                    for (py::ssize_t index = 0; index < obstacle_dims; ++index) {
-                        segment_lower[index] = std::min(start[index], end[index]);
-                        segment_upper[index] = std::max(start[index], end[index]);
-                    }
-                    const double lower_bound = aabb_distance(
-                        segment_lower, segment_upper, obstacle_lower, obstacle_upper, obstacle_dims) - link_radius;
-                    if (lower_bound <= clearance
-                        && segment_clearance(start, end, obstacle_params, obstacle_type, obstacle_dims, box_samples)
-                            - link_radius < clearance) {
-                        free = false;
-                    }
-                }
+                output_data[sample] = free;
             }
-            output_data[sample] = free;
-        }
+        });
     }
     return output;
 }
@@ -406,14 +495,10 @@ static py::tuple chain_collision_summary_batch(
     const auto* type_data = static_cast<const std::int8_t*>(types.ptr);
     const auto* dim_data = static_cast<const std::int8_t*>(dims.ptr);
     const auto* parameter_data = static_cast<const double*>(params.ptr);
-    for (py::ssize_t index = 0; index < n_obstacles; ++index) {
-        if (type_data[index] < 0 || type_data[index] > 2) {
-            throw std::invalid_argument("obstacle type must be 0, 1, or 2");
-        }
-        if (dim_data[index] < 1 || dim_data[index] > point_dims) {
-            throw std::invalid_argument("obstacle dimensions must fit inside points");
-        }
-    }
+    validate_obstacles(types, dims, point_dims);
+    std::vector<double> obstacle_lower;
+    std::vector<double> obstacle_upper;
+    packed_obstacle_bounds(types, dims, params, obstacle_lower, obstacle_upper);
 
     py::array_t<double> clearances(py::array::ShapeContainer(std::vector<py::ssize_t>{samples}));
     py::array_t<bool> collisions(py::array::ShapeContainer(std::vector<py::ssize_t>{samples}));
@@ -429,46 +514,58 @@ static py::tuple chain_collision_summary_batch(
 
     {
         py::gil_scoped_release release;
-        for (py::ssize_t sample = 0; sample < samples; ++sample) {
-            double minimum = std::numeric_limits<double>::infinity();
-            std::int8_t closest_kind = 0;
-            std::int64_t closest_index = -1;
-            std::int64_t closest_obstacle = -1;
-            for (py::ssize_t obstacle = 0; obstacle < n_obstacles; ++obstacle) {
-                const py::ssize_t obstacle_dims = dim_data[obstacle];
-                const double* obstacle_params = parameter_data + obstacle * params.shape[1];
-                const std::int8_t obstacle_type = type_data[obstacle];
-                for (py::ssize_t point_index = 0; point_index < n_points; ++point_index) {
-                    const double* point = point_data + (sample * n_points + point_index) * point_dims;
-                    const double clearance = point_clearance(
-                        point, obstacle_params, obstacle_type, obstacle_dims) - link_radius;
-                    if (clearance < minimum) {
-                        minimum = clearance;
-                        closest_kind = 1;
-                        closest_index = point_index;
-                        closest_obstacle = obstacle;
+        parallel_rows(samples, n_obstacles * (2 * n_points - 1), [&](py::ssize_t begin, py::ssize_t end) {
+            for (py::ssize_t sample = begin; sample < end; ++sample) {
+                double minimum = std::numeric_limits<double>::infinity();
+                std::int8_t closest_kind = 0;
+                std::int64_t closest_index = -1;
+                std::int64_t closest_obstacle = -1;
+                const double* chain = point_data + sample * n_points * point_dims;
+                double chain_lower[3] = {0.0, 0.0, 0.0};
+                double chain_upper[3] = {0.0, 0.0, 0.0};
+                chain_bounds(chain, n_points, point_dims, chain_lower, chain_upper);
+                for (py::ssize_t obstacle = 0; obstacle < n_obstacles; ++obstacle) {
+                    const py::ssize_t obstacle_dims = dim_data[obstacle];
+                    const double* obstacle_params = parameter_data + obstacle * params.shape[1];
+                    const std::int8_t obstacle_type = type_data[obstacle];
+                    const double lower_bound = aabb_distance(
+                        chain_lower, chain_upper, obstacle_lower.data() + 3 * obstacle,
+                        obstacle_upper.data() + 3 * obstacle, obstacle_dims) - link_radius;
+                    if (lower_bound > 0.0 && lower_bound >= minimum) {
+                        continue;
+                    }
+                    for (py::ssize_t point_index = 0; point_index < n_points; ++point_index) {
+                        const double* point = chain + point_index * point_dims;
+                        const double clearance = point_clearance(
+                            point, obstacle_params, obstacle_type, obstacle_dims) - link_radius;
+                        if (clearance < minimum) {
+                            minimum = clearance;
+                            closest_kind = 1;
+                            closest_index = point_index;
+                            closest_obstacle = obstacle;
+                        }
+                    }
+                    for (py::ssize_t segment = 0; segment + 1 < n_points; ++segment) {
+                        const double* start = chain + segment * point_dims;
+                        const double* end = start + point_dims;
+                        const double clearance = segment_clearance(
+                            start, end, obstacle_params, obstacle_type, obstacle_dims, box_samples)
+                            - link_radius;
+                        if (clearance < minimum) {
+                            minimum = clearance;
+                            closest_kind = 2;
+                            closest_index = segment;
+                            closest_obstacle = obstacle;
+                        }
                     }
                 }
-                for (py::ssize_t segment = 0; segment + 1 < n_points; ++segment) {
-                    const double* start = point_data + (sample * n_points + segment) * point_dims;
-                    const double* end = point_data + (sample * n_points + segment + 1) * point_dims;
-                    const double clearance = segment_clearance(
-                        start, end, obstacle_params, obstacle_type, obstacle_dims, box_samples)
-                        - link_radius;
-                    if (clearance < minimum) {
-                        minimum = clearance;
-                        closest_kind = 2;
-                        closest_index = segment;
-                        closest_obstacle = obstacle;
-                    }
-                }
+                clearance_data[sample] = minimum;
+                collision_data[sample] = minimum <= 0.0;
+                kind_data[sample] = closest_kind;
+                index_data[sample] = closest_index;
+                obstacle_index_data[sample] = closest_obstacle;
             }
-            clearance_data[sample] = minimum;
-            collision_data[sample] = minimum <= 0.0;
-            kind_data[sample] = closest_kind;
-            index_data[sample] = closest_index;
-            obstacle_index_data[sample] = closest_obstacle;
-        }
+        });
     }
     return py::make_tuple(clearances, collisions, kinds, indices, obstacle_indices);
 }
@@ -502,14 +599,10 @@ static py::tuple chain_collision_details_batch(
     const auto* type_data = static_cast<const std::int8_t*>(types.ptr);
     const auto* dim_data = static_cast<const std::int8_t*>(dims.ptr);
     const auto* parameter_data = static_cast<const double*>(params.ptr);
-    for (py::ssize_t index = 0; index < n_obstacles; ++index) {
-        if (type_data[index] < 0 || type_data[index] > 2) {
-            throw std::invalid_argument("obstacle type must be 0, 1, or 2");
-        }
-        if (dim_data[index] < 1 || dim_data[index] > point_dims) {
-            throw std::invalid_argument("obstacle dimensions must fit inside points");
-        }
-    }
+    validate_obstacles(types, dims, point_dims);
+    std::vector<double> obstacle_lower;
+    std::vector<double> obstacle_upper;
+    packed_obstacle_bounds(types, dims, params, obstacle_lower, obstacle_upper);
 
     const std::vector<py::ssize_t> sample_shape{samples};
     const std::vector<py::ssize_t> hit_shape{samples, max_hits};
@@ -544,81 +637,93 @@ static py::tuple chain_collision_details_batch(
 
     {
         py::gil_scoped_release release;
-        for (py::ssize_t sample = 0; sample < samples; ++sample) {
-            double minimum = std::numeric_limits<double>::infinity();
-            std::int8_t closest_kind = 0;
-            std::int64_t closest_index = -1;
-            std::int64_t closest_obstacle = -1;
-            std::int64_t hit_count = 0;
-            bool truncated = false;
-            for (py::ssize_t slot = 0; slot < max_hits; ++slot) {
-                const py::ssize_t offset = sample * max_hits + slot;
-                hit_kind_data[offset] = 0;
-                hit_index_data[offset] = -1;
-                hit_obstacle_data[offset] = -1;
-                hit_clearance_data[offset] = std::numeric_limits<double>::infinity();
-            }
-            for (py::ssize_t obstacle = 0; obstacle < n_obstacles; ++obstacle) {
-                const py::ssize_t obstacle_dims = dim_data[obstacle];
-                const double* obstacle_params = parameter_data + obstacle * params.shape[1];
-                const std::int8_t obstacle_type = type_data[obstacle];
-                for (py::ssize_t point_index = 0; point_index < n_points; ++point_index) {
-                    const double* point = point_data + (sample * n_points + point_index) * point_dims;
-                    const double clearance = point_clearance(
-                        point, obstacle_params, obstacle_type, obstacle_dims) - link_radius;
-                    if (clearance < minimum) {
-                        minimum = clearance;
-                        closest_kind = 1;
-                        closest_index = point_index;
-                        closest_obstacle = obstacle;
+        parallel_rows(samples, n_obstacles * (2 * n_points - 1), [&](py::ssize_t begin, py::ssize_t end) {
+            for (py::ssize_t sample = begin; sample < end; ++sample) {
+                double minimum = std::numeric_limits<double>::infinity();
+                std::int8_t closest_kind = 0;
+                std::int64_t closest_index = -1;
+                std::int64_t closest_obstacle = -1;
+                std::int64_t hit_count = 0;
+                bool truncated = false;
+                const double* chain = point_data + sample * n_points * point_dims;
+                double chain_lower[3] = {0.0, 0.0, 0.0};
+                double chain_upper[3] = {0.0, 0.0, 0.0};
+                chain_bounds(chain, n_points, point_dims, chain_lower, chain_upper);
+                for (py::ssize_t slot = 0; slot < max_hits; ++slot) {
+                    const py::ssize_t offset = sample * max_hits + slot;
+                    hit_kind_data[offset] = 0;
+                    hit_index_data[offset] = -1;
+                    hit_obstacle_data[offset] = -1;
+                    hit_clearance_data[offset] = std::numeric_limits<double>::infinity();
+                }
+                for (py::ssize_t obstacle = 0; obstacle < n_obstacles; ++obstacle) {
+                    const py::ssize_t obstacle_dims = dim_data[obstacle];
+                    const double* obstacle_params = parameter_data + obstacle * params.shape[1];
+                    const std::int8_t obstacle_type = type_data[obstacle];
+                    const double lower_bound = aabb_distance(
+                        chain_lower, chain_upper, obstacle_lower.data() + 3 * obstacle,
+                        obstacle_upper.data() + 3 * obstacle, obstacle_dims);
+                    if (lower_bound > link_radius && lower_bound - link_radius >= minimum) {
+                        continue;
                     }
-                    if (clearance <= 0.0) {
-                        if (hit_count < max_hits) {
-                            const py::ssize_t offset = sample * max_hits + hit_count;
-                            hit_kind_data[offset] = 1;
-                            hit_index_data[offset] = point_index;
-                            hit_obstacle_data[offset] = obstacle;
-                            hit_clearance_data[offset] = clearance;
-                        } else {
-                            truncated = true;
+                    for (py::ssize_t point_index = 0; point_index < n_points; ++point_index) {
+                        const double* point = chain + point_index * point_dims;
+                        const double clearance = point_clearance(
+                            point, obstacle_params, obstacle_type, obstacle_dims) - link_radius;
+                        if (clearance < minimum) {
+                            minimum = clearance;
+                            closest_kind = 1;
+                            closest_index = point_index;
+                            closest_obstacle = obstacle;
                         }
-                        ++hit_count;
+                        if (clearance <= 0.0) {
+                            if (hit_count < max_hits) {
+                                const py::ssize_t offset = sample * max_hits + hit_count;
+                                hit_kind_data[offset] = 1;
+                                hit_index_data[offset] = point_index;
+                                hit_obstacle_data[offset] = obstacle;
+                                hit_clearance_data[offset] = clearance;
+                            } else {
+                                truncated = true;
+                            }
+                            ++hit_count;
+                        }
+                    }
+                    for (py::ssize_t segment = 0; segment + 1 < n_points; ++segment) {
+                        const double* start = chain + segment * point_dims;
+                        const double* end = start + point_dims;
+                        const double clearance = segment_clearance(
+                            start, end, obstacle_params, obstacle_type, obstacle_dims, box_samples)
+                            - link_radius;
+                        if (clearance < minimum) {
+                            minimum = clearance;
+                            closest_kind = 2;
+                            closest_index = segment;
+                            closest_obstacle = obstacle;
+                        }
+                        if (clearance <= 0.0) {
+                            if (hit_count < max_hits) {
+                                const py::ssize_t offset = sample * max_hits + hit_count;
+                                hit_kind_data[offset] = 2;
+                                hit_index_data[offset] = segment;
+                                hit_obstacle_data[offset] = obstacle;
+                                hit_clearance_data[offset] = clearance;
+                            } else {
+                                truncated = true;
+                            }
+                            ++hit_count;
+                        }
                     }
                 }
-                for (py::ssize_t segment = 0; segment + 1 < n_points; ++segment) {
-                    const double* start = point_data + (sample * n_points + segment) * point_dims;
-                    const double* end = point_data + (sample * n_points + segment + 1) * point_dims;
-                    const double clearance = segment_clearance(
-                        start, end, obstacle_params, obstacle_type, obstacle_dims, box_samples)
-                        - link_radius;
-                    if (clearance < minimum) {
-                        minimum = clearance;
-                        closest_kind = 2;
-                        closest_index = segment;
-                        closest_obstacle = obstacle;
-                    }
-                    if (clearance <= 0.0) {
-                        if (hit_count < max_hits) {
-                            const py::ssize_t offset = sample * max_hits + hit_count;
-                            hit_kind_data[offset] = 2;
-                            hit_index_data[offset] = segment;
-                            hit_obstacle_data[offset] = obstacle;
-                            hit_clearance_data[offset] = clearance;
-                        } else {
-                            truncated = true;
-                        }
-                        ++hit_count;
-                    }
-                }
+                clearance_data[sample] = minimum;
+                collision_data[sample] = hit_count > 0;
+                closest_kind_data[sample] = closest_kind;
+                closest_index_data[sample] = closest_index;
+                closest_obstacle_data[sample] = closest_obstacle;
+                hit_count_data[sample] = hit_count;
+                hit_truncated_data[sample] = truncated;
             }
-            clearance_data[sample] = minimum;
-            collision_data[sample] = hit_count > 0;
-            closest_kind_data[sample] = closest_kind;
-            closest_index_data[sample] = closest_index;
-            closest_obstacle_data[sample] = closest_obstacle;
-            hit_count_data[sample] = hit_count;
-            hit_truncated_data[sample] = truncated;
-        }
+        });
     }
     return py::make_tuple(
         clearances, collisions, closest_kinds, closest_indices, closest_obstacles,

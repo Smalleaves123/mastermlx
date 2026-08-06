@@ -11,6 +11,8 @@
 
 - Added optional C++ batched arbitrary-axis/RPY URDF kinematics and recursive
   Newton-Euler inverse dynamics, with NumPy fallbacks and parity tests.
+- Added chain-level AABB pruning, precomputed obstacle bounds, and parallel
+  C++ collision batches while preserving detailed-hit ordering and truncation.
 - Added `bench_robotics_spatial.py` and updated the robotics acceleration
   roadmap with measured backend comparisons.
 - Fixed self-collision policy propagation through workcell path optimization
