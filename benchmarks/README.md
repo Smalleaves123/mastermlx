@@ -7,6 +7,7 @@ This directory contains the first executable benchmark entry points for `masterm
 - `bench_models.py` compares representative estimators against scikit-learn baselines
 - `bench_ml_comparison.py` compares estimator quality and runtime against scikit-learn and SciPy numerical primitives
 - `bench_accel.py` measures the optional compiled backend against NumPy fallbacks
+- `bench_backend_matrix.py` compares NumPy, Cython, and auto/C++ paths with parity errors
 - `bench_tabular.py` focuses on the tabular workflow introduced by `TabularExperiment`
 - `bench_signal.py` focuses on the signal-processing stack, including pipelines, streaming, detection, and `SignalExperiment`
 - `bench_signal_comparison.py` compares Welch PSD, coherence, and Hilbert primitives against SciPy
@@ -25,6 +26,7 @@ Run the scripts directly from the project root:
 python benchmarks/bench_models.py
 PYTHONPATH=. python benchmarks/bench_ml_comparison.py
 python benchmarks/bench_accel.py
+PYTHONPATH=. python benchmarks/bench_backend_matrix.py --json-output outputs/backend_matrix.json
 python benchmarks/bench_tabular.py
 python benchmarks/bench_signal.py
 PYTHONPATH=. python benchmarks/bench_signal_comparison.py
@@ -64,6 +66,8 @@ pip install -e ".[compare]"
 
 `bench_accel.py` switches backends through the public `set_backend()` API and
 labels metric sections as fallback paths when Cython is not installed.
+For a full NumPy/Cython/auto matrix with parity errors, use
+`bench_backend_matrix.py`.
 
 For repeatable SciPy and scikit-learn comparisons, pin BLAS thread counts in
 the shell, for example `OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1`.

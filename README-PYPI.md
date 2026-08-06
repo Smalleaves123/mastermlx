@@ -13,6 +13,9 @@ It gives you a broad set of classic ML algorithms, math utilities, and optional 
 
 To force a NumPy-only source build, set `MASTERML_DISABLE_EXTENSIONS=1`.
 
+See [`docs/acceleration.md`](docs/acceleration.md) for local compiler checks,
+backend reports, and compiled-path benchmarks.
+
 ## Install
 
 ```bash

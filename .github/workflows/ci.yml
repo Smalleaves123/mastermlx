@@ -127,6 +127,7 @@ jobs:
         run: |
           python benchmarks/bench_models.py
           python benchmarks/bench_ml_comparison.py --json-output /tmp/ml_comparison.json
+          python benchmarks/bench_backend_matrix.py --json-output /tmp/backend_matrix.json
           python benchmarks/bench_signal_comparison.py --json-output /tmp/signal_comparison.json
           python benchmarks/bench_tabular.py
           python benchmarks/bench_signal.py
@@ -143,7 +144,11 @@ jobs:
       - name: Install quality tools
         run: python -m pip install -e ".[dev]"
       - name: Lint repository
-        run: ruff check mastermlx tests
+        run: >-
+          ruff check
+          mastermlx tests
+          scripts/build_accel.py
+          benchmarks/bench_backend_matrix.py
       - name: Type check maintained infrastructure
         run: >-
           mypy

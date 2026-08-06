@@ -54,6 +54,8 @@ pip install "mastermlx[viz]"
 The core package depends only on NumPy; plotting and comparison baselines are
 kept as optional extras.
 
+For user-compiled acceleration, see [`docs/acceleration.md`](docs/acceleration.md).
+
 ## Quick Example
 
 ```python
@@ -102,6 +104,7 @@ The repository includes lightweight benchmark scripts for the main product surfa
 - `benchmarks/bench_models.py` compares core estimators against scikit-learn baselines
 - `benchmarks/bench_ml_comparison.py` compares ML estimators with scikit-learn and SciPy
 - `benchmarks/bench_accel.py` measures the compiled acceleration layer against NumPy fallbacks
+- `benchmarks/bench_backend_matrix.py` compares NumPy, Cython, and auto/C++ backends
 - `benchmarks/bench_tabular.py` exercises the higher-level tabular workflow
 - `benchmarks/bench_signal.py` exercises the signal-processing pipeline and streaming helpers
 - `benchmarks/bench_signal_comparison.py` compares signal primitives against SciPy

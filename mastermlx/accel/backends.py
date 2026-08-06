@@ -212,7 +212,11 @@ def get_active_backend():
 def backend_report():
     """Return compiled-backend availability and the active backend."""
 
-    return {
+    cython_available = _has_api(_import_cython_backend(), _CYTHON_API)
+    cpp_distance_available = _has_api(_import_cpp_backend(), _CPP_API)
+    cpp_kernels_available = _has_api(_import_cpp_kernels(), _KERNEL_API)
+    cpp_ml_available = _has_api(_import_cpp_ml_kernels(), _ML_KERNEL_API)
+    report = {
         "requested": get_backend(),
         "active": get_active_backend(),
         "cython": _load_cython_backend() is not None,
@@ -235,6 +239,19 @@ def backend_report():
             "mastermlx.accel._signal_ops", ("iir_filter_1d", "ridge_path")
         ) is not None,
     }
+    report["numpy"] = True
+    report["cpp"] = any(
+        report[name] for name in ("cpp_distance", "cpp_kernels", "cpp_ml_kernels", "cpp_signal")
+    )
+    report["available_backends"] = {
+        "numpy": True,
+        "cython": cython_available,
+        "cpp": any(
+            (cpp_distance_available, cpp_kernels_available, cpp_ml_available,
+             _has_api(_import_cpp_signal(), ("frame_signal", "iir_filter_1d", "online_cusum", "ridge_path")))
+        ),
+    }
+    return report
 
 
 # ============================================================================

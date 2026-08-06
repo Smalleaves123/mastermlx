@@ -17,6 +17,10 @@ def test_backend_report_has_compiled_capabilities():
         assert report["active"] == "numpy"
         assert report["cython"] is False
         assert report["cpp_distance"] is False
+        assert report["numpy"] is True
+        assert report["available_backends"]["numpy"] is True
+        assert isinstance(report["available_backends"]["cython"], bool)
+        assert isinstance(report["available_backends"]["cpp"], bool)
     finally:
         set_backend(old)
 
