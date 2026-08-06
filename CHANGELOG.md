@@ -13,6 +13,8 @@
   Newton-Euler inverse dynamics, with NumPy fallbacks and parity tests.
 - Added chain-level AABB pruning, precomputed obstacle bounds, and parallel
   C++ collision batches while preserving detailed-hit ordering and truncation.
+- Added `bench_ml_comparison.py` for reproducible mastermlx, SciPy, and
+  scikit-learn runtime and quality comparisons.
 - Added `bench_robotics_spatial.py` and updated the robotics acceleration
   roadmap with measured backend comparisons.
 - Fixed self-collision policy propagation through workcell path optimization

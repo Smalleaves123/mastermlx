@@ -5,6 +5,7 @@ This directory contains the first executable benchmark entry points for `masterm
 ## What each script covers
 
 - `bench_models.py` compares representative estimators against scikit-learn baselines
+- `bench_ml_comparison.py` compares estimator quality and runtime against scikit-learn and SciPy numerical primitives
 - `bench_accel.py` measures the optional compiled backend against NumPy fallbacks
 - `bench_tabular.py` focuses on the tabular workflow introduced by `TabularExperiment`
 - `bench_signal.py` focuses on the signal-processing stack, including pipelines, streaming, detection, and `SignalExperiment`
@@ -21,6 +22,7 @@ Run the scripts directly from the project root:
 
 ```bash
 python benchmarks/bench_models.py
+PYTHONPATH=. python benchmarks/bench_ml_comparison.py
 python benchmarks/bench_accel.py
 python benchmarks/bench_tabular.py
 python benchmarks/bench_signal.py
@@ -44,8 +46,18 @@ For Cython-backed sections, install the development extras first:
 pip install -e ".[dev]"
 ```
 
+For the SciPy and scikit-learn comparison benchmark, install the comparison
+extras:
+
+```bash
+pip install -e ".[compare]"
+```
+
 `bench_accel.py` switches backends through the public `set_backend()` API and
 labels metric sections as fallback paths when Cython is not installed.
+
+For repeatable SciPy and scikit-learn comparisons, pin BLAS thread counts in
+the shell, for example `OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1`.
 
 ## Benchmarking rules
 
