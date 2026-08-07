@@ -37,12 +37,14 @@ python examples/robotics/simulation_loop_demo.py
 python examples/robotics/pick_place_simulation.py
 python examples/robotics/batch_rollout_demo.py
 python examples/robotics/inspection_simulation.py
+python examples/robotics/active_inspection_planning.py
 ```
 
 The high-level workflow demo lives in [`experiment_demo.py`](experiment_demo.py).
 The workcell planning workflow lives in [`workcell_planning_demo.py`](workcell_planning_demo.py).
 The standard simulation loop lives in [`simulation_loop_demo.py`](simulation_loop_demo.py).
 The inspection workflow lives in [`inspection_simulation.py`](inspection_simulation.py).
+The active view-selection workflow lives in [`active_inspection_planning.py`](active_inspection_planning.py).
 Plots are written to `examples/outputs/robotics/`.
 The general spatial URDF API is documented in
 [`docs/robotics_3d.md`](../../docs/robotics_3d.md).
