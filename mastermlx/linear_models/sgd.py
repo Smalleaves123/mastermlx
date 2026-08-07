@@ -413,9 +413,13 @@ class SGDClassifier(_BaseSGD):
             return _log_grad(decision, y)
         return _hinge_grad(decision, y)
 
-    def score(self, X, y):
-        from ..utils.metrics import accuracy
-        return accuracy(y, self.predict(X))
+    def score(self, X, y, sample_weight=None):
+        y = check_1d_array(y)
+        pred = self.predict(X)
+        if y.shape != pred.shape:
+            raise ValueError("y and predictions must have the same shape")
+        weights = check_sample_weight(sample_weight, y.shape[0])
+        return float(np.average(y == pred, weights=weights))
 
 
 class _BinarySGDClassifier(_BaseSGD):
@@ -484,6 +488,12 @@ class SGDRegressor(_BaseSGD):
             return _huber_grad(decision, y, self.delta)
         return _eps_insensitive_grad(decision, y, self.epsilon)
 
-    def score(self, X, y):
-        from ..utils.metrics import r2_score
-        return r2_score(y, self.predict(X))
+    def score(self, X, y, sample_weight=None):
+        y = check_1d_array(y).astype(float)
+        pred = self.predict(X)
+        if y.shape != pred.shape:
+            raise ValueError("y and predictions must have the same shape")
+        weights = check_sample_weight(sample_weight, y.shape[0])
+        mean = np.average(y, weights=weights)
+        denominator = np.sum(weights * (y - mean) ** 2)
+        return float(1.0 - np.sum(weights * (y - pred) ** 2) / denominator) if denominator else 0.0
