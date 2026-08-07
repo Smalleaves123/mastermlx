@@ -5,7 +5,7 @@ from typing import cast
 
 from ..base import BaseEstimator
 from ..utils.array import batch_iterator
-from ..utils.validation import check_2d_array, check_1d_array, check_same_rows
+from ..utils.validation import check_X, check_1d_array, check_sample_weight, check_same_rows, to_dense
 
 
 # ---------------------------------------------------------------------------
@@ -115,7 +115,11 @@ class _BaseSGD(BaseEstimator):
 
     def _init_weights(self, n_features):
         rng = np.random.default_rng(self.random_state)
-        if not self.warm_start or self.coef_ is None:
+        if (
+            not self.warm_start
+            or self.coef_ is None
+            or np.asarray(self.coef_).shape != (n_features,)
+        ):
             self.coef_ = rng.normal(scale=0.01, size=n_features)
             self.intercept_ = 0.0
 
@@ -141,10 +145,14 @@ class _BaseSGD(BaseEstimator):
             return self.eta0 / np.power(t, 0.5)
         return self.eta0
 
-    def fit(self, X, y=None):
-        X = check_2d_array(X).astype(float)
+    def fit(self, X, y=None, sample_weight=None):
+        X = to_dense(check_X(X, dtype=float, ensure_all_finite=True))
         y = check_1d_array(y).astype(float)
         X, y = check_same_rows(X, y)
+        if not np.isfinite(y).all():
+            raise ValueError("y must contain only finite values")
+        sample_weight = check_sample_weight(sample_weight, X.shape[0])
+        self._set_n_features(X)
         n, d = X.shape
 
         self._init_weights(d)
@@ -159,15 +167,19 @@ class _BaseSGD(BaseEstimator):
         t = 0
 
         for epoch in range(self.max_iter):
-            for xb, yb in batch_iterator(X, y, batch_size=bs, shuffle=self.shuffle,
+            for xb, yb, wb in batch_iterator(X, y, sample_weight, batch_size=bs, shuffle=self.shuffle,
                                           random_state=rng.integers(0, 1 << 31)):
                 t += 1
                 lr = self._lrate(t)
                 decision = xb @ cast(np.ndarray, self.coef_) + cast(float, self.intercept_)
                 grad_loss = self._loss_grad(decision, yb)
-                self.coef_ -= lr * (xb.T @ grad_loss / xb.shape[0])
+                weight_sum = float(np.sum(wb))
+                if weight_sum == 0.0:
+                    continue
+                weighted_grad = wb * grad_loss
+                self.coef_ -= lr * (xb.T @ weighted_grad / weight_sum)
                 self._apply_l1_l2(lr, self.alpha)
-                self.intercept_ = cast(float, self.intercept_) - lr * np.mean(grad_loss)
+                self.intercept_ = cast(float, self.intercept_) - lr * np.sum(weighted_grad) / weight_sum
 
                 if self.average:
                     avg_coef = avg_coef + (cast(np.ndarray, self.coef_) - avg_coef) / max(t, 1)
@@ -186,10 +198,12 @@ class _BaseSGD(BaseEstimator):
             self.intercept_ = avg_intercept
         return self
 
-    def _partial_update(self, X, y):
+    def _partial_update(self, X, y, sample_weight=None):
         """Perform one incremental pass over a validated batch."""
 
         n, d = X.shape
+        sample_weight = check_sample_weight(sample_weight, n)
+        self._set_n_features(X)
         if self.coef_ is None:
             self._init_weights(d)
         elif cast(np.ndarray, self.coef_).shape != (d,):
@@ -197,9 +211,10 @@ class _BaseSGD(BaseEstimator):
 
         bs = min(self.batch_size or n, n)
         rng_seed = None if self.random_state is None else int(self.random_state) + int(self._t_)
-        for xb, yb in batch_iterator(
+        for xb, yb, wb in batch_iterator(
             X,
             y,
+            sample_weight,
             batch_size=bs,
             shuffle=self.shuffle,
             random_state=rng_seed,
@@ -208,21 +223,27 @@ class _BaseSGD(BaseEstimator):
             lr = self._lrate(self._t_)
             decision = xb @ cast(np.ndarray, self.coef_) + cast(float, self.intercept_)
             grad_loss = self._loss_grad(decision, yb)
-            self.coef_ -= lr * (xb.T @ grad_loss / xb.shape[0])
+            weight_sum = float(np.sum(wb))
+            if weight_sum == 0.0:
+                continue
+            weighted_grad = wb * grad_loss
+            self.coef_ -= lr * (xb.T @ weighted_grad / weight_sum)
             self._apply_l1_l2(lr, self.alpha)
-            self.intercept_ = cast(float, self.intercept_) - lr * np.mean(grad_loss)
+            self.intercept_ = cast(float, self.intercept_) - lr * np.sum(weighted_grad) / weight_sum
 
         decision = X @ cast(np.ndarray, self.coef_) + cast(float, self.intercept_)
         self.loss_curve_.append(float(self._loss(decision, y) + self._reg_penalty()))
         return self
 
-    def partial_fit(self, X, y=None):
+    def partial_fit(self, X, y=None, sample_weight=None):
         """Incrementally update a regression model with one batch."""
 
-        X = check_2d_array(X).astype(float)
+        X = to_dense(check_X(X, dtype=float, ensure_all_finite=True))
         y = check_1d_array(y).astype(float)
         X, y = check_same_rows(X, y)
-        return self._partial_update(X, y)
+        if not np.isfinite(y).all():
+            raise ValueError("y must contain only finite values")
+        return self._partial_update(X, y, sample_weight)
 
     def _reg_penalty(self):
         if self.penalty not in {"l1", "l2", "elasticnet"} or self.alpha == 0:
@@ -260,10 +281,14 @@ class SGDClassifier(_BaseSGD):
                          random_state=random_state, warm_start=warm_start, average=average)
         self.classes_ = None
 
-    def fit(self, X, y=None):
+    def fit(self, X, y=None, sample_weight=None):
         y = check_1d_array(y).astype(float)
-        X = check_2d_array(X).astype(float)
+        X = to_dense(check_X(X, dtype=float, ensure_all_finite=True))
         X, y = check_same_rows(X, y)
+        if not np.isfinite(y).all():
+            raise ValueError("y must contain only finite values")
+        sample_weight = check_sample_weight(sample_weight, X.shape[0])
+        self._set_n_features(X)
         self.classes_ = np.unique(y)
         classes = cast(np.ndarray, self.classes_)
         if classes.size < 2:
@@ -286,7 +311,7 @@ class SGDClassifier(_BaseSGD):
                     random_state=self.random_state, warm_start=self.warm_start,
                     average=self.average,
                 )
-                est.fit(X, y_bin_c)
+                est.fit(X, y_bin_c, sample_weight=sample_weight)
                 self._coefs_.append(cast(np.ndarray, est.coef_))
                 self._intercepts_.append(cast(float, est.intercept_))
                 self._binary_estimators_.append(est)
@@ -294,10 +319,10 @@ class SGDClassifier(_BaseSGD):
             self.intercept_ = np.array(self._intercepts_)
             return self
 
-        super().fit(X, y_bin)
+        super().fit(X, y_bin, sample_weight=sample_weight)
         return self
 
-    def partial_fit(self, X, y=None, classes=None):
+    def partial_fit(self, X, y=None, classes=None, sample_weight=None):
         """Incrementally update a binary or multiclass classifier.
 
         ``classes`` is required on the first call when the first batch does
@@ -305,8 +330,12 @@ class SGDClassifier(_BaseSGD):
         """
 
         y = check_1d_array(y).astype(float)
-        X = check_2d_array(X).astype(float)
+        X = to_dense(check_X(X, dtype=float, ensure_all_finite=True))
         X, y = check_same_rows(X, y)
+        if not np.isfinite(y).all():
+            raise ValueError("y must contain only finite values")
+        sample_weight = check_sample_weight(sample_weight, X.shape[0])
+        self._set_n_features(X)
         observed = np.unique(y)
         if self.classes_ is None:
             resolved = observed if classes is None else check_1d_array(classes).astype(float)
@@ -325,7 +354,7 @@ class SGDClassifier(_BaseSGD):
         if classes_array.size == 2:
             self.__dict__.pop("_coefs_", None)
             y_bin = np.where(y == classes_array[1], 1.0, -1.0)
-            return self._partial_update(X, y_bin)
+            return self._partial_update(X, y_bin, sample_weight)
 
         estimators = getattr(self, "_binary_estimators_", None)
         if estimators is None:
@@ -350,7 +379,7 @@ class SGDClassifier(_BaseSGD):
             self._binary_estimators_ = estimators
         for index, label in enumerate(classes_array):
             y_bin = np.where(y == label, 1.0, -1.0)
-            estimators[index]._partial_update(X, y_bin)
+            estimators[index]._partial_update(X, y_bin, sample_weight)
         self._coefs_ = [cast(np.ndarray, estimator.coef_) for estimator in estimators]
         self._intercepts_ = [cast(float, estimator.intercept_) for estimator in estimators]
         self.coef_ = np.column_stack(self._coefs_)
@@ -358,7 +387,7 @@ class SGDClassifier(_BaseSGD):
         return self
 
     def decision_function(self, X):
-        X = check_2d_array(X).astype(float)
+        X = to_dense(self._check_X(X, dtype=float, ensure_all_finite=True))
         if hasattr(self, '_coefs_'):
             return np.column_stack([X @ c + i for c, i in zip(self._coefs_, self._intercepts_)])
         return X @ self.coef_ + self.intercept_
@@ -427,14 +456,16 @@ class SGDRegressor(_BaseSGD):
         self.delta = float(delta)
         self.epsilon = float(epsilon)
 
-    def fit(self, X, y=None):
-        X = check_2d_array(X).astype(float)
+    def fit(self, X, y=None, sample_weight=None):
+        X = to_dense(check_X(X, dtype=float, ensure_all_finite=True))
         y = check_1d_array(y).astype(float)
         X, y = check_same_rows(X, y)
-        return super().fit(X, y)
+        if not np.isfinite(y).all():
+            raise ValueError("y must contain only finite values")
+        return super().fit(X, y, sample_weight=sample_weight)
 
     def predict(self, X):
-        X = check_2d_array(X).astype(float)
+        X = to_dense(self._check_X(X, dtype=float, ensure_all_finite=True))
         if self.coef_ is None:
             raise RuntimeError("Model has not been fit yet")
         return self._decision(X)

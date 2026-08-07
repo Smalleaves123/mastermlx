@@ -6,10 +6,13 @@ from .validation import (
     check_2d_array,
     check_X,
     check_X_y,
+    check_sample_weight,
+    check_y,
     check_feature_count,
     check_is_fitted,
     check_same_rows,
     set_n_features,
+    to_dense,
 )
 from .array import batch_iterator, one_hot, shuffle_arrays
 from .estimator import clone, get_params, set_params
@@ -87,6 +90,8 @@ __all__ = [
     "check_2d_array",
     "check_X",
     "check_X_y",
+    "check_sample_weight",
+    "check_y",
     "check_feature_count",
     "check_is_fitted",
     "check_same_rows",
@@ -142,6 +147,7 @@ __all__ = [
     "sigmoid_kernel",
     "set_params",
     "set_n_features",
+    "to_dense",
     "set_seed",
     "shuffle_arrays",
     "shuffle_indices",

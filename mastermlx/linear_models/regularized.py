@@ -4,7 +4,7 @@ import numpy as np
 
 from ..base import BaseEstimator
 from ..utils.metrics import r2_score
-from ..utils.validation import check_1d_array, check_2d_array, check_same_rows
+from ..utils.validation import check_X, check_1d_array, check_2d_array, check_sample_weight, check_same_rows, check_y, to_dense
 
 
 def _center_data(X, y, fit_intercept):
@@ -32,25 +32,45 @@ class RidgeRegression(BaseEstimator):
         self.coef_ = None
         self.intercept_ = None
 
-    def fit(self, X, y=None):
-        X = check_2d_array(X)
-        y = check_1d_array(y)
+    def fit(self, X, y=None, sample_weight=None):
+        X = to_dense(check_X(X, dtype=float, ensure_all_finite=True))
+        y = check_y(y, allow_2d=True, dtype=float, ensure_all_finite=True)
         X, y = check_same_rows(X, y)
+        sample_weight = check_sample_weight(sample_weight, X.shape[0])
         if self.alpha < 0:
             raise ValueError("alpha must be non-negative")
 
-        Xc, yc, X_mean, y_mean = _center_data(X, y, self.fit_intercept)
-        gram = Xc.T @ Xc
+        if self.fit_intercept:
+            X_mean = np.average(X, axis=0, weights=sample_weight)
+            y_mean = np.average(y, axis=0, weights=sample_weight)
+            Xc = X - X_mean
+            yc = y - y_mean
+        else:
+            X_mean = np.zeros(X.shape[1], dtype=float)
+            y_mean = 0.0 if y.ndim == 1 else np.zeros(y.shape[1], dtype=float)
+            Xc = X
+            yc = y
+        gram = (Xc * sample_weight[:, None]).T @ Xc
         penalty = self.alpha * np.eye(X.shape[1], dtype=float)
-        self.coef_ = np.linalg.solve(gram + penalty, Xc.T @ yc)
-        self.intercept_ = y_mean - X_mean @ self.coef_ if self.fit_intercept else 0.0
+        rhs = (Xc * sample_weight[:, None]).T @ yc
+        params = np.linalg.solve(gram + penalty, rhs)
+        if y.ndim == 1:
+            self.coef_ = params
+            self.intercept_ = y_mean - X_mean @ self.coef_ if self.fit_intercept else 0.0
+        else:
+            self.coef_ = params.T
+            self.intercept_ = y_mean - X_mean @ self.coef_.T if self.fit_intercept else np.zeros(y.shape[1])
+        self.n_outputs_ = 1 if y.ndim == 1 else y.shape[1]
+        self._set_n_features(X)
         return self
 
     def predict(self, X):
-        X = check_2d_array(X)
+        X = to_dense(self._check_X(X, dtype=float, ensure_all_finite=True))
         if self.coef_ is None:
             raise RuntimeError("Model has not been fit yet")
-        return X @ self.coef_ + self.intercept_
+        if np.ndim(self.coef_) == 1:
+            return X @ self.coef_ + self.intercept_
+        return X @ self.coef_.T + self.intercept_
 
     def score(self, X, y):
         return r2_score(y, self.predict(X))

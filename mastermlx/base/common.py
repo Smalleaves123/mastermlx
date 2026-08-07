@@ -26,8 +26,14 @@ class BaseAPI:
         *,
         dtype: Any | None = None,
         allow_1d: bool = False,
+        ensure_all_finite: bool = False,
     ) -> np.ndarray:
-        X = check_X(X, dtype=dtype, allow_1d=allow_1d)
+        X = check_X(
+            X,
+            dtype=dtype,
+            allow_1d=allow_1d,
+            ensure_all_finite=ensure_all_finite,
+        )
         n_features = getattr(self, "n_features_in_", None)
         if n_features is not None:
             check_feature_count(X, n_features)
@@ -44,8 +50,15 @@ class BaseAPI:
         *,
         dtype: Any | None = None,
         y_dtype: Any | None = None,
+        ensure_all_finite: bool = False,
     ) -> tuple[np.ndarray, np.ndarray]:
-        X, y = check_X_y(X, y, dtype=dtype, y_dtype=y_dtype)
+        X, y = check_X_y(
+            X,
+            y,
+            dtype=dtype,
+            y_dtype=y_dtype,
+            ensure_all_finite=ensure_all_finite,
+        )
         n_features = getattr(self, "n_features_in_", None)
         if n_features is not None:
             check_feature_count(X, n_features)
