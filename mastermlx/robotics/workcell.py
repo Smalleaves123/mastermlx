@@ -881,6 +881,224 @@ class RobotWorkcell(BaseExperiment):
         path = np.concatenate(segments, axis=0)
         return RobotResult({"ik": ik_result, "joint_path": path})
 
+    def plan_active_inspection(
+        self,
+        inspection_points,
+        q_start,
+        *,
+        candidate_poses=None,
+        candidate_standoff=0.25,
+        candidate_directions=None,
+        candidate_target=None,
+        point_weights=None,
+        coverage_radius=0.1,
+        min_range=0.0,
+        max_range=np.inf,
+        field_of_view=None,
+        horizontal_field_of_view=None,
+        vertical_field_of_view=None,
+        optical_axis=(0.0, 0.0, 1.0),
+        dwell_time=0.0,
+        required_coverage=1.0,
+        travel_speed=1.0,
+        time_weight=0.0,
+        max_views=None,
+        steps_per_segment=10,
+        ik_kwargs=None,
+        position_tolerance=1e-4,
+        orientation_tolerance=1e-3,
+        check_collisions=True,
+        check_self_collision=False,
+        link_radius=0.0,
+        collision_step=0.05,
+        clearance=0.0,
+        velocity_limits=1.0,
+        acceleration_limits=None,
+        jerk_limits=None,
+        retime_kwargs=None,
+        raise_on_failure=False,
+    ):
+        """Select high-value camera views, then plan a collision-safe TCP scan.
+
+        Candidate views are screened independently for IK/collision
+        reachability, evaluated against the camera frustum and obstacle rays,
+        then selected with a travel-aware greedy weighted set-cover policy.
+        """
+
+        from .inspection import (
+            camera_visibility_matrix,
+            generate_viewpoint_candidates,
+            normalize_inspection_points,
+            normalize_scan_targets,
+            select_inspection_viewpoints,
+        )
+
+        points = normalize_inspection_points(inspection_points)
+        q_start = _joint_vector(q_start, self.n_joints, "q_start")
+        self._check_joint_limits(q_start, "q_start")
+        if candidate_poses is None:
+            candidate_poses = generate_viewpoint_candidates(
+                points,
+                standoff=candidate_standoff,
+                target=candidate_target,
+                directions=candidate_directions,
+            )
+        else:
+            candidate_poses = normalize_scan_targets(candidate_poses)
+
+        ik_options = {} if ik_kwargs is None else dict(ik_kwargs)
+        reachable = np.zeros(len(candidate_poses), dtype=bool)
+        candidate_joint_targets = np.full((len(candidate_poses), self.n_joints), np.nan, dtype=float)
+        reachability_errors = [None] * len(candidate_poses)
+        for index, target in enumerate(candidate_poses):
+            try:
+                solved = self.solve_tcp_path(
+                    [target],
+                    q_start,
+                    ik_kwargs=ik_options,
+                    position_tolerance=position_tolerance,
+                    orientation_tolerance=orientation_tolerance,
+                    check_collisions=check_collisions,
+                    check_self_collision=check_self_collision,
+                    link_radius=link_radius,
+                )
+                reachable[index] = True
+                candidate_joint_targets[index] = solved["joint_targets"][0]
+            except (RuntimeError, ValueError, TypeError) as error:
+                reachability_errors[index] = str(error)
+
+        visibility = camera_visibility_matrix(
+            candidate_poses,
+            points,
+            reachable,
+            getattr(self.world, "obstacles", ()),
+            coverage_radius=coverage_radius,
+            min_range=min_range,
+            max_range=max_range,
+            field_of_view=field_of_view,
+            horizontal_field_of_view=horizontal_field_of_view,
+            vertical_field_of_view=vertical_field_of_view,
+            optical_axis=optical_axis,
+        )
+        selection = select_inspection_viewpoints(
+            visibility["visible"],
+            candidate_poses,
+            reachable=reachable,
+            point_weights=point_weights,
+            required_coverage=required_coverage,
+            start_position=self.robot.fk(q_start)[:3, 3],
+            travel_speed=travel_speed,
+            dwell_time=dwell_time,
+            time_weight=time_weight,
+            max_views=max_views,
+        )
+        selected_indices = selection["selected_indices"]
+        selected_poses = [candidate_poses[index] for index in selected_indices]
+        candidate_occluded = np.any(visibility["occluded"], axis=0) & ~np.any(
+            visibility["visible"], axis=0
+        )
+
+        if selected_poses:
+            route = self.plan_inspection(
+                selected_poses,
+                q_start,
+                inspection_points=points,
+                coverage_radius=coverage_radius,
+                min_range=min_range,
+                max_range=max_range,
+                field_of_view=field_of_view,
+                horizontal_field_of_view=horizontal_field_of_view,
+                vertical_field_of_view=vertical_field_of_view,
+                optical_axis=optical_axis,
+                dwell_time=dwell_time,
+                required_coverage=required_coverage,
+                steps_per_segment=steps_per_segment,
+                ik_kwargs=ik_options,
+                position_tolerance=position_tolerance,
+                orientation_tolerance=orientation_tolerance,
+                check_collisions=check_collisions,
+                check_self_collision=check_self_collision,
+                link_radius=link_radius,
+                collision_step=collision_step,
+                clearance=clearance,
+                velocity_limits=velocity_limits,
+                acceleration_limits=acceleration_limits,
+                jerk_limits=jerk_limits,
+                retime_kwargs=retime_kwargs,
+                raise_on_failure=False,
+            )
+            route_report = route["inspection_report"]
+            violations = list(route_report["violations"])
+            if not selection["required_coverage_met"] and "coverage" not in violations:
+                violations.append("coverage")
+            active_report = RobotResult({
+                **dict(route_report),
+                "n_candidate_poses": len(candidate_poses),
+                "candidate_reachability_rate": float(np.mean(reachable)),
+                "selected_candidate_indices": selected_indices,
+                "n_selected_views": int(selected_indices.size),
+                "selection_coverage_rate": selection["coverage_rate"],
+                "candidate_occlusion_rate": float(np.mean(candidate_occluded)),
+                "estimated_motion_time": selection["estimated_motion_time"],
+                "estimated_total_time": selection["estimated_total_time"],
+                "selection_path_length": selection["path_length"],
+                "violations": violations,
+                "valid": not violations,
+                "execution_ready": not violations,
+            })
+            result = RobotResult({
+                **dict(route),
+                "candidate_poses": candidate_poses,
+                "candidate_joint_targets": candidate_joint_targets,
+                "candidate_reachable": reachable,
+                "candidate_reachability_errors": reachability_errors,
+                "candidate_visibility": visibility,
+                "selected_candidate_indices": selected_indices,
+                "selection": RobotResult(selection),
+                "active_inspection_report": active_report,
+            })
+        else:
+            violations = ["no_visible_reachable_view"]
+            if not selection["required_coverage_met"]:
+                violations.append("coverage")
+            active_report = RobotResult({
+                "n_candidate_poses": len(candidate_poses),
+                "n_inspection_points": int(points.shape[0]),
+                "candidate_reachability_rate": float(np.mean(reachable)),
+                "selected_candidate_indices": selected_indices,
+                "n_selected_views": 0,
+                "selection_coverage_rate": selection["coverage_rate"],
+                "candidate_occlusion_rate": float(np.mean(candidate_occluded)),
+                "estimated_motion_time": 0.0,
+                "estimated_total_time": 0.0,
+                "selection_path_length": 0.0,
+                "violations": violations,
+                "valid": False,
+                "execution_ready": False,
+            })
+            result = RobotResult({
+                "scan_poses": [],
+                "inspection_points": points,
+                "joint_targets": np.empty((0, self.n_joints)),
+                "task": None,
+                "trajectory": None,
+                "safety_report": None,
+                "scan_waypoint_times": None,
+                "candidate_poses": candidate_poses,
+                "candidate_joint_targets": candidate_joint_targets,
+                "candidate_reachable": reachable,
+                "candidate_reachability_errors": reachability_errors,
+                "candidate_visibility": visibility,
+                "selected_candidate_indices": selected_indices,
+                "selection": RobotResult(selection),
+                "active_inspection_report": active_report,
+            })
+        self._store_report(active_report)
+        self._store_artifact("active_inspection", result)
+        if raise_on_failure and not active_report["valid"]:
+            raise RuntimeError("active inspection failed validation: " + ", ".join(active_report["violations"]))
+        return result
+
     def plan_inspection(
         self,
         scan_poses,
@@ -891,6 +1109,8 @@ class RobotWorkcell(BaseExperiment):
         min_range=0.0,
         max_range=np.inf,
         field_of_view=None,
+        horizontal_field_of_view=None,
+        vertical_field_of_view=None,
         optical_axis=(0.0, 0.0, 1.0),
         dwell_time=0.0,
         required_coverage=1.0,
@@ -971,6 +1191,8 @@ class RobotWorkcell(BaseExperiment):
             min_range=min_range,
             max_range=max_range,
             field_of_view=field_of_view,
+            horizontal_field_of_view=horizontal_field_of_view,
+            vertical_field_of_view=vertical_field_of_view,
             optical_axis=optical_axis,
         )
         reachable_targets = [target for target, flag in zip(scan_poses, reachable) if flag]

@@ -90,7 +90,13 @@ from .spatial_dynamics import (
 from .results import JointTrajectory, RobotResult
 from .experiment import RobotExperiment, compare_robot_models
 from .workcell import RobotWorkcell
-from .inspection import evaluate_inspection_coverage
+from .inspection import (
+    camera_visibility_matrix,
+    evaluate_inspection_coverage,
+    generate_viewpoint_candidates,
+    look_at_pose,
+    select_inspection_viewpoints,
+)
 from .state_estimation import PlanarPoseEKF, wrap_angle
 from .urdf_model import URDFRobotModel
 from .urdf_parser import URDFCollision, URDFJoint, URDFLink, URDFSerialChain, parse_urdf, urdf_to_dh_chain
@@ -170,7 +176,11 @@ __all__ = [
     "RobotExperiment",
     "RobotWorkcell",
     "evaluate_inspection_coverage",
+    "camera_visibility_matrix",
+    "generate_viewpoint_candidates",
+    "look_at_pose",
     "robot_collision_report",
+    "select_inspection_viewpoints",
     "PlanarPoseEKF",
     "rpy_to_matrix",
     "rot_x",
