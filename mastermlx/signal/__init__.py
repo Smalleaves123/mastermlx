@@ -63,8 +63,8 @@ from .core import (
     stft,
 )
 from .detectors import CUSUMDetector, EnergyThresholdDetector, OnlineCUSUMDetector, PeakDetector
-from .streaming import SignalChunkBuffer, SlidingWindowStream, StreamingFeatureExtractor
-from .monitoring import SignalMonitor
+from .streaming import MultiChannelStreamAligner, SignalChunkBuffer, SlidingWindowStream, StreamingFeatureExtractor
+from .monitoring import MultiChannelSignalMonitor, SignalMonitor
 from .datasets import make_chirp, make_impulse_train, make_multi_tone, make_signal_anomaly_series, make_signal_classification_dataset, make_sine_wave
 from .io import load_signal, load_signal_bundle, save_signal, save_signal_bundle
 from .metrics import frame_energy, signal_psnr, signal_snr
@@ -217,6 +217,8 @@ __all__ = [
     "log_mel_spec",
     "log_mel_spectrogram",
     "MFCCTransformer",
+    "MultiChannelSignalMonitor",
+    "MultiChannelStreamAligner",
     "mel_to_hz",
     "mfcc",
     "MelSpectrogramTransformer",
