@@ -10,6 +10,7 @@ This folder contains signal-processing demos for the `mastermlx.signal` package.
 - unified STFT + FFT feature vectors for downstream models
 - streaming feature extraction on chunked input
 - stateful streaming monitoring with feature extraction and event detection
+- multi-channel time alignment, quality-aware health fusion, and alert lifecycle events
 - event detection with `CUSUMDetector` and threshold-based detectors
 - high-level signal experiments with `SignalExperiment`
 
@@ -30,3 +31,5 @@ The corresponding smoke benchmark lives in [`benchmarks/bench_signal.py`](../../
 
 The high-level experiment demo lives in [`experiment_demo.py`](experiment_demo.py).
 The Fourier-focused demo lives in [`fourier_demo.py`](fourier_demo.py).
+The multi-sensor online monitoring demo lives in [`multichannel_monitoring.py`](multichannel_monitoring.py)
+and writes a health-score plot to `examples/outputs/signal/`.

@@ -15,6 +15,7 @@ from mastermlx.signal import (
     FourierTransformer,
     CUSUMDetector,
     MFCCTransformer,
+    MultiChannelSignalMonitor,
     NormalizeSignalTransformer,
     SpectralFeatureTransformer,
     SignalExperiment,
@@ -106,6 +107,42 @@ def benchmark_streaming():
     elapsed, matrix = bench(run_stream, n_runs=3)
     print(f"  streaming extraction     {elapsed:8.4f}s  shape={tuple(matrix.shape)}")
     return matrix
+
+
+def benchmark_multichannel_monitoring():
+    duration = 12
+    target_rate = 200.0
+    source_rates = {"motor": 400.0, "housing": 250.0, "ambient": 200.0}
+    signals = {}
+    for index, (channel, sample_rate) in enumerate(source_rates.items()):
+        time_axis = np.arange(int(duration * sample_rate)) / sample_rate
+        signals[channel] = np.sin(2.0 * np.pi * (30.0 + 5.0 * index) * time_axis)
+
+    def run_monitor():
+        monitor = MultiChannelSignalMonitor(
+            list(source_rates),
+            sample_rate=target_rate,
+            source_sample_rates=source_rates,
+            frame_length=256,
+            hop_length=128,
+            baseline_frames=5,
+            adaptation_rate=0.0,
+        )
+        for second in range(duration):
+            chunks = {
+                channel: values[int(second * source_rates[channel]) : int((second + 1) * source_rates[channel])]
+                for channel, values in signals.items()
+            }
+            monitor.push(chunks)
+        return monitor.state()
+
+    elapsed, state = bench(run_monitor, n_runs=3)
+    throughput = duration * target_rate / elapsed
+    print(
+        f"  multichannel monitoring {elapsed:8.4f}s  "
+        f"throughput={throughput:9.0f} samples/s  frames={state['frames_seen']}"
+    )
+    return state
 
 
 def benchmark_detection():
@@ -214,6 +251,9 @@ def main():
 
     section("Streaming Features")
     benchmark_streaming()
+
+    section("Multi-channel Monitoring")
+    benchmark_multichannel_monitoring()
 
     section("Event Detection")
     benchmark_detection()

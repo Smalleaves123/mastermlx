@@ -358,12 +358,14 @@ class MultiChannelSignalMonitor:
 
     def _score_frame(self, features, quality):
         quality_scores = np.asarray([item["score"] for item in quality], dtype=float)
-        if self.baseline_mean_ is None or not np.all(np.isfinite(features)):
+        if self.baseline_mean_ is None:
             return quality_scores, float("nan"), None
+        weights = np.asarray([self.fusion_weights[channel] for channel in self.channel_names], dtype=float)
+        if not np.all(np.isfinite(features)):
+            return quality_scores, float(np.average(quality_scores, weights=weights)), None
         deviations = np.abs((features.ravel() - self.baseline_mean_) / self.baseline_std_).reshape(features.shape)
         drift_scores = 100.0 * np.clip(1.0 - np.mean(deviations, axis=1) / self.drift_threshold, 0.0, 1.0)
         channel_scores = quality_scores * drift_scores / 100.0
-        weights = np.asarray([self.fusion_weights[channel] for channel in self.channel_names], dtype=float)
         return channel_scores, float(np.average(channel_scores, weights=weights)), deviations
 
     def _frames_from_aligned(self, samples, timestamps):
@@ -423,13 +425,18 @@ class MultiChannelSignalMonitor:
             if feature_rows
             else np.empty((0, len(self.channel_names), feature_count), dtype=float)
         )
+        channel_health_scores = (
+            np.asarray(health_scores, dtype=float)
+            if health_scores
+            else np.empty((0, len(self.channel_names)), dtype=float)
+        )
         return BaseResult(
             {
                 "timestamps": np.asarray(frame_times, dtype=float),
                 "features": features,
                 "feature_names": self.feature_names_ or (),
                 "quality": tuple(quality_rows),
-                "channel_health_scores": np.asarray(health_scores, dtype=float).reshape(len(health_scores), -1),
+                "channel_health_scores": channel_health_scores,
                 "health_scores": np.asarray(overall_scores, dtype=float),
                 "statuses": tuple(statuses),
                 "events": tuple(events),
