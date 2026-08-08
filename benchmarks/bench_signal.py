@@ -21,6 +21,9 @@ from mastermlx.signal import (
     SignalExperiment,
     SignalPipeline,
     StreamingFeatureExtractor,
+    StreamingIIRFilter,
+    StreamingSTFT,
+    butterworth,
     compare_signal_models,
     coherence,
     frequency_response,
@@ -145,6 +148,38 @@ def benchmark_multichannel_monitoring():
     return state
 
 
+def benchmark_realtime_primitives():
+    sample_rate = 16_000.0
+    signal = make_wave(n_samples=64_000)
+    b, a = butterworth(order=4, cutoff=1_000.0, sample_rate=sample_rate, btype="lowpass")
+    chunks = np.array_split(signal, 32)
+
+    def run_iir():
+        stream = StreamingIIRFilter(b, a, sample_rate=sample_rate)
+        return np.concatenate([stream.push(chunk) for chunk in chunks])
+
+    def run_stft():
+        stream = StreamingSTFT(
+            frame_length=512,
+            hop_length=256,
+            n_fft=512,
+            sample_rate=sample_rate,
+            pad_end=True,
+        )
+        outputs = [stream.push(chunk)["spectrogram"] for chunk in chunks]
+        outputs.append(stream.flush()["spectrogram"])
+        return np.vstack([output for output in outputs if output.size])
+
+    elapsed, filtered = bench(run_iir, n_runs=3)
+    print(f"  streaming IIR            {elapsed:8.4f}s  throughput={signal.size / elapsed:9.0f} samples/s")
+    elapsed, spectra = bench(run_stft, n_runs=3)
+    print(
+        f"  streaming STFT           {elapsed:8.4f}s  "
+        f"throughput={signal.size / elapsed:9.0f} samples/s  frames={spectra.shape[0]}"
+    )
+    return filtered, spectra
+
+
 def benchmark_detection():
     x = np.concatenate([np.zeros(2000), np.ones(2000) * 2.5, np.ones(2000) * 2.8])
     elapsed, events = bench(lambda: CUSUMDetector(threshold=1.8, drift=0.0, baseline_window=128).transform(x), n_runs=5)
@@ -254,6 +289,9 @@ def main():
 
     section("Multi-channel Monitoring")
     benchmark_multichannel_monitoring()
+
+    section("Realtime Primitives")
+    benchmark_realtime_primitives()
 
     section("Event Detection")
     benchmark_detection()

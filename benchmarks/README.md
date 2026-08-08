@@ -9,7 +9,7 @@ This directory contains the first executable benchmark entry points for `masterm
 - `bench_accel.py` measures the optional compiled backend against NumPy fallbacks
 - `bench_backend_matrix.py` compares NumPy, Cython, and auto/C++ paths with parity errors
 - `bench_tabular.py` focuses on the tabular workflow introduced by `TabularExperiment`
-- `bench_signal.py` focuses on the signal-processing stack, including pipelines, streaming, multi-channel monitoring, detection, and `SignalExperiment`
+- `bench_signal.py` focuses on the signal-processing stack, including pipelines, stateful IIR/STFT, multi-channel monitoring, detection, and `SignalExperiment`
 - `bench_signal_comparison.py` compares Welch PSD, coherence, and Hilbert primitives against SciPy
 - `bench_workflows.py` runs a fast smoke benchmark for tabular readiness, signal health, and robot workcell reports
 - `bench_inspection.py` measures inspection scan planning, coverage, and occlusion evaluation
