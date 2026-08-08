@@ -42,7 +42,7 @@ class LocalOutlierFactor(BaseEstimator):
 
         lof = np.mean(self.lrd_[nn] / self.lrd_[:, None], axis=1)
         self.negative_outlier_factor_ = -lof
-        self.offset_ = float(np.quantile(lof, 1.0 - self.contamination))
+        self.offset_ = float(np.quantile(-lof, self.contamination))
         return self
 
     def score_samples(self, X):
@@ -55,15 +55,10 @@ class LocalOutlierFactor(BaseEstimator):
         reach = np.maximum(d_sorted, cast(np.ndarray, self.k_distance_)[nn])
         lrd = 1.0 / (np.mean(reach, axis=1) + 1e-12)
         lof = np.mean(cast(np.ndarray, self.lrd_)[nn] / lrd[:, None], axis=1)
-        out = -lof
-        return float(out[0]) if out.shape[0] == 1 else out
+        return -lof
 
     def decision_function(self, X):
-        scores = self.score_samples(X)
-        out = scores + self.offset_
-        return float(out) if np.ndim(out) == 0 else out
+        return self.score_samples(X) - self.offset_
 
     def predict(self, X):
-        scores = self.score_samples(X)
-        pred = np.where(-scores > self.offset_, -1, 1)
-        return int(pred) if np.ndim(pred) == 0 else pred
+        return np.where(self.decision_function(X) < 0.0, -1, 1)

@@ -165,9 +165,7 @@ def smooth_joint_path(object reference_waypoints, double smoothness=1.0, bint fi
     upper = np.empty(m - 1 if m > 1 else 1, dtype=np.float64)
     lower = np.empty(m - 1 if m > 1 else 1, dtype=np.float64)
     for i in range(m):
-        if m == 1:
-            diag_val = 2.0
-        elif i == 0 or i == m - 1:
+        if start_idx + i == 0 or start_idx + i == n_waypoints - 1:
             diag_val = 1.0
         else:
             diag_val = 2.0

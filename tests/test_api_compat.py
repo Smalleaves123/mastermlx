@@ -39,6 +39,9 @@ def test_ambiguous_lda_models_have_explicit_namespaced_aliases():
     assert NLP_LDA is not DiscriminantLDA
     assert mastermlx.nlp.NLP_LDA is NLP_LDA
     assert mastermlx.probabilistic.DiscriminantLDA is DiscriminantLDA
+    assert "LDA" not in mastermlx.__all__
+    with pytest.raises(AttributeError, match="ambiguous"):
+        getattr(mastermlx, "LDA")
 
 
 def test_public_base_interfaces_expose_type_annotations():

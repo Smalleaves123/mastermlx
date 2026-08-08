@@ -107,7 +107,7 @@ class AffinityPropagation(BaseEstimator):
             raise ValueError("X has a different number of features than the fitted data")
         diff = X[:, None, :] - self.cluster_centers_[None, :, :]
         labels = np.argmax(-np.sum(diff * diff, axis=2), axis=1)
-        return labels[0] if labels.shape[0] == 1 else labels
+        return labels
 
 
 AP = AffinityPropagation

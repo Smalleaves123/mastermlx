@@ -21,9 +21,9 @@ def test_bayesian_linear_regression_returns_predictive_std():
     model = BayesianLinearRegression(alpha=1.0, beta=5.0).fit(X, y)
     mean, std = model.predict([[1.5]], return_std=True)
 
-    assert isinstance(mean, float)
-    assert isinstance(std, float)
-    assert std > 0.0
+    assert mean.shape == (1,)
+    assert std.shape == (1,)
+    assert std[0] > 0.0
 
 
 def test_bayesian_linear_regression_posterior_shapes():
@@ -69,9 +69,9 @@ def test_variational_linear_regression_returns_predictive_std():
     model = VariationalLinearRegression(max_iter=300).fit(X, y)
     mean, std = model.predict([[1.5]], return_std=True)
 
-    assert isinstance(mean, float)
-    assert isinstance(std, float)
-    assert std > 0.0
+    assert mean.shape == (1,)
+    assert std.shape == (1,)
+    assert std[0] > 0.0
 
 
 def test_variational_linear_regression_tracks_variational_state():

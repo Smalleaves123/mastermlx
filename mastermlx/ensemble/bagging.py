@@ -111,7 +111,7 @@ class BaggingRegressor(_BagBase):
         X = as_2d(X)
         preds = np.asarray([est.predict(X[:, cols]) for est, cols in zip(self.estimators_, self.cols_)], dtype=float)
         out = np.mean(preds, axis=0)
-        return float(out[0]) if out.shape[0] == 1 else out
+        return out
 
     def score(self, X, y):
         return r2_score(y, self.predict(X))

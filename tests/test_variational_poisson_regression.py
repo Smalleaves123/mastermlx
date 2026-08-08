@@ -22,10 +22,10 @@ def test_variational_poisson_regression_returns_predictive_std():
     model = VariationalPoissonRegression(max_iter=400, lr=0.02).fit(X, y)
     mean, std = model.predict([[2.5]], return_std=True)
 
-    assert isinstance(mean, float)
-    assert isinstance(std, float)
-    assert mean > 0.0
-    assert std > 0.0
+    assert mean.shape == (1,)
+    assert std.shape == (1,)
+    assert mean[0] > 0.0
+    assert std[0] > 0.0
 
 
 def test_variational_poisson_regression_samples_posterior_weights():

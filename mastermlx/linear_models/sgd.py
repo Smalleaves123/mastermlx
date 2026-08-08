@@ -49,6 +49,22 @@ def _log_grad(decision, y):
     return -y * exp_z / (1.0 + exp_z)
 
 
+def _modified_huber_loss(decision, y):
+    """Modified Huber classification loss for labels in {-1, 1}."""
+    z = np.asarray(y, dtype=float) * np.asarray(decision, dtype=float)
+    return float(np.mean(np.where(z >= -1.0, np.maximum(0.0, 1.0 - z) ** 2, -4.0 * z)))
+
+
+def _modified_huber_grad(decision, y):
+    y = np.asarray(y, dtype=float)
+    z = y * np.asarray(decision, dtype=float)
+    grad = np.zeros_like(z, dtype=float)
+    middle = (z < 1.0) & (z >= -1.0)
+    grad[middle] = -2.0 * y[middle] * (1.0 - z[middle])
+    grad[z < -1.0] = -4.0 * y[z < -1.0]
+    return grad
+
+
 def _squared_loss(pred, y):
     return float(np.mean((y - pred) ** 2))
 
@@ -404,14 +420,14 @@ class SGDClassifier(_BaseSGD):
             return _hinge_loss(decision, y)
         if self.loss == "log_loss":
             return _log_loss(decision, y)
-        return _hinge_loss(decision, y)
+        return _modified_huber_loss(decision, y)
 
     def _loss_grad(self, decision, y):
         if self.loss == "hinge":
             return _hinge_grad(decision, y)
         if self.loss == "log_loss":
             return _log_grad(decision, y)
-        return _hinge_grad(decision, y)
+        return _modified_huber_grad(decision, y)
 
     def score(self, X, y, sample_weight=None):
         y = check_1d_array(y)
@@ -430,14 +446,14 @@ class _BinarySGDClassifier(_BaseSGD):
             return _hinge_loss(decision, y)
         if self.loss == "log_loss":
             return _log_loss(decision, y)
-        return _hinge_loss(decision, y)
+        return _modified_huber_loss(decision, y)
 
     def _loss_grad(self, decision, y):
         if self.loss == "hinge":
             return _hinge_grad(decision, y)
         if self.loss == "log_loss":
             return _log_grad(decision, y)
-        return _hinge_grad(decision, y)
+        return _modified_huber_grad(decision, y)
 
 
 # ---------------------------------------------------------------------------

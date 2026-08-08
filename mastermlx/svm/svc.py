@@ -153,13 +153,13 @@ class _BinarySVC:
         X = as_2d(X)
         K = self._kernel(X, self.support_vectors_)
         scores = K @ cast(np.ndarray, self.dual_coef_).ravel() + self.b_
-        return float(scores[0]) if scores.shape[0] == 1 else scores
+        return scores
 
     def predict(self, X):
         scores = self.decision_function(X)
         classes = cast(np.ndarray, self.classes_)
         pred = np.where(scores >= 0.0, classes[1], classes[0])
-        return pred.item() if np.ndim(pred) == 0 else pred
+        return pred
 
 
 class SVC(BaseEstimator):
@@ -240,7 +240,7 @@ class SVC(BaseEstimator):
         X = as_2d(X)
         if self.multi_class_:
             scores = np.column_stack([model.decision_function(X) for model in self.models_])
-            return scores[0] if scores.shape[0] == 1 else scores
+            return scores
         return self.models_[0].decision_function(X)
 
     def predict(self, X):
@@ -249,11 +249,8 @@ class SVC(BaseEstimator):
         if self.multi_class_:
             classes = cast(np.ndarray, self.classes_)
             scores = self.decision_function(X)
-            if scores.ndim == 1:
-                return classes[int(np.argmax(scores))]
             idx = np.argmax(scores, axis=1)
-            pred = classes[idx]
-            return pred[0] if pred.shape[0] == 1 else pred
+            return classes[idx]
         pred = self.models_[0].predict(X)
         return pred
 

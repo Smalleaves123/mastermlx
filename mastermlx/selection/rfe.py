@@ -28,7 +28,7 @@ class RFE(BaseTransformer):
         if isinstance(step, float):
             if not 0.0 < step < 1.0:
                 raise ValueError("step as float must be between 0 and 1")
-            return max(1, int(np.ceil(step * n_features)))
+            return max(1, int(step * n_features))
         step = int(step)
         if step < 1:
             raise ValueError("step must be at least 1")
@@ -72,10 +72,11 @@ class RFE(BaseTransformer):
         self.ranking_ = ranking
         self.estimator_ = clone(self.estimator)
         self.estimator_.fit(X[:, active], y)
+        self._set_n_features(X)
         return self
 
     def transform(self, X):
-        X = check_2d_array(X).astype(float)
+        X = self._check_X(X, dtype=float)
         if self.support_ is None:
             raise RuntimeError("RFE has not been fit yet")
         return X[:, self.support_]

@@ -21,9 +21,9 @@ def test_gaussian_process_regressor_returns_std():
     model = GaussianProcessRegressor(length_scale=0.8, alpha=1e-5).fit(X, y)
     mean, std = model.predict([[1.5]], return_std=True)
 
-    assert isinstance(mean, float)
-    assert isinstance(std, float)
-    assert std >= 0.0
+    assert mean.shape == (1,)
+    assert std.shape == (1,)
+    assert std[0] >= 0.0
 
 
 def test_gaussian_process_regressor_shapes_are_stored():

@@ -132,7 +132,7 @@ class DecisionTreeClassifier(BaseEstimator):
         if X.shape[1] is None:
             raise ValueError("Invalid input shape")
         pred = np.array([self._predict_one(x, self.root_) for x in X])
-        return pred[0] if pred.shape[0] == 1 else pred
+        return pred
 
     def score(self, X, y):
         return accuracy(y, self.predict(X))
@@ -246,7 +246,7 @@ class DecisionTreeRegressor(BaseEstimator):
             raise RuntimeError("Model has not been fit yet")
         X = as_2d(X)
         pred = np.array([self._predict_one(x, self.root_) for x in X], dtype=float)
-        return float(pred[0]) if pred.shape[0] == 1 else pred
+        return pred
 
     def score(self, X, y):
         return r2_score(y, self.predict(X))

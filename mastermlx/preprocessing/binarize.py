@@ -12,9 +12,10 @@ class Binarizer(BaseTransformer):
         self.threshold = float(threshold)
 
     def fit(self, X, y=None):
-        check_2d_array(X)
+        X = check_2d_array(X)
+        self._set_n_features(X)
         return self
 
     def transform(self, X):
-        X = check_2d_array(X).astype(float)
+        X = self._check_X(X, dtype=float)
         return (X > self.threshold).astype(float)

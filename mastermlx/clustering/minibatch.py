@@ -26,7 +26,16 @@ class MiniBatchKMeans(BaseEstimator):
     def fit(self, X, y=None):
         X = check_2d_array(X).astype(float)
         n, d = X.shape
-        k = min(self.n_clusters, n)
+        if self.n_clusters < 1 or self.n_clusters > n:
+            raise ValueError("n_clusters must be between 1 and the number of samples")
+        if self.batch_size < 1:
+            raise ValueError("batch_size must be at least 1")
+        if self.max_iter < 1:
+            raise ValueError("max_iter must be at least 1")
+        if self.n_init < 1:
+            raise ValueError("n_init must be at least 1")
+        k = self.n_clusters
+        batch_size = min(self.batch_size, n)
         rng = np.random.default_rng(self.random_state)
         best_inertia = np.inf
 
@@ -36,7 +45,7 @@ class MiniBatchKMeans(BaseEstimator):
             counts = np.ones(k, dtype=float)
 
             for _ in range(self.max_iter):
-                batch_idx = rng.choice(n, size=self.batch_size, replace=False)
+                batch_idx = rng.choice(n, size=batch_size, replace=False)
                 Xb = X[batch_idx]
                 labels_b, _ = kmeans_assign(Xb, centers)
                 sums, batch_counts = kmeans_update(Xb, labels_b, k)
@@ -49,7 +58,7 @@ class MiniBatchKMeans(BaseEstimator):
                     counts[j] += batch_counts[j]
 
             labels, sq_all = self._assign(X, centers)
-            inertia = float(np.mean(sq_all))
+            inertia = float(np.sum(sq_all))
             if inertia < best_inertia:
                 best_inertia = inertia
                 self.cluster_centers_ = centers
@@ -66,7 +75,7 @@ class MiniBatchKMeans(BaseEstimator):
         if self.cluster_centers_ is None:
             raise RuntimeError("not fitted")
         labels, _ = self._assign(X, self.cluster_centers_)
-        return labels[0] if labels.shape[0] == 1 else labels
+        return labels
 
     def fit_predict(self, X, y=None):
         return self.fit(X).labels_

@@ -34,6 +34,7 @@ class AdaBoostRegressor(BaseEstimator):
 
         n_samples = X.shape[0]
         sample_weight = np.full(n_samples, 1.0 / n_samples, dtype=float)
+        rng = np.random.default_rng(self.random_state)
         self.init_ = float(np.average(y, weights=sample_weight))
         current = np.full(n_samples, self.init_, dtype=float)
         self.estimators_ = []
@@ -45,7 +46,13 @@ class AdaBoostRegressor(BaseEstimator):
                 min_samples_split=self.min_samples_split,
                 min_samples_leaf=self.min_samples_leaf,
             )
-            tree.fit(X, y - current)
+            sample_indices = rng.choice(
+                n_samples,
+                size=n_samples,
+                replace=True,
+                p=sample_weight,
+            )
+            tree.fit(X[sample_indices], (y - current)[sample_indices])
             update = tree.predict(X)
             current += self.learning_rate * update
             residual = np.abs(y - current)
@@ -69,7 +76,7 @@ class AdaBoostRegressor(BaseEstimator):
         pred = np.full(X.shape[0], self.init_, dtype=float)
         for alpha, tree in zip(self.estimator_weights_, self.estimators_):
             pred += alpha * tree.predict(X)
-        return float(pred[0]) if pred.shape[0] == 1 else pred
+        return pred
 
     def score(self, X, y):
         return r2_score(y, self.predict(X))

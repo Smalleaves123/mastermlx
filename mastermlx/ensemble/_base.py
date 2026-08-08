@@ -15,12 +15,12 @@ def _majority(preds, classes):
         vals, cnt = np.unique(col, return_counts=True)
         out.append(vals[np.argmax(cnt)])
     result = np.asarray(out)
-    return result[0] if result.shape[0] == 1 else result
+    return result
 
 
 def _mean_pred(preds):
     out = np.mean(preds, axis=0)
-    return float(out[0]) if out.shape[0] == 1 else out
+    return out
 
 
 def _softmax(z):

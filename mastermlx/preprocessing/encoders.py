@@ -31,14 +31,14 @@ def _find(value, values):
     return None
 
 
-class LabelEncoder:
+class LabelEncoder(BaseTransformer):
     """Encode labels as contiguous integers."""
 
     def __init__(self):
         self.classes_: np.ndarray | None = None
 
-    def fit(self, y):
-        y = np.asarray(y)
+    def fit(self, X, y=None):
+        y = np.asarray(X)
         if y.ndim != 1 or y.size == 0:
             raise ValueError("y must be a non-empty 1D array")
         self.classes_ = _unique(y)
@@ -56,7 +56,7 @@ class LabelEncoder:
             out = np.array([index[item] for item in y], dtype=int)
         except KeyError as exc:
             raise ValueError("y contains unseen labels") from exc
-        return int(out[0]) if out.ndim == 1 and out.shape[0] == 1 else out
+        return out
 
     def inverse_transform(self, y):
         y = np.asarray(y, dtype=int)
@@ -68,8 +68,8 @@ class LabelEncoder:
         out = classes[y]
         return out.item() if out.ndim == 0 else out
 
-    def fit_transform(self, y):
-        return self.fit(y).transform(y)
+    def fit_transform(self, X, y=None):
+        return self.fit(X).transform(X)
 
 
 class OneHotEncoder(BaseTransformer):

@@ -25,7 +25,7 @@ def test_variational_logistic_regression_predict_proba_sums_to_one():
     assert np.allclose(proba.sum(axis=1), 1.0)
 
 
-def test_variational_logistic_regression_returns_scalar_prediction_for_single_sample():
+def test_variational_logistic_regression_preserves_single_sample_axis():
     X = np.array([[0.0], [1.0], [2.0], [3.0]])
     y = np.array([0, 0, 1, 1])
 
@@ -33,8 +33,9 @@ def test_variational_logistic_regression_returns_scalar_prediction_for_single_sa
     pred = model.predict([2.5])
     score = model.decision_function([2.5])
 
-    assert pred in {0, 1}
-    assert isinstance(score, float)
+    assert pred.shape == (1,)
+    assert pred[0] in {0, 1}
+    assert score.shape == (1,)
 
 
 def test_variational_logistic_regression_samples_posterior_weights_and_probabilities():

@@ -15,7 +15,7 @@ def test_elliptic_envelope_flags_far_outlier():
     assert pred[-1] == -1
 
 
-def test_elliptic_envelope_scores_outlier_higher():
+def test_elliptic_envelope_scores_inlier_higher():
     rng = np.random.default_rng(1)
     X = rng.normal(size=(50, 2))
     model = EllipticEnvelope(contamination=0.1).fit(X)
@@ -23,7 +23,7 @@ def test_elliptic_envelope_scores_outlier_higher():
     scores = model.score_samples([[0.0, 0.0], [5.0, 5.0]])
 
     assert scores.shape == (2,)
-    assert scores[1] > scores[0]
+    assert scores[0] > scores[1]
 
 
 def test_elliptic_envelope_support_and_covariance_shapes():

@@ -70,7 +70,7 @@ class EllipticEnvelope(BaseEstimator):
         self.precision_ = np.linalg.pinv(self.covariance_)
         self.support_ = support
         scores = self.score_samples(X)
-        self.offset_ = float(np.quantile(scores, 1.0 - self.contamination))
+        self.offset_ = float(np.quantile(scores, self.contamination))
         return self
 
     def score_samples(self, X):
@@ -79,15 +79,10 @@ class EllipticEnvelope(BaseEstimator):
         X = as_2d(X).astype(float)
         if X.shape[1] != self.location_.shape[0]:
             raise ValueError("X has a different number of features than the fitted data")
-        scores = self._mahalanobis(X, self.location_, self.precision_)
-        return float(scores[0]) if scores.shape[0] == 1 else scores
+        return -self._mahalanobis(X, self.location_, self.precision_)
 
     def decision_function(self, X):
-        scores = self.score_samples(X)
-        out = self.offset_ - scores
-        return float(out) if np.ndim(out) == 0 else out
+        return self.score_samples(X) - self.offset_
 
     def predict(self, X):
-        scores = self.score_samples(X)
-        pred = np.where(scores >= self.offset_, -1, 1)
-        return int(pred) if np.ndim(pred) == 0 else pred
+        return np.where(self.decision_function(X) < 0.0, -1, 1)

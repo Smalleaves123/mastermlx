@@ -114,7 +114,7 @@ class KernelSVR(BaseEstimator):
         X = as_2d(X).astype(float)
         K = self._kernel(X, self.X_)
         pred = K @ self.dual_coef_ + self.intercept_
-        return float(pred[0]) if pred.shape[0] == 1 else pred
+        return pred
 
     def score(self, X, y):
         return r2_score(y, self.predict(X))

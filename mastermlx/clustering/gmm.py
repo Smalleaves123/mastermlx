@@ -89,12 +89,12 @@ class GMM(BaseEstimator):
         log_prob = self._log_gaussian_components(X) + np.log(cast(np.ndarray, self.weights_) + 1e-12)[None, :]
         log_norm = log_sum_exp(log_prob, axis=1)
         resp = np.exp(log_prob - log_norm[:, None])
-        return resp[0] if resp.shape[0] == 1 else resp
+        return resp
 
     def predict(self, X):
         resp = self.predict_proba(X)
         idx = np.argmax(resp, axis=1)
-        return idx[0] if idx.shape[0] == 1 else idx
+        return idx
 
     def score(self, X, y=None):
         X = check_2d_array(X)

@@ -124,6 +124,15 @@ def test_spatial_urdf_batch_and_position_ik():
     assert jacobian_batch.shape == (2, 6, 3)
     assert np.allclose(batch[1, :3, 3], target, atol=1e-7)
 
+    clipped_seed = robot.inverse_kinematics(
+        target,
+        joint_values=[5.0, -5.0, 5.0],
+        max_iter=300,
+        return_info=True,
+    )
+    assert np.all(clipped_seed.joint_values >= robot.joint_limits[:, 0])
+    assert np.all(clipped_seed.joint_values <= robot.joint_limits[:, 1])
+
 
 def test_spatial_urdf_full_pose_ik_and_joint_clipping():
     xml = _spatial_urdf().replace(

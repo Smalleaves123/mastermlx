@@ -4,6 +4,12 @@
 robots. It preserves URDF joint origins and arbitrary joint axes instead of
 reducing the model to the legacy axis-aligned DH conversion.
 
+Use this class for native URDF work. `RobotModel.from_urdf()` is the legacy
+URDF-to-DH compatibility path and may not represent arbitrary axes or joint
+origins identically; the two constructors are therefore not interchangeable.
+Unsupported URDF elements such as `<mimic>`, `<safety_controller>`, and
+`<visual>` are ignored rather than used for kinematics or collision geometry.
+
 ```python
 from mastermlx.robotics import URDFRobotModel
 

@@ -22,4 +22,4 @@ def test_kernel_svr_predicts_single_value():
     model = KernelSVR(C=2.0, epsilon=0.1, kernel="poly", degree=2, coef0=1.0, lr=0.03, max_iter=2500).fit(X, y)
     pred = model.predict([1.5])
 
-    assert isinstance(pred, float)
+    assert pred.shape == (1,)

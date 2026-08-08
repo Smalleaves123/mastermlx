@@ -23,4 +23,4 @@ def test_adaboost_regressor_single_sample_predict():
     model.fit(X, y)
 
     pred = model.predict([0.5])
-    assert isinstance(pred, float)
+    assert pred.shape == (1,)

@@ -129,8 +129,12 @@ def _summarize_search(
                 if values is None:
                     continue
             summary[key]["mean"].append(_mean(values))
-            values = np.asarray(values, dtype=float)
-            summary[key]["std"].append(float(np.nanstd(values)) if not np.all(np.isnan(values)) else np.nan)
+            array_values = np.asarray(values, dtype=float)
+            summary[key]["std"].append(
+                float(np.nanstd(array_values))
+                if not np.all(np.isnan(array_values))
+                else np.nan
+            )
 
     if isinstance(refit, str):
         refit_name = f"test_{refit}" if not refit.startswith("test_") else refit

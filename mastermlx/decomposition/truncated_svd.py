@@ -27,10 +27,10 @@ class TruncatedSVD(BaseTransformer):
         self.components_ = vt[:k]
         self.singular_values_ = s[:k]
 
-        denom = max(1, n_samples - 1)
-        var = (s ** 2) / denom
-        self.explained_variance_ = var[:k]
-        total = np.var(X, axis=0, ddof=1).sum()
+        transformed = X @ self.components_.T
+        ddof = 1 if n_samples > 1 else 0
+        self.explained_variance_ = np.var(transformed, axis=0, ddof=ddof)
+        total = np.var(X, axis=0, ddof=ddof).sum()
         if total <= 0.0:
             self.explained_variance_ratio_ = np.zeros(k)
         else:

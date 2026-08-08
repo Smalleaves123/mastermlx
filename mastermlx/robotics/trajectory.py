@@ -311,15 +311,15 @@ def smooth_joint_path(reference_waypoints, smoothness=1.0, fixed_start=True, fix
     interior = indices
     m = interior.size
     A = np.eye(m, dtype=float)
-    if m > 1:
-        diag = np.ones(m, dtype=float) * 2.0
+    diag = np.full(m, 2.0, dtype=float)
+    if interior[0] == 0:
         diag[0] = 1.0
+    if interior[-1] == n_waypoints - 1:
         diag[-1] = 1.0
-        A += smoothness * np.diag(diag)
+    A += smoothness * np.diag(diag)
+    if m > 1:
         off = -smoothness * np.ones(m - 1, dtype=float)
         A += np.diag(off, k=1) + np.diag(off, k=-1)
-    else:
-        A += np.array([[2.0 * smoothness]], dtype=float)
 
     for j in range(n_joints):
         b = reference_waypoints[interior, j].copy()

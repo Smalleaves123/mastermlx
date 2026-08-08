@@ -103,7 +103,7 @@ class RandomForestClassifier(BaseEstimator):
             out.append(vals[np.argmax(cnt)])
 
         result = np.asarray(out)
-        return result[0] if result.shape[0] == 1 else result
+        return result
 
     def score(self, X, y):
         return accuracy(y, self.predict(X))
@@ -196,7 +196,7 @@ class RandomForestRegressor(BaseEstimator):
             pred_rows.append(np.asarray(tree.predict(X[:, cols])))
         pred = np.asarray(pred_rows, dtype=float)
         out = np.mean(pred, axis=0)
-        return float(out[0]) if out.shape[0] == 1 else out
+        return out
 
     def score(self, X, y):
         return r2_score(y, self.predict(X))

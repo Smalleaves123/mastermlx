@@ -76,7 +76,7 @@ class IsolationForest(BaseEstimator):
             self.cols_.append(cols)
 
         scores = self.score_samples(X)
-        self.offset_ = float(np.quantile(scores, 1.0 - float(self.contamination)))
+        self.offset_ = float(np.quantile(scores, float(self.contamination)))
         return self
 
     def score_samples(self, X):
@@ -88,15 +88,10 @@ class IsolationForest(BaseEstimator):
             lengths.append(tree.path_lengths(X[:, cols]))
         mean_length = np.mean(np.vstack(lengths), axis=0)
         scale = average_path_length(self.max_samples_)
-        scores = 2.0 ** (-mean_length / max(scale, 1e-12))
-        return float(scores[0]) if scores.shape[0] == 1 else scores
+        return -(2.0 ** (-mean_length / max(scale, 1e-12)))
 
     def decision_function(self, X):
-        scores = self.score_samples(X)
-        out = self.offset_ - scores
-        return float(out) if np.ndim(out) == 0 else out
+        return self.score_samples(X) - self.offset_
 
     def predict(self, X):
-        scores = self.score_samples(X)
-        pred = np.where(scores >= self.offset_, -1, 1)
-        return int(pred) if np.ndim(pred) == 0 else pred
+        return np.where(self.decision_function(X) < 0.0, -1, 1)

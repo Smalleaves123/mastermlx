@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import inspect
 import numpy as np
 
 from ..base import Module
@@ -327,12 +328,18 @@ class _BaseMLP(Module):
         if scheduler is None:
             return
         monitor_loss = logs.get("monitor_loss")
-        try:
-            if monitor_loss is None:
-                scheduler.step()
-            else:
-                scheduler.step(monitor_loss)
-        except TypeError:
+        parameters = inspect.signature(scheduler.step).parameters.values()
+        accepts_metric = any(
+            parameter.kind in {
+                parameter.POSITIONAL_ONLY,
+                parameter.POSITIONAL_OR_KEYWORD,
+                parameter.VAR_POSITIONAL,
+            }
+            for parameter in parameters
+        )
+        if monitor_loss is not None and accepts_metric:
+            scheduler.step(monitor_loss)
+        else:
             scheduler.step()
 
 

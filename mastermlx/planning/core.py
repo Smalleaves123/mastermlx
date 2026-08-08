@@ -119,7 +119,8 @@ def rrt(
     for _ in range(max_iter):
         sample = goal if rng.random() < goal_rate else rng.uniform(bounds[:, 0], bounds[:, 1])
         dist = np.asarray([np.sum((node - sample) ** 2) for node in nodes])
-        near = nodes[int(np.argmin(dist))]
+        near_idx = int(np.argmin(dist))
+        near = nodes[near_idx]
         delta = sample - near
         length = float(np.linalg.norm(delta))
         if length == 0.0:
@@ -128,7 +129,7 @@ def rrt(
         if not _free(new, hit) or not _clear(near, new, hit, collision_step, edge_free=edge_free):
             continue
         nodes.append(new)
-        parents.append(len(nodes) - 2)
+        parents.append(near_idx)
         if np.linalg.norm(new - goal) <= step and _clear(
             new, goal, hit, collision_step, edge_free=edge_free
         ):

@@ -26,14 +26,14 @@ def test_isolation_forest_flags_far_outlier():
     assert np.sum(pred[:-1] == 1) >= 5
 
 
-def test_isolation_forest_scores_outlier_higher():
+def test_isolation_forest_scores_inlier_higher():
     X = np.array([[0.0], [0.1], [-0.1], [0.05], [0.02], [2.5]], dtype=float)
     model = IsolationForestPkg(n_estimators=50, max_samples=1.0, contamination=0.2, random_state=1).fit(X)
 
     scores = model.score_samples([[0.03], [2.5]])
 
     assert scores.shape == (2,)
-    assert scores[1] > scores[0]
+    assert scores[0] > scores[1]
 
 
 def test_isolation_forest_predicts_single_sample():
@@ -43,5 +43,5 @@ def test_isolation_forest_predicts_single_sample():
     pred = model.predict([2.0, 2.0])
     score = model.score_samples([2.0, 2.0])
 
-    assert isinstance(pred, int)
-    assert isinstance(score, float)
+    assert pred.shape == (1,)
+    assert score.shape == (1,)

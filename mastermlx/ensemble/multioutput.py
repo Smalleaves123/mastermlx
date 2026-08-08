@@ -37,6 +37,7 @@ class MultiOutputClassifier(BaseEstimator):
         if X.shape[0] != y.shape[0]:
             raise ValueError("X and y must have the same number of rows")
         sample_weight = check_sample_weight(sample_weight, X.shape[0])
+        self._set_n_features(X)
 
         self.estimators_ = []
         self.classes_ = []
@@ -52,17 +53,27 @@ class MultiOutputClassifier(BaseEstimator):
         return self
 
     def predict(self, X):
-        X = check_X(X)
+        X = self._check_X(X)
         if not self.estimators_:
             raise RuntimeError("Model has not been fit yet")
         preds = [est.predict(X) for est in self.estimators_]
         return np.column_stack([np.asarray(p, dtype=preds[0].dtype).ravel() for p in preds])
 
     def predict_proba(self, X):
-        X = check_X(X)
+        X = self._check_X(X)
         if not self.estimators_:
             raise RuntimeError("Model has not been fit yet")
         return [est.predict_proba(X) for est in self.estimators_ if hasattr(est, 'predict_proba')]
+
+    def score(self, X, y, sample_weight=None):
+        y = check_y(y, allow_2d=True)
+        if y.ndim == 1:
+            y = y[:, None]
+        pred = self.predict(X)
+        if y.shape != pred.shape:
+            raise ValueError("y and predictions must have the same shape")
+        weights = check_sample_weight(sample_weight, y.shape[0])
+        return float(np.average(np.all(y == pred, axis=1), weights=weights))
 
 
 class MultiOutputRegressor(BaseEstimator):
@@ -82,6 +93,7 @@ class MultiOutputRegressor(BaseEstimator):
         if X.shape[0] != y.shape[0]:
             raise ValueError("X and y must have the same number of rows")
         sample_weight = check_sample_weight(sample_weight, X.shape[0])
+        self._set_n_features(X)
 
         self.estimators_ = []
         for j in range(y.shape[1]):
@@ -91,7 +103,7 @@ class MultiOutputRegressor(BaseEstimator):
         return self
 
     def predict(self, X):
-        X = check_X(X)
+        X = self._check_X(X)
         if not self.estimators_:
             raise RuntimeError("Model has not been fit yet")
         preds = [est.predict(X) for est in self.estimators_]

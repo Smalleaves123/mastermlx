@@ -66,6 +66,10 @@ class _SequentialFit:
             classes = np.unique(y)
             if classes.size < 2:
                 raise ValueError("Sequential classification requires at least two classes")
+            if resume and self.classes_ is not None and not np.array_equal(classes, self.classes_):
+                raise ValueError("resume labels must match the classes from the loaded checkpoint")
+            if resume and self.classes_ is not None:
+                classes = self.classes_
             self.classes_ = classes
             y_idx = np.searchsorted(classes, y)
             loss_fn: Any = CrossEntropyLoss(from_logits=True)

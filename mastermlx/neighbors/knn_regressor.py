@@ -4,7 +4,7 @@ import numpy as np
 from typing import cast
 
 from ..base import BaseEstimator
-from ..utils import as_2d, check_1d_array, check_2d_array, mean_squared_error
+from ..utils import as_2d, check_1d_array, check_2d_array, r2_score
 from ._base import check_metric, check_weights, distance_weights, knn_neighbors
 
 
@@ -32,6 +32,7 @@ class KNNRegressor(BaseEstimator):
 
         self.X_ = X
         self.y_ = y
+        self._set_n_features(X)
         return self
 
     def predict(self, X):
@@ -52,7 +53,7 @@ class KNNRegressor(BaseEstimator):
             for i, row in enumerate(nn):
                 w = distance_weights(dist[i])
                 pred[i] = np.sum(w * y_train[row]) / np.sum(w)
-        return pred[0] if pred.shape[0] == 1 else pred
+        return pred
 
     def score(self, X, y):
-        return -mean_squared_error(y, self.predict(X))
+        return r2_score(y, self.predict(X))

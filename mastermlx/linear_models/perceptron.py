@@ -25,6 +25,7 @@ class Perceptron(BaseEstimator):
         if self.classes_.size != 2:
             raise ValueError("Perceptron only supports binary classification")
         y_bin = np.where(y == self.classes_[1], 1.0, -1.0)
+        self._set_n_features(X)
         n, d = X.shape
         rng = np.random.default_rng(self.random_state)
         if self.coef_ is None:
@@ -45,7 +46,7 @@ class Perceptron(BaseEstimator):
         return self
 
     def predict(self, X):
-        X = check_2d_array(X).astype(float)
+        X = self._check_X(X, dtype=float)
         coef = self.coef_
         classes = self.classes_
         if coef is None or classes is None:
@@ -54,5 +55,9 @@ class Perceptron(BaseEstimator):
         return np.where(scores >= 0, classes[1], classes[0])
 
     def decision_function(self, X):
-        X = check_2d_array(X).astype(float)
+        X = self._check_X(X, dtype=float)
         return X @ self.coef_ + self.intercept_
+
+    def score(self, X, y):
+        from ..utils.metrics import accuracy
+        return float(accuracy(y, self.predict(X)))

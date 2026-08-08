@@ -31,11 +31,13 @@ class _LabelBase(BaseEstimator):
         self.transduction_ = None
         self.n_iter_ = 0
 
-    def _resolve_gamma(self, n_features):
+    def _resolve_gamma(self, X):
+        n_features = X.shape[1]
         if self.gamma is None:
             return 1.0 / max(n_features, 1)
         if self.gamma == "scale":
-            return 1.0 / max(n_features, 1)
+            variance = float(np.var(X))
+            return 1.0 / (max(n_features, 1) * variance) if variance > 0.0 else 1.0
         return float(self.gamma)
 
     def _affinity(self, X):
@@ -84,7 +86,7 @@ class LabelPropagation(_LabelBase):
         self.X_ = X
         self.y_ = y
         self.classes_ = classes
-        self._gamma = self._resolve_gamma(X.shape[1])
+        self._gamma = self._resolve_gamma(X)
 
         A = self._affinity(X)
         S = A.row_normalized() if isinstance(A, _SparseAffinity) else row_norm(A)
@@ -121,7 +123,7 @@ class LabelSpreading(_LabelBase):
         self.X_ = X
         self.y_ = y
         self.classes_ = classes
-        self._gamma = self._resolve_gamma(X.shape[1])
+        self._gamma = self._resolve_gamma(X)
 
         A = self._affinity(X)
         S = A.sym_normalized() if isinstance(A, _SparseAffinity) else sym_norm(A)

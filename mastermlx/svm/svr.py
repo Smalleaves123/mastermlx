@@ -88,7 +88,7 @@ class LinearSVR(BaseEstimator):
         if self.coef_ is None:
             raise RuntimeError("Model has not been fit yet")
         pred = X @ self.coef_ + self.intercept_
-        return float(pred[0]) if pred.shape[0] == 1 else pred
+        return pred
 
     def score(self, X, y):
         return r2_score(y, self.predict(X))

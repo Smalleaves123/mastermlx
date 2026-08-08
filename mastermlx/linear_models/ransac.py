@@ -25,7 +25,11 @@ class RANSACRegressor(BaseEstimator):
         y = check_1d_array(y).astype(float)
         X, y = check_same_rows(X, y)
         n, d = X.shape
+        if self.max_trials < 1:
+            raise ValueError("max_trials must be at least 1")
         min_s = self.min_samples or max(d + 1, int(n * 0.1))
+        if min_s < 1 or min_s > n:
+            raise ValueError("min_samples must be between 1 and the number of samples")
         thresh = self.residual_threshold or np.median(np.abs(y - np.median(y))) * 2.0
         rng = np.random.default_rng(self.random_state)
 
@@ -35,7 +39,8 @@ class RANSACRegressor(BaseEstimator):
 
         Xb = np.column_stack([np.ones(n), X])
 
-        for _ in range(self.max_trials):
+        trial = 0
+        for trial in range(1, self.max_trials + 1):
             subset = rng.choice(n, size=min_s, replace=False)
             try:
                 beta = np.linalg.lstsq(Xb[subset], y[subset], rcond=None)[0]
@@ -47,6 +52,8 @@ class RANSACRegressor(BaseEstimator):
                 best_inliers = inliers
                 best_coef = beta[1:]
                 best_intercept = float(beta[0])
+                if best_inliers == n:
+                    break
 
         # Refit on all inliers
         if best_coef is not None:
@@ -60,7 +67,7 @@ class RANSACRegressor(BaseEstimator):
 
         self.coef_ = best_coef
         self.intercept_ = best_intercept
-        self.n_trials_ = self.max_trials
+        self.n_trials_ = trial
         return self
 
     def predict(self, X):

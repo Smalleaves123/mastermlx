@@ -131,7 +131,7 @@ class VariationalLogisticRegression(BaseEstimator, VariationalEstimator):
             raise RuntimeError("Model has not been fit yet")
         Xb = self._add_bias(X)
         scores = Xb @ cast(np.ndarray, self.posterior_mean_)
-        return float(scores[0]) if scores.shape[0] == 1 else scores
+        return scores
 
     def predict_proba(self, X):
         scores = self.decision_function(X)
@@ -152,7 +152,7 @@ class VariationalLogisticRegression(BaseEstimator, VariationalEstimator):
             scores = Xb @ weights
             p1 = sigmoid(scores)
             probs = np.column_stack([1.0 - p1, p1])
-            return probs[0] if probs.shape[0] == 1 else probs
+            return probs
 
         scores = weights @ Xb.T
         p1 = sigmoid(scores)
@@ -163,7 +163,7 @@ class VariationalLogisticRegression(BaseEstimator, VariationalEstimator):
         proba = self.predict_proba(X)
         idx = (proba[:, 1] >= 0.5).astype(int)
         pred = cast(np.ndarray, self.classes_)[idx]
-        return pred[0] if pred.shape[0] == 1 else pred
+        return pred
 
     def _posterior_summary(self):
         posterior_mean = cast(np.ndarray, self.posterior_mean_)

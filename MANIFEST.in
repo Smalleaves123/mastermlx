@@ -1,4 +1,3 @@
 include README.md
 include LICENSE
-include mastermlx/py.typed
 recursive-include mastermlx *.pyx *.c *.cpp

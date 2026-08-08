@@ -144,7 +144,7 @@ class VariationalGaussianMixture(BaseEstimator, VariationalEstimator):
         X = as_2d(X).astype(float)
         log_rho = self._estimate_log_resp(X)
         resp, _ = normalize_log_probs(log_rho, axis=1)
-        return resp[0] if resp.shape[0] == 1 else resp
+        return resp
 
     def predict(self, X):
         resp = self.predict_proba(X)

@@ -418,7 +418,9 @@ class RobotModel:
 
     def ik(self, target, joint_values=None, **kwargs):
         if joint_values is not None:
-            joint_values = self.validate_joint_values(joint_values, check_limits=self.joint_limits is not None)
+            joint_values = self.validate_joint_values(joint_values, check_limits=False)
+            if self.joint_limits is not None:
+                joint_values = self.clip_joint_values(joint_values)
         kwargs = dict(kwargs)
         kwargs.setdefault("joint_limits", self.joint_limits)
         return inverse_kinematics(target, self.links, joint_values=joint_values, base=self.base, tool=self.tool, **kwargs)

@@ -17,6 +17,7 @@ def test_rrt_finds_a_free_path():
     assert path is not None
     assert np.allclose(path[0], [0.1, 0.1])
     assert np.allclose(path[-1], [0.9, 0.9])
+    assert np.all(np.linalg.norm(np.diff(path, axis=0), axis=1) <= 0.1 + 1e-12)
 
 
 def test_rrt_avoids_obstacle():
@@ -37,6 +38,7 @@ def test_rrt_avoids_obstacle():
     assert path is not None
     assert np.all([not hit(point) for point in path])
     assert np.max(path[:, 1]) > 0.8
+    assert np.all(np.linalg.norm(np.diff(path, axis=0), axis=1) <= 0.08 + 1e-12)
 
 
 def test_rrt_star_finds_and_rewires_a_free_path():

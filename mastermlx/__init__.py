@@ -108,3 +108,22 @@ _extend_unique(__all__, [name for name in _variational.__all__ if name not in {"
 _extend_unique(__all__, _viz.__all__)
 _extend_unique(__all__, _vision.__all__)
 _extend_unique(__all__, _clustering.__all__)
+
+# ``LDA`` denotes unrelated topic-model and discriminant-analysis classes.
+# Requiring an explicit alias prevents import order from silently selecting one.
+_AMBIGUOUS_TOP_LEVEL_EXPORTS = {
+    "LDA": ("mastermlx.nlp.NLP_LDA", "mastermlx.probabilistic.DiscriminantLDA"),
+}
+for _ambiguous_name in _AMBIGUOUS_TOP_LEVEL_EXPORTS:
+    globals().pop(_ambiguous_name, None)
+    if _ambiguous_name in __all__:
+        __all__.remove(_ambiguous_name)
+
+
+def __getattr__(name):
+    choices = _AMBIGUOUS_TOP_LEVEL_EXPORTS.get(name)
+    if choices is not None:
+        raise AttributeError(
+            f"mastermlx.{name} is ambiguous; import one of: {', '.join(choices)}"
+        )
+    raise AttributeError(f"module 'mastermlx' has no attribute {name!r}")

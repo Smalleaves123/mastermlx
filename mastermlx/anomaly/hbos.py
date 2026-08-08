@@ -41,7 +41,7 @@ class HBOS(BaseEstimator):
         self.bin_edges_ = edges
         self.bin_density_ = dens
         scores = self.score_samples(X)
-        self.offset_ = float(np.quantile(scores, 1.0 - self.contamination))
+        self.offset_ = float(np.quantile(scores, self.contamination))
         return self
 
     def score_samples(self, X):
@@ -56,14 +56,10 @@ class HBOS(BaseEstimator):
             idx = np.searchsorted(edges, X[:, j], side="right") - 1
             idx = np.clip(idx, 0, dens.shape[0] - 1)
             scores += -np.log(dens[idx])
-        return float(scores[0]) if scores.shape[0] == 1 else scores
+        return -scores
 
     def decision_function(self, X):
-        scores = self.score_samples(X)
-        out = self.offset_ - scores
-        return float(out) if np.ndim(out) == 0 else out
+        return self.score_samples(X) - self.offset_
 
     def predict(self, X):
-        scores = self.score_samples(X)
-        pred = np.where(scores >= self.offset_, -1, 1)
-        return int(pred) if np.ndim(pred) == 0 else pred
+        return np.where(self.decision_function(X) < 0.0, -1, 1)

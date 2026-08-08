@@ -52,3 +52,11 @@ def test_truncated_svd_reports_variance_ratio():
     assert model.explained_variance_.shape == (1,)
     assert model.explained_variance_ratio_.shape == (1,)
     assert model.explained_variance_ratio_[0] > 0.0
+
+
+def test_truncated_svd_full_basis_preserves_total_centered_variance():
+    X = np.array([[10.0, 0.0], [11.0, 1.0], [12.0, 0.0], [13.0, 1.0]])
+
+    model = TruncatedSVD(n_components=2).fit(X)
+
+    assert np.isclose(np.sum(model.explained_variance_ratio_), 1.0)

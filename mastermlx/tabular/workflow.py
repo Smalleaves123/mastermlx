@@ -237,8 +237,12 @@ class TabularExperiment(BaseExperiment):
             values = np.asarray(model.feature_importances_, dtype=float).ravel()
             kind = "split_frequency"
         elif hasattr(model, "coef_"):
-            values = np.asarray(model.coef_, dtype=float)
-            values = np.abs(values).mean(axis=0) if values.ndim > 1 else np.abs(values).ravel()
+            coefficients = np.asarray(model.coef_, dtype=float)
+            values = (
+                np.abs(coefficients).mean(axis=0)
+                if coefficients.ndim > 1
+                else np.abs(coefficients).ravel()
+            )
             kind = "absolute_coefficient"
         else:
             return None

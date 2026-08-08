@@ -82,7 +82,7 @@ def run_supervised_training_loop(
         if improved:
             best_loss = monitor_loss
             best_epoch = epoch + 1
-            best_val_loss = monitor_loss
+            best_val_loss = val_loss
             if snapshot_state is not None:
                 best_state = snapshot_state()
             wait = 0

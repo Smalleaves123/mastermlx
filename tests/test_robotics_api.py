@@ -46,6 +46,13 @@ def test_robot_model_joint_limits_and_constrained_ik():
     solution = robot.ik(target, joint_values=[0.0, 0.0], max_iter=300, damping=1e-5)
     assert robot.joint_limit_violation(solution) == 0.0
     assert np.allclose(robot.fk(solution)[:3, 3], target, atol=1e-5)
+    clipped_seed_solution = robot.ik(
+        target,
+        joint_values=[2.0, -2.0],
+        max_iter=300,
+        damping=1e-5,
+    )
+    assert robot.joint_limit_violation(clipped_seed_solution) == 0.0
     with pytest.raises(ValueError, match="joint_limits"):
         robot.fk([1.0, 0.0])
 

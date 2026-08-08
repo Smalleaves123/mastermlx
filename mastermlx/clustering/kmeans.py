@@ -68,13 +68,19 @@ class KMeans(BaseEstimator):
 
     def fit(self, X: ArrayLike, y: ArrayLike | None = None) -> "KMeans":
         X = check_2d_array(X)
+        if self.n_init < 1:
+            raise ValueError("n_init must be at least 1")
+        if self.max_iter < 1:
+            raise ValueError("max_iter must be at least 1")
+        if self.tol < 0.0 or not np.isfinite(self.tol):
+            raise ValueError("tol must be non-negative and finite")
 
         best_inertia = np.inf
         best_centers = None
         best_labels = None
         best_iter = 0
 
-        n_runs = max(1, self.n_init)
+        n_runs = self.n_init
         for run in range(n_runs):
             run_rng = np.random.default_rng(None if self.random_state is None else self.random_state + run)
             centers = self._init_centers(X, run_rng)
@@ -106,14 +112,14 @@ class KMeans(BaseEstimator):
         self.n_iter_ = best_iter
         return self
 
-    def predict(self, X: ArrayLike) -> np.ndarray | np.generic:
+    def predict(self, X: ArrayLike) -> np.ndarray:
         if self.cluster_centers_ is None:
             raise RuntimeError("Model has not been fit yet")
         X = as_2d(X)
         if X.shape[1] != self.cluster_centers_.shape[1]:
             raise ValueError("X has a different number of features than the fitted data")
         labels, _ = self._assign_labels(X, self.cluster_centers_)
-        return labels[0] if labels.shape[0] == 1 else labels
+        return labels
 
     def transform(self, X: ArrayLike) -> np.ndarray:
         if self.cluster_centers_ is None:

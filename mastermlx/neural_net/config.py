@@ -13,6 +13,7 @@ class OptimizerConfig:
     beta1: float = 0.9
     beta2: float = 0.999
     eps: float = 1e-8
+    weight_decay: float = 0.01
 
 
 @dataclass(frozen=True)
@@ -85,7 +86,7 @@ def resolve_training_config(config=None, **overrides):
 
 
 def build_optimizer(config):
-    from .optimizers import Adam, RMSProp, SGD
+    from .optimizers import AdaGrad, Adam, AdamW, RMSProp, SGD
 
     cfg = _coerce_dict(config, OptimizerConfig)
     name = cfg.name.lower()
@@ -95,7 +96,17 @@ def build_optimizer(config):
         return Adam(lr=cfg.lr, beta1=cfg.beta1, beta2=cfg.beta2, eps=cfg.eps)
     if name == "rmsprop":
         return RMSProp(lr=cfg.lr, rho=cfg.rho, eps=cfg.eps)
-    raise ValueError("optimizer config name must be one of: sgd, adam, rmsprop")
+    if name == "adagrad":
+        return AdaGrad(lr=cfg.lr, eps=cfg.eps)
+    if name == "adamw":
+        return AdamW(
+            lr=cfg.lr,
+            beta1=cfg.beta1,
+            beta2=cfg.beta2,
+            eps=cfg.eps,
+            weight_decay=cfg.weight_decay,
+        )
+    raise ValueError("optimizer config name must be one of: sgd, adam, rmsprop, adagrad, adamw")
 
 
 OptCfg = OptimizerConfig

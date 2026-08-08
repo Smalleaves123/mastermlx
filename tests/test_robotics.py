@@ -242,6 +242,14 @@ def test_plan_joint_path_and_smoothing_reduce_kinks():
     assert smooth_kink <= raw_kink
 
 
+def test_smooth_joint_path_uses_interior_boundary_degree():
+    path = np.array([[0.0], [10.0], [-10.0], [0.0]])
+
+    smoothed = smooth_joint_path(path, smoothness=1.0)
+
+    assert np.allclose(smoothed[:, 0], [0.0, 2.5, -2.5, 0.0])
+
+
 def test_plan_joint_trajectory_returns_samples():
     times, positions, velocities, accelerations = plan_joint_trajectory(
         np.array([0.0, 0.0]),

@@ -59,7 +59,7 @@ def _precision_recall_f1(y_true, y_pred, average="binary", pos_label=1):
     if average == "binary":
         if labels.shape[0] > 2:
             raise ValueError("average='binary' is only supported for binary targets")
-        labels = np.array([pos_label])
+        labels = np.asarray([pos_label], dtype=labels.dtype)
     elif average not in {"macro", "micro", "weighted", None}:
         raise ValueError("average must be one of: binary, macro, micro, weighted, None")
 

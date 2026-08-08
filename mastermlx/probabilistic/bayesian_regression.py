@@ -55,12 +55,10 @@ class BayesianLinearRegression(BaseEstimator):
         Xb = self._add_bias(X)
         mean = Xb @ self.posterior_mean_
         if not return_std:
-            return float(mean[0]) if mean.shape[0] == 1 else mean
+            return mean
 
         var = 1.0 / self.beta + np.sum((Xb @ self.posterior_cov_) * Xb, axis=1)
         std = np.sqrt(np.maximum(var, 0.0))
-        if mean.shape[0] == 1:
-            return float(mean[0]), float(std[0])
         return mean, std
 
     def posterior_summary(self):

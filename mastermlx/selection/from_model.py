@@ -32,7 +32,10 @@ class SelectFromModel(BaseTransformer):
         else:
             raise ValueError("estimator must have coef_ or feature_importances_")
         if imp.size != X.shape[1]:
-            imp = imp[:X.shape[1]]
+            raise ValueError(
+                "estimator feature importance length must match X "
+                f"({imp.size} != {X.shape[1]})"
+            )
 
         # Compute threshold
         if self.threshold == "mean":
@@ -55,10 +58,11 @@ class SelectFromModel(BaseTransformer):
             keep[top_idx] = True
             self.support_ = self.support_ & keep
 
+        self._set_n_features(X)
         return self
 
     def transform(self, X):
-        X = check_2d_array(X)
+        X = self._check_X(X)
         if self.support_ is None:
             raise RuntimeError("Selector has not been fit yet")
         return X[:, self.support_]

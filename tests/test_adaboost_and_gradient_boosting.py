@@ -77,4 +77,4 @@ def test_gradient_boosting_regressor_single_sample_predict():
     model.fit(X, y)
 
     pred = model.predict([1.5])
-    assert isinstance(pred, float)
+    assert pred.shape == (1,)

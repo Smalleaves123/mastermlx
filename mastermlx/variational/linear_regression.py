@@ -171,13 +171,11 @@ class VariationalLinearRegression(BaseEstimator, VariationalEstimator):
         Xb = self._add_bias(X)
         mean = Xb @ posterior_mean
         if not return_std:
-            return float(mean[0]) if mean.shape[0] == 1 else mean
+            return mean
 
         noise_var = 1.0 / self._expected_noise_precision()
         var = noise_var + np.sum((Xb @ posterior_cov) * Xb, axis=1)
         std = np.sqrt(np.maximum(var, 0.0))
-        if mean.shape[0] == 1:
-            return float(mean[0]), float(std[0])
         return mean, std
 
     def _posterior_summary(self):

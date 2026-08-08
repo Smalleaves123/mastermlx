@@ -15,13 +15,13 @@ class _BaseNB(BaseEstimator):
     def _predict_from_log_joint(self, logp):
         idx = np.argmax(logp, axis=1)
         pred = cast(np.ndarray, getattr(self, "classes_"))[idx]
-        return pred[0] if pred.shape[0] == 1 else pred
+        return pred
 
     def _predict_proba_from_log_joint(self, logp):
         logp = logp - np.max(logp, axis=1, keepdims=True)
         p = np.exp(logp)
         p = p / np.sum(p, axis=1, keepdims=True)
-        return p[0] if p.shape[0] == 1 else p
+        return p
 
 
 class GaussianNB(_BaseNB):

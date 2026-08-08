@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import inspect
 from typing import Any
 
 import numpy as np
@@ -143,7 +144,6 @@ class _SequentialRuntime:
         if clip_norm is not None:
             clip_grads(self.layers, clip_norm)
 
-        dense_idx = 0
         l2 = self.training_config_.l2
         lr = self.training_config_.lr
         begin_step = getattr(self.optimizer_, "begin_step", None)
@@ -151,13 +151,13 @@ class _SequentialRuntime:
         if begin_step is not None:
             begin_step()
         try:
-            for layer in self.layers:
+            for layer_idx, layer in enumerate(self.layers):
                 if hasattr(layer, "step"):
+                    key_prefix = f"layer{layer_idx}.{layer.__class__.__name__.lower()}"
                     if isinstance(layer, (Dense, Embedding)):
-                        layer.step(optimizer=self.optimizer_, key_prefix=f"dense{dense_idx}", l2=l2, lr=lr)
-                        dense_idx += 1
+                        layer.step(optimizer=self.optimizer_, key_prefix=key_prefix, l2=l2, lr=lr)
                     else:
-                        layer.step(lr=lr, optimizer=self.optimizer_, key_prefix=layer.__class__.__name__.lower())
+                        layer.step(lr=lr, optimizer=self.optimizer_, key_prefix=key_prefix)
         finally:
             if end_step is not None:
                 end_step()
@@ -213,12 +213,18 @@ class _SequentialRuntime:
         if scheduler is None:
             return
         monitor_loss = logs.get("monitor_loss")
-        try:
-            if monitor_loss is None:
-                scheduler.step()
-            else:
-                scheduler.step(monitor_loss)
-        except TypeError:
+        parameters = inspect.signature(scheduler.step).parameters.values()
+        accepts_metric = any(
+            parameter.kind in {
+                parameter.POSITIONAL_ONLY,
+                parameter.POSITIONAL_OR_KEYWORD,
+                parameter.VAR_POSITIONAL,
+            }
+            for parameter in parameters
+        )
+        if monitor_loss is not None and accepts_metric:
+            scheduler.step(monitor_loss)
+        else:
             scheduler.step()
 
     def evaluate(self, X, y, metrics=None):

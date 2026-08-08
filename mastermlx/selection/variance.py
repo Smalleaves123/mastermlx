@@ -18,10 +18,11 @@ class VarianceThreshold(BaseTransformer):
         self.support_ = self.variances_ > self.threshold
         if not np.any(self.support_):
             raise ValueError("No feature meets the variance threshold")
+        self._set_n_features(X)
         return self
 
     def transform(self, X):
-        X = check_2d_array(X).astype(float)
+        X = self._check_X(X, dtype=float)
         if self.support_ is None:
             raise RuntimeError("VarianceThreshold has not been fit yet")
         return X[:, self.support_]

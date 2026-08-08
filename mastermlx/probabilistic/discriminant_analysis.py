@@ -46,7 +46,7 @@ class _BaseDiscriminantAnalysis(BaseEstimator):
         scores = self._joint_log_likelihood(X)
         idx = np.argmax(scores, axis=1)
         pred = self.classes_[idx]
-        return pred[0] if pred.shape[0] == 1 else pred
+        return pred
 
     def score(self, X, y):
         return accuracy(y, self.predict(X))

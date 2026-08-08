@@ -1,14 +1,14 @@
 # Changelog
 
-## 0.1.13
-
-- Optimized the pure NumPy squared-Euclidean distance fallback with a BLAS-friendly matrix formulation.
-- Removed the large three-dimensional broadcast buffer from the NumPy distance path, reducing memory usage and improving fallback performance.
-- Made default time-series cross-validation adapt to short series while validating the minimum training-fold size.
-- Added regression coverage for the optimized distance fallback and short-series model comparison.
-
 ## Unreleased
 
+- Standardized estimator single-sample prediction and scoring shapes.
+- Fixed RRT parent links and isolated Sequential optimizer state per layer.
+- Added true out-of-fold probability calibration and enabled configured
+  AdaGrad/AdamW optimizers.
+- Aligned anomaly scores with the convention that higher values indicate
+  inliers and added public API contract regression tests.
+- Added coverage measurement to CI.
 - Added optional C++ batched arbitrary-axis/RPY URDF kinematics and recursive
   Newton-Euler inverse dynamics, with NumPy fallbacks and parity tests.
 - Added chain-level AABB pruning, precomputed obstacle bounds, and parallel
@@ -132,6 +132,13 @@
 - Changed release automation so a tag creates a GitHub Release and the release
   workflow publishes once, avoiding the previous duplicate PyPI upload path.
 - Added Cython acceleration for time-series hot paths such as rolling mean, autocorrelation, exponential smoothing, and CUSUM detection.
+
+## 0.1.13
+
+- Optimized the pure NumPy squared-Euclidean distance fallback with a BLAS-friendly matrix formulation.
+- Removed the large three-dimensional broadcast buffer from the NumPy distance path, reducing memory usage and improving fallback performance.
+- Made default time-series cross-validation adapt to short series while validating the minimum training-fold size.
+- Added regression coverage for the optimized distance fallback and short-series model comparison.
 
 ## 0.1.12
 

@@ -97,8 +97,8 @@ class GradientBoostingClassifier(BaseEstimator):
                 scores[:, k] += self.learning_rate * tree.predict(X)
         if scores.shape[1] == 2:
             margin = scores[:, 1] - scores[:, 0]
-            return float(margin[0]) if margin.shape[0] == 1 else margin
-        return scores[0] if scores.shape[0] == 1 else scores
+            return margin
+        return scores
 
     def staged_decision_function(self, X):
         if self.classes_ is None:
@@ -111,9 +111,9 @@ class GradientBoostingClassifier(BaseEstimator):
                 scores[:, k] += self.learning_rate * tree.predict(X)
             if scores.shape[1] == 2:
                 margin = scores[:, 1] - scores[:, 0]
-                yield float(margin[0]) if margin.shape[0] == 1 else margin.copy()
+                yield margin.copy()
             else:
-                yield scores[0].copy() if scores.shape[0] == 1 else scores.copy()
+                yield scores.copy()
 
     def staged_predict_proba(self, X):
         for scores in self.staged_decision_function(X):
@@ -148,7 +148,7 @@ class GradientBoostingClassifier(BaseEstimator):
             for k, tree in enumerate(stage):
                 scores[:, k] += self.learning_rate * tree.predict(X)
         proba = _softmax(scores)
-        return proba[0] if proba.shape[0] == 1 else proba
+        return proba
 
     def predict(self, X):
         classes = cast(np.ndarray, self.classes_)
@@ -157,7 +157,7 @@ class GradientBoostingClassifier(BaseEstimator):
             return classes[int(np.argmax(proba))]
         idx = np.argmax(proba, axis=1)
         pred = classes[idx]
-        return pred[0] if pred.shape[0] == 1 else pred
+        return pred
 
     def score(self, X, y):
         return accuracy(y, self.predict(X))

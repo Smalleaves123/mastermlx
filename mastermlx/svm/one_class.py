@@ -87,7 +87,7 @@ class OneClassSVM(BaseEstimator):
         X = as_2d(X).astype(float)
         K = self._kernel(X, self.X_)
         scores = K @ self.alpha_ - self.intercept_
-        return float(scores[0]) if scores.shape[0] == 1 else scores
+        return scores
 
     def predict(self, X):
         scores = self.decision_function(X)

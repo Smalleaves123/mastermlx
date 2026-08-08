@@ -81,7 +81,7 @@ class StackingClassifier(BaseEstimator):
     def predict(self, X):
         feats = self._feat(X)
         pred = self._require_final().predict(feats)
-        return pred[0] if np.asarray(pred).shape[0] == 1 else pred
+        return np.asarray(pred)
 
     def predict_proba(self, X):
         feats = self._feat(X)
@@ -89,7 +89,7 @@ class StackingClassifier(BaseEstimator):
         if not hasattr(final, "predict_proba"):
             raise AttributeError("final_estimator does not define predict_proba")
         proba = final.predict_proba(feats)
-        return proba[0] if proba.shape[0] == 1 else proba
+        return proba
 
     def score(self, X, y):
         return accuracy(y, self.predict(X))
@@ -135,7 +135,7 @@ class StackingRegressor(BaseEstimator):
     def predict(self, X):
         feats = self._feat(X)
         pred = self._require_final().predict(feats)
-        return float(pred[0]) if np.asarray(pred).shape[0] == 1 else pred
+        return np.asarray(pred)
 
     def score(self, X, y):
         return r2_score(y, self.predict(X))

@@ -47,7 +47,7 @@ class VotingClassifier(BaseEstimator):
                 probs = np.zeros_like(p, dtype=float)
             probs += w * p
         probs /= np.sum(ws)
-        return probs[0] if probs.shape[0] == 1 else probs
+        return probs
 
     def predict(self, X):
         if self.voting == "soft":
@@ -64,7 +64,7 @@ class VotingClassifier(BaseEstimator):
             vals, cnt = np.unique(col, return_counts=True)
             out.append(vals[np.argmax(cnt)])
         result = np.asarray(out)
-        return result[0] if result.shape[0] == 1 else result
+        return result
 
     def score(self, X, y):
         return accuracy(y, self.predict(X))
@@ -99,7 +99,7 @@ class VotingRegressor(BaseEstimator):
                 raise ValueError("weights must match number of estimators")
             w = self.weights / np.sum(self.weights)
             out = np.average(preds, axis=0, weights=w)
-        return float(out[0]) if out.shape[0] == 1 else out
+        return out
 
     def score(self, X, y):
         return r2_score(y, self.predict(X))

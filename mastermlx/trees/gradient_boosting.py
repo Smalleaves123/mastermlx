@@ -64,7 +64,7 @@ class GradientBoostingRegressor(BaseEstimator):
         pred = np.full(X.shape[0], self.init_, dtype=float)
         for tree in self.estimators_:
             pred += self.learning_rate * tree.predict(X)
-        return float(pred[0]) if pred.shape[0] == 1 else pred
+        return pred
 
     def score(self, X, y):
         return r2_score(y, self.predict(X))

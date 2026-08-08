@@ -96,6 +96,12 @@ def test_quantile_normal():
     assert np.all(np.isfinite(Xt))
 
 
+def test_quantile_transform_uses_fitted_distribution_for_new_samples():
+    qt = QuantileTransform(n_quantiles=2).fit(np.array([[0.0], [10.0]]))
+
+    assert np.allclose(qt.transform([[5.0]]), [[0.5]])
+
+
 # ---------------------------------------------------------------------------
 # TargetEncoder
 # ---------------------------------------------------------------------------

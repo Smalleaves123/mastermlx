@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import numpy as np
 
 
@@ -20,54 +21,38 @@ def lr_find(model, X, y, start=1e-8, end=10.0, n_iters=100, batch_size=None, ran
     lr = float(start)
     lrs, losses = [], []
 
-    # Snapshot original params if model supports it
-    import copy
+    original_state = copy.deepcopy(vars(model))
     try:
-        orig = copy.deepcopy({k: v.copy() if hasattr(v, 'copy') else copy.deepcopy(v)
-                              for k, v in vars(model).items()
-                              if not k.startswith('_') and k not in ('lr', 'optimizer')})
-    except Exception:
-        orig = None
+        for _ in range(n_iters):
+            idx = rng.integers(0, n, size=bs)
+            xb, yb = X[idx], y[idx]
 
-    for _ in range(n_iters):
-        idx = rng.integers(0, n, size=bs)
-        xb, yb = X[idx], y[idx]
+            for attr in ('lr', 'learning_rate', 'eta0'):
+                if hasattr(model, attr):
+                    setattr(model, attr, lr)
 
-        # Set lr on model (support common param names)
-        for attr in ('lr', 'learning_rate', 'eta0'):
-            if hasattr(model, attr):
-                setattr(model, attr, lr)
+            if hasattr(model, "partial_fit"):
+                model.partial_fit(xb, yb)
+            else:
+                model.fit(xb, yb)
 
-        try:
-            model.partial_fit(xb, yb)
-        except AttributeError:
-            model.fit(xb, yb)
+            if hasattr(model, 'loss_') and model.loss_:
+                loss = float(model.loss_[-1])
+            elif hasattr(model, 'loss_curve_') and model.loss_curve_:
+                loss = float(model.loss_curve_[-1])
+            elif hasattr(model, "score"):
+                loss = -float(model.score(xb, yb))
+            else:
+                raise ValueError("model must expose a loss history or score method")
 
-        # Record loss
-        if hasattr(model, 'loss_') and model.loss_:
-            loss = float(model.loss_[-1])
-        elif hasattr(model, 'loss_curve_') and model.loss_curve_:
-            loss = float(model.loss_curve_[-1])
-        else:
-            try:
-                loss = float(model.score(xb, yb))
-            except Exception:
-                loss = float(lr)
+            lrs.append(lr)
+            losses.append(loss)
+            lr *= factor
 
-        lrs.append(lr)
-        losses.append(loss)
-        lr *= factor
-
-        # Stop if loss explodes
-        if len(losses) > 5 and loss > 10.0 * np.min(losses[:-1]):
-            break
-
-    # Restore original params
-    if orig is not None:
-        for k, v in orig.items():
-            try:
-                setattr(model, k, v)
-            except Exception:
-                pass
+            if len(losses) > 5 and loss > 10.0 * np.min(losses[:-1]):
+                break
+    finally:
+        vars(model).clear()
+        vars(model).update(original_state)
 
     return np.array(lrs, dtype=float), np.array(losses, dtype=float)

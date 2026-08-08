@@ -78,6 +78,7 @@ def test_ransac_clean():
     y = X[:, 0] * 3.0 - X[:, 1] * 2.0 + 0.5
     rr = RANSACRegressor(random_state=0).fit(X, y)
     assert np.corrcoef(rr.predict(X), y)[0, 1] > 0.95
+    assert rr.n_trials_ == 1
 
 
 def test_ransac_outliers():

@@ -7,6 +7,8 @@ from ..utils import check_2d_array, check_1d_array
 
 
 def f_classif(X, y):
+    from ..math_tools.stats import _f_cdf
+
     X = check_2d_array(X).astype(float)
     y = check_1d_array(y, name="y")
     classes = np.unique(y)
@@ -15,7 +17,7 @@ def f_classif(X, y):
 
     n_features = X.shape[1]
     scores = np.zeros(n_features, dtype=float)
-    pvals = np.full(n_features, np.nan, dtype=float)
+    pvals = np.ones(n_features, dtype=float)
     overall = np.mean(X, axis=0)
 
     for j in range(n_features):
@@ -31,14 +33,23 @@ def f_classif(X, y):
             ssw += np.sum((x - m) ** 2)
         dfb = classes.size - 1
         dfw = X.shape[0] - classes.size
-        if dfb <= 0 or dfw <= 0 or ssw <= 0:
+        if dfb <= 0 or dfw <= 0:
             scores[j] = 0.0
+        elif ssw <= 0.0:
+            scores[j] = np.inf if ssb > 0.0 else 0.0
         else:
             scores[j] = (ssb / dfb) / (ssw / dfw)
+        pvals[j] = 0.0 if np.isinf(scores[j]) else np.clip(
+            1.0 - _f_cdf(scores[j], dfb, dfw),
+            0.0,
+            1.0,
+        )
     return scores, pvals
 
 
 def f_regression(X, y):
+    from ..math_tools.stats import _f_cdf
+
     X = check_2d_array(X).astype(float)
     y = check_1d_array(y, name="y").astype(float)
     n = X.shape[0]
@@ -48,7 +59,7 @@ def f_regression(X, y):
     y0 = y - np.mean(y)
     yss = np.sum(y0 ** 2)
     scores = np.zeros(X.shape[1], dtype=float)
-    pvals = np.full(X.shape[1], np.nan, dtype=float)
+    pvals = np.ones(X.shape[1], dtype=float)
 
     for j in range(X.shape[1]):
         x = X[:, j] - np.mean(X[:, j])
@@ -63,6 +74,11 @@ def f_regression(X, y):
             scores[j] = np.inf
         else:
             scores[j] = (r2 / (1.0 - r2)) * (n - 2)
+        pvals[j] = 0.0 if np.isinf(scores[j]) else np.clip(
+            1.0 - _f_cdf(scores[j], 1, n - 2),
+            0.0,
+            1.0,
+        )
     return scores, pvals
 
 
@@ -102,10 +118,11 @@ class SelectKBest(BaseTransformer):
         self.support_ = support
         self.ranking_ = np.empty(X.shape[1], dtype=int)
         self.ranking_[order] = np.arange(1, X.shape[1] + 1)
+        self._set_n_features(X)
         return self
 
     def transform(self, X):
-        X = check_2d_array(X).astype(float)
+        X = self._check_X(X, dtype=float)
         if self.support_ is None:
             raise RuntimeError("SelectKBest has not been fit yet")
         return X[:, self.support_]

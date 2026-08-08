@@ -47,7 +47,7 @@ def test_bernoulli_nb_handles_binary_text_features():
     proba = model.predict_proba(X[:1])
 
     assert np.array_equal(pred, y)
-    assert proba.shape == (2,)
+    assert proba.shape == (1, 2)
     assert model.score(X, y) == 1.0
 
 
@@ -62,5 +62,5 @@ def test_multinomial_nb_handles_count_text_features():
     proba = model.predict_proba(X[:1])
 
     assert np.array_equal(pred, y)
-    assert proba.shape == (2,)
+    assert proba.shape == (1, 2)
     assert model.score(X, y) == 1.0

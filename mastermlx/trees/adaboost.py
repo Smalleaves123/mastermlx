@@ -65,7 +65,7 @@ class _WeightedDecisionStump:
         left_class = cast(Any, self.left_class_)
         right_class = cast(Any, self.right_class_)
         pred = np.where(X[:, feature] <= threshold, left_class, right_class)
-        return pred[0] if pred.shape[0] == 1 else pred
+        return pred
 
 
 class AdaBoostClassifier(BaseEstimator):
@@ -152,7 +152,7 @@ class AdaBoostClassifier(BaseEstimator):
             pred = np.asarray(estimator.predict(X))
             for idx, cls in enumerate(classes):
                 scores[:, idx] += alpha * (pred == cls)
-            yield scores[0].copy() if scores.shape[0] == 1 else scores.copy()
+            yield scores.copy()
 
     def staged_predict_proba(self, X):
         for scores in self.staged_decision_function(X):
@@ -178,7 +178,7 @@ class AdaBoostClassifier(BaseEstimator):
     def predict(self, X):
         scores = self.decision_function(X)
         pred = cast(np.ndarray, self.classes_)[np.argmax(scores, axis=1)]
-        return pred[0] if pred.shape[0] == 1 else pred
+        return pred
 
     def score(self, X, y):
         return accuracy(y, self.predict(X))

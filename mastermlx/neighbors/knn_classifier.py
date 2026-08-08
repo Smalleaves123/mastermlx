@@ -30,6 +30,7 @@ class KNNClassifier(BaseEstimator):
         check_weights(self.weights)
 
         self.X_ = X
+        self._set_n_features(X)
         self.classes_, self.y_codes_ = np.unique(y, return_inverse=True)
         self.n_classes_ = self.classes_.shape[0]
         return self
@@ -54,8 +55,7 @@ class KNNClassifier(BaseEstimator):
                 cnt = np.bincount(codes, weights=w, minlength=self.n_classes_)
             pred_codes[i] = int(np.argmax(cnt))
 
-        pred = self.classes_[pred_codes]
-        return pred[0] if pred.shape[0] == 1 else pred
+        return self.classes_[pred_codes]
 
     def score(self, X, y):
         return accuracy(y, self.predict(X))

@@ -132,7 +132,7 @@ class ExtraTreeClassifier(_ExtraTreeBase):
             raise RuntimeError("Model has not been fit yet")
         X = as_2d(X)
         pred = np.array([self._predict_one(x, self.root_) for x in X])
-        return pred[0] if pred.shape[0] == 1 else pred
+        return pred
 
     def score(self, X, y):
         return accuracy(y, self.predict(X))
@@ -160,7 +160,7 @@ class ExtraTreeRegressor(_ExtraTreeBase):
             raise RuntimeError("Model has not been fit yet")
         X = as_2d(X)
         pred = np.array([self._predict_one(x, self.root_) for x in X], dtype=float)
-        return float(pred[0]) if pred.shape[0] == 1 else pred
+        return pred
 
     def score(self, X, y):
         return r2_score(y, self.predict(X))
@@ -205,7 +205,7 @@ class ExtraTreesClassifier(BaseEstimator):
             vals, cnt = np.unique(col, return_counts=True)
             out.append(vals[np.argmax(cnt)])
         result = np.asarray(out)
-        return result[0] if result.shape[0] == 1 else result
+        return result
 
     def score(self, X, y):
         return accuracy(y, self.predict(X))
@@ -246,7 +246,7 @@ class ExtraTreesRegressor(BaseEstimator):
         X = as_2d(X).astype(float)
         preds = np.asarray([tree.predict(X) for tree in self.trees_], dtype=float)
         out = np.mean(preds, axis=0)
-        return float(out[0]) if out.shape[0] == 1 else out
+        return out
 
     def score(self, X, y):
         return r2_score(y, self.predict(X))

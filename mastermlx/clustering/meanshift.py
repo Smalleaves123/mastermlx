@@ -91,4 +91,4 @@ class MeanShift(BaseEstimator):
             raise ValueError("X has a different number of features than the fitted data")
         dist_sq = _squared_distances(X, self.cluster_centers_)
         labels = np.argmin(dist_sq, axis=1)
-        return labels[0] if labels.shape[0] == 1 else labels
+        return labels

@@ -19,6 +19,19 @@ surfaces should be categorized before release.
 - Keep compatibility aliases when a name has already appeared in examples,
   release notes, or tests.
 - Public result objects should be dictionary-compatible.
+- Ambiguous names are not exported at the top level. In particular, use
+  `mastermlx.nlp.NLP_LDA` for topic modeling and
+  `mastermlx.probabilistic.DiscriminantLDA` for discriminant analysis.
+
+## Estimator Shape and Score Rules
+
+- `predict(X)` and `score_samples(X)` preserve the sample axis, including for
+  a single sample. Classifiers and regressors therefore return shape
+  `(n_samples,)`, while probabilities return `(n_samples, n_classes)`.
+- Classifier `score(X, y)` returns accuracy unless explicitly documented
+  otherwise. Regressor `score(X, y)` returns R².
+- Fitted estimators record `n_features_in_` and reject incompatible feature
+  counts at prediction or transformation time.
 
 ## Deprecation Rules
 

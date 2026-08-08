@@ -914,7 +914,9 @@ class URDFRobotModel:
             raise ValueError("position_weight and orientation_weight must be positive")
 
         q = self.default_joint_values() if joint_values is None else joint_values
-        q = self.validate_joint_values(q, check_limits=self.joint_limits is not None).copy()
+        q = self.validate_joint_values(q, check_limits=False).copy()
+        if self.joint_limits is not None:
+            q = self.clip_joint_values(q)
         target_position = target if position_only else target[:3, 3]
         target_pose = None if position_only else target
         converged = False

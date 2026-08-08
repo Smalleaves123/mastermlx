@@ -4,6 +4,8 @@ import numpy as np
 from typing import cast
 
 from ..base import BaseEstimator
+from ..data.cv import StratifiedKFold
+from ..utils import clone
 from ..utils.validation import check_1d_array, check_2d_array, check_same_rows
 
 
@@ -35,23 +37,31 @@ class CalibratedClassifierCV(BaseEstimator):
         pos_class = self.classes_[1]
         y_bin = (y == pos_class).astype(float)
 
-        # Fit base estimator on all data
-        self.estimator.fit(X, y)
-        self._calibrated = self.estimator
+        if self.method != "sigmoid":
+            raise ValueError("method must be 'sigmoid'")
+        splitter = (
+            StratifiedKFold(n_splits=int(self.cv), shuffle=True, random_state=0)
+            if isinstance(self.cv, (int, np.integer))
+            else self.cv
+        )
+        if not hasattr(splitter, "split"):
+            raise TypeError("cv must be an integer or expose split(X, y)")
 
-        # Get out-of-fold predictions for calibration
-        if hasattr(self.estimator, "predict_proba"):
-            proba = self.estimator.predict_proba(X)
-            if proba.ndim != 2 or proba.shape[1] < 2:
-                raise ValueError("predict_proba must return 2D with at least 2 columns")
-            scores = proba[:, -1]
-        elif hasattr(self.estimator, "decision_function"):
-            scores = self.estimator.decision_function(X)
-            if scores is None:
-                raise RuntimeError("decision_function returned None")
-            scores = np.asarray(scores, dtype=float).ravel()
-        else:
-            raise ValueError("estimator must have predict_proba or decision_function")
+        scores = np.empty(X.shape[0], dtype=float)
+        filled = np.zeros(X.shape[0], dtype=bool)
+        for train_idx, valid_idx in splitter.split(X, y):
+            fold_estimator = clone(self.estimator).fit(X[train_idx], y[train_idx])
+            scores[valid_idx] = self._uncalibrated_scores(
+                fold_estimator,
+                X[valid_idx],
+                pos_class,
+            )
+            filled[valid_idx] = True
+        if not np.all(filled):
+            raise ValueError("cv splits must provide a validation score for every sample")
+
+        self._calibrated = clone(self.estimator).fit(X, y)
+        self._set_n_features(X)
 
         # Platt scaling: fit sigmoid(a * score + b) to y_bin
         # Guard against degenerate cases
@@ -79,16 +89,35 @@ class CalibratedClassifierCV(BaseEstimator):
 
         return self
 
+    @staticmethod
+    def _uncalibrated_scores(estimator, X, pos_class):
+        if hasattr(estimator, "decision_function"):
+            scores = np.asarray(estimator.decision_function(X), dtype=float)
+            if scores.ndim == 2:
+                classes = np.asarray(getattr(estimator, "classes_", []))
+                matches = np.flatnonzero(classes == pos_class)
+                if matches.size != 1:
+                    raise ValueError("decision_function columns must match estimator classes")
+                scores = scores[:, int(matches[0])]
+            return scores.ravel()
+        if hasattr(estimator, "predict_proba"):
+            proba = np.asarray(estimator.predict_proba(X), dtype=float)
+            classes = np.asarray(getattr(estimator, "classes_", []))
+            matches = np.flatnonzero(classes == pos_class)
+            if proba.ndim != 2 or matches.size != 1:
+                raise ValueError("predict_proba columns must match estimator classes")
+            return proba[:, int(matches[0])]
+        raise ValueError("estimator must have predict_proba or decision_function")
+
     def predict_proba(self, X):
-        X = check_2d_array(X)
+        X = self._check_X(X)
         if self._calibrated is None:
             raise RuntimeError("Model has not been fit yet")
-        if hasattr(self._calibrated, "decision_function"):
-            scores = np.asarray(self._calibrated.decision_function(X), dtype=float).ravel()
-        elif hasattr(self._calibrated, "predict_proba"):
-            scores = self._calibrated.predict_proba(X)[:, -1]
-        else:
-            raise RuntimeError("base estimator has neither decision_function nor predict_proba")
+        scores = self._uncalibrated_scores(
+            self._calibrated,
+            X,
+            cast(np.ndarray, self.classes_)[1],
+        )
 
         calibrated = 1.0 / (1.0 + np.exp(-(self._a * scores + self._b)))
         calibrated = np.clip(calibrated, 1e-12, 1.0 - 1e-12)

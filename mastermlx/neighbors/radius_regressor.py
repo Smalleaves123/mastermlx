@@ -5,7 +5,7 @@ from typing import cast
 
 from ..base import BaseEstimator
 from ..accel.ml_kernels import radius_neighbors
-from ..utils import as_2d, check_1d_array, check_2d_array, mean_squared_error
+from ..utils import as_2d, check_1d_array, check_2d_array, r2_score
 from ._base import check_metric, check_weights, distance_weights, knn_neighbors, pairwise_neighbor_distance
 
 
@@ -30,6 +30,7 @@ class RadiusNeighborsRegressor(BaseEstimator):
         check_weights(self.weights)
         self.X_ = X
         self.y_ = y.astype(float)
+        self._set_n_features(X)
         return self
 
     def predict(self, X):
@@ -71,7 +72,7 @@ class RadiusNeighborsRegressor(BaseEstimator):
                 else:
                     w = distance_weights(dist[i, mask])
                     pred[i] = np.sum(w * vals) / np.sum(w)
-        return float(pred[0]) if pred.shape[0] == 1 else pred
+        return pred
 
     def score(self, X, y):
-        return -mean_squared_error(y, self.predict(X))
+        return r2_score(y, self.predict(X))

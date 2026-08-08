@@ -49,7 +49,8 @@ def test_gradient_boosting_classifier_single_sample_predict():
     model.fit(X, y)
 
     pred = model.predict([2.5])
-    assert pred in {0, 1}
+    assert pred.shape == (1,)
+    assert pred[0] in {0, 1}
 
 
 def test_gradient_boosting_classifier_staged_interfaces_progress():

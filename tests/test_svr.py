@@ -21,4 +21,4 @@ def test_linear_svr_predicts_single_value():
 
     model = LinearSVR(C=1.0, epsilon=0.1, lr=0.05, max_iter=3000, random_state=0).fit(X, y)
     pred = model.predict([1.5])
-    assert isinstance(pred, float)
+    assert pred.shape == (1,)

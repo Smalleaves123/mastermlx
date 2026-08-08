@@ -165,10 +165,12 @@ def to_dense(X):
 def set_n_features(estimator: Any, X: ArrayLike) -> Any:
     """Record the number of input features seen during fitting."""
 
-    X_array = np.asarray(X)
-    if X_array.ndim != 2:
+    shape = getattr(X, "shape", None)
+    if shape is None:
+        shape = np.asarray(X).shape
+    if len(shape) != 2:
         raise ValueError("X must be 2D when recording feature count")
-    estimator.n_features_in_ = int(X_array.shape[1])
+    estimator.n_features_in_ = int(shape[1])
     return estimator
 
 

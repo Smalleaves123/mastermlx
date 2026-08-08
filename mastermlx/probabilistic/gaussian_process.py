@@ -59,12 +59,10 @@ class GaussianProcessRegressor(BaseEstimator):
     def predict(self, X, return_std=False):
         mean, cov = self._posterior(X)
         if not return_std:
-            return float(mean[0]) if mean.shape[0] == 1 else mean
+            return mean
 
         var = np.maximum(np.diag(cov), 0.0)
         std = np.sqrt(var)
-        if mean.shape[0] == 1:
-            return float(mean[0]), float(std[0])
         return mean, std
 
     def posterior_summary(self):
