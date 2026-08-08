@@ -16,7 +16,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mastermlx import (
     entropy, kl_divergence, mann_whitney, pearson_r, PCA,
-    Normal, Poisson, Exponential, Chi2, StudentT,
+    Normal, Poisson, StudentT,
     gauss, salt_pepper, smote, mixup,
 )
 
@@ -95,7 +95,7 @@ Xsyn = pca_model.transform(X_sm[len(X_pca):])
 axes[1, 2].scatter(Xp[:,0], Xp[:,1], c="steelblue", s=12, alpha=0.5, label="majority")
 axes[1, 2].scatter(Xs[:,0], Xs[:,1], c="darkorange", s=15, label="minority")
 axes[1, 2].scatter(Xsyn[:,0], Xsyn[:,1], c="red", s=10, alpha=0.7, label="synthetic")
-axes[1, 2].set_title(f"SMOTE (PCA view)")
+axes[1, 2].set_title("SMOTE (PCA view)")
 axes[1, 2].legend(fontsize=7)
 
 fig.suptitle("math_tools Showcase", fontsize=14, y=1.01)

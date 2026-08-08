@@ -1,8 +1,15 @@
 """
 Benchmark mastermlx vs sklearn on common ML tasks.
 """
-import time, warnings
+# Imports are intentionally grouped with benchmark sections to keep optional
+# comparison dependencies close to the workloads that require them.
+# ruff: noqa: E402
+
+import time
+import warnings
+
 import numpy as np
+
 warnings.filterwarnings("ignore")
 
 results = {}
@@ -38,7 +45,6 @@ section("Classification — 5000x20")
 
 from sklearn.datasets import make_classification
 from sklearn.model_selection import train_test_split as sk_split
-from mastermlx.data import train_test_split as mlx_split
 
 X, y = make_classification(5000, 20, n_informative=10, random_state=42)
 Xt, Xv, yt, yv = sk_split(X, y, test_size=0.2, random_state=42)
@@ -112,7 +118,8 @@ total_o, total_s = 0.0, 0.0
 print(f"  {'Task':35s} {'mastermlx':>10s} {'sklearn':>10s} {'Ratio':>8s}")
 print(f"  {'-'*63}")
 for name, (o, s) in results.items():
-    total_o += o; total_s += s
+    total_o += o
+    total_s += s
     print(f"  {name:35s} {o:10.4f}s {s:10.4f}s {o/s:7.1f}x")
 print(f"  {'-'*63}")
 print(f"  {'TOTAL':35s} {total_o:10.4f}s {total_s:10.4f}s {total_o/total_s:7.1f}x")

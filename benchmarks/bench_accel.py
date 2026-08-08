@@ -2,8 +2,15 @@
 Compare mastermlx C++/Cython acceleration vs pure NumPy fallback.
 Shows the speedup from our compiled extensions.
 """
-import time, warnings
+# Imports are intentionally grouped with benchmark sections so importing an
+# implementation does not affect earlier timing setup.
+# ruff: noqa: E402
+
+import time
+import warnings
+
 import numpy as np
+
 warnings.filterwarnings("ignore")
 
 from mastermlx import set_backend
