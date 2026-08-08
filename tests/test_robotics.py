@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from mastermlx import get_backend, set_backend
 from mastermlx.robotics import (
@@ -300,14 +301,17 @@ def test_urdf_parser_and_chain_conversion():
       </joint>
     </robot>
     """
-    links, joints = parse_urdf(xml)
-    chain = urdf_to_dh_chain(xml)
+    with pytest.warns(UserWarning, match="currently ignored"):
+        links, joints = parse_urdf(xml)
+    with pytest.warns(UserWarning, match="currently ignored"):
+        chain = urdf_to_dh_chain(xml)
     assert len(links) == 3
     assert len(joints) == 2
     assert len(chain) == 2
     assert chain[0].a == 1.0
     assert chain[1].a == 1.0
-    limited_chain, limits = urdf_to_dh_chain(xml, return_limits=True)
+    with pytest.warns(UserWarning, match="currently ignored"):
+        limited_chain, limits = urdf_to_dh_chain(xml, return_limits=True)
     assert len(limited_chain) == 2
     assert np.allclose(limits, [[-1.0, 1.0], [-2.0, 2.0]])
 

@@ -51,26 +51,28 @@ def run_episode(env, agent, max_steps=200, train=True):
         next_state, reward, done = env.step(action)
         total += reward
         next_action = agent.select_action(next_state)
-        if needs_next_action:
-            agent.update(state, action, reward, next_state, next_action, done)
-        else:
-            agent.update(state, action, reward, next_state, done)
+        if train:
+            if needs_next_action:
+                agent.update(state, action, reward, next_state, next_action, done)
+            else:
+                agent.update(state, action, reward, next_state, done)
         if done:
             break
         state, action = next_state, next_action
     return total
 
 
-def run_dqn_episode(env, agent, max_steps=200):
-    """Run one DQN episode with experience replay."""
+def run_dqn_episode(env, agent, max_steps=200, train=True):
+    """Run one DQN episode, optionally updating experience replay."""
     state = env.reset()
     total = 0.0
     for _ in range(max_steps):
         action = agent.select_action(state)
         next_state, reward, done = env.step(action)
         total += reward
-        agent.store(state, action, reward, next_state, done)
-        agent.update()
+        if train:
+            agent.store(state, action, reward, next_state, done)
+            agent.update()
         if done:
             break
         state = next_state
@@ -98,12 +100,16 @@ def evaluate(env, agent, episodes=100, max_steps=200):
     old_eps = getattr(agent, 'epsilon', None)
     if old_eps is not None:
         agent.epsilon = 0.0
-    totals = []
-    for _ in range(episodes):
-        if hasattr(agent, 'store'):
-            totals.append(run_dqn_episode(env, agent, max_steps=max_steps))
-        else:
-            totals.append(run_episode(env, agent, max_steps=max_steps, train=False))
-    if old_eps is not None:
-        agent.epsilon = old_eps
+    try:
+        totals = []
+        for _ in range(episodes):
+            if hasattr(agent, 'store'):
+                totals.append(
+                    run_dqn_episode(env, agent, max_steps=max_steps, train=False)
+                )
+            else:
+                totals.append(run_episode(env, agent, max_steps=max_steps, train=False))
+    finally:
+        if old_eps is not None:
+            agent.epsilon = old_eps
     return float(np.mean(totals))

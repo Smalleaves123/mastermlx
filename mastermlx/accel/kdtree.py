@@ -2,7 +2,7 @@
 from __future__ import annotations
 import numpy as np
 
-from ..config import get_backend
+from ..utils.backend import use_cpp_backend
 
 try:
     from ._kdtree import KDTree as _KDTree
@@ -31,7 +31,7 @@ def knn_search(X_train, X_query, k):
     if k < 1 or k > X_train.shape[0]:
         raise ValueError(f"k must be in [1, {X_train.shape[0]}]")
 
-    if X_train.shape[0] > 100 and _KDTree is not None and get_backend() != "numpy":
+    if X_train.shape[0] > 100 and _KDTree is not None and use_cpp_backend():
         tree = _KDTree(X_train)
         idx, dst_sq = tree.query(X_query, k)
         return idx, np.sqrt(np.maximum(dst_sq, 0.0))

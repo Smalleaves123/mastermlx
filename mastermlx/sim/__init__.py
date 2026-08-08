@@ -1,7 +1,13 @@
 """Minimal simulation helpers for robotics and control demos."""
 
 from ..robotics.collision import BoxObstacle, CapsuleObstacle, SphereObstacle
-from .core import RobotSimulation, SimpleRobotSim, step_state, step_state_batch
+from .core import (
+    RobotSimulation,
+    SimpleRobotSim,
+    step_state,
+    step_state_batch,
+    track_joint_trajectory,
+)
 from .world import CircleObstacle, SimulationObject, SimpleWorld, load_world_config
 
 __all__ = [
@@ -16,4 +22,5 @@ __all__ = [
     "load_world_config",
     "step_state",
     "step_state_batch",
+    "track_joint_trajectory",
 ]

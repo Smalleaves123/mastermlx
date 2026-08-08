@@ -38,3 +38,6 @@ surfaces should be categorized before release.
 When replacing a public API, keep the old import path for at least one minor
 release when possible. Add tests for the compatibility path and document the
 replacement in `CHANGELOG.md`.
+
+Use `mastermlx.utils.deprecated(replacement, since=...)` for callable APIs so
+the warning message, stack level, and wrapped metadata remain consistent.

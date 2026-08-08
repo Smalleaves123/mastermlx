@@ -36,11 +36,19 @@ class Exp3Bandit:
     def update(self, arm, reward, probs=None):
         arm = int(arm)
         reward = float(reward)
+        if arm < 0 or arm >= self.n_arms:
+            raise ValueError("arm must be in [0, n_arms)")
+        if not np.isfinite(reward) or not 0.0 <= reward <= 1.0:
+            raise ValueError("EXP3 reward must be finite and in [0, 1]")
         if probs is None:
             probs = self.arm_probabilities()
         probs = np.asarray(probs, dtype=float)
         if probs.shape != (self.n_arms,):
             raise ValueError("probs must have shape (n_arms,)")
+        if not np.all(np.isfinite(probs)) or np.any(probs < 0.0):
+            raise ValueError("probs must contain finite non-negative values")
+        if not np.isclose(np.sum(probs), 1.0):
+            raise ValueError("probs must sum to 1")
         if probs[arm] <= 0.0:
             raise ValueError("selected arm probability must be positive")
 

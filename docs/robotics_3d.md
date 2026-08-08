@@ -8,7 +8,8 @@ Use this class for native URDF work. `RobotModel.from_urdf()` is the legacy
 URDF-to-DH compatibility path and may not represent arbitrary axes or joint
 origins identically; the two constructors are therefore not interchangeable.
 Unsupported URDF elements such as `<mimic>`, `<safety_controller>`, and
-`<visual>` are ignored rather than used for kinematics or collision geometry.
+`<visual>` are ignored rather than used for kinematics or collision geometry;
+the parser emits a `UserWarning` when these elements are present.
 
 ```python
 from mastermlx.robotics import URDFRobotModel

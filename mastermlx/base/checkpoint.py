@@ -8,15 +8,55 @@ import io
 import json
 from pathlib import Path
 from typing import Any
+import warnings
 import zipfile
 
 import numpy as np
+
+from ..version import __version__
 
 
 SCHEMA_VERSION = 1
 FORMAT = "mastermlx-checkpoint"
 STATE_SCHEMA = "object_graph"
 STATE_SCHEMA_VERSION = 1
+
+
+def _version_parts(value):
+    parts = str(value).split(".")
+    try:
+        return tuple(int(part.split("+", 1)[0].split("-", 1)[0]) for part in parts[:3])
+    except ValueError:
+        return ()
+
+
+def _check_library_version(saved_version):
+    if saved_version is None:
+        warnings.warn(
+            "checkpoint does not declare a mastermlx library version",
+            UserWarning,
+            stacklevel=3,
+        )
+        return
+    saved = _version_parts(saved_version)
+    current = _version_parts(__version__)
+    if not saved or not current:
+        warnings.warn(
+            f"checkpoint library version {saved_version!r} could not be compared with {__version__!r}",
+            UserWarning,
+            stacklevel=3,
+        )
+        return
+    if saved[0] != current[0]:
+        raise RuntimeError(
+            f"checkpoint created by mastermlx v{saved_version} is incompatible with v{__version__}"
+        )
+    if str(saved_version) != __version__:
+        warnings.warn(
+            f"checkpoint was created by mastermlx v{saved_version}; loading with v{__version__}",
+            UserWarning,
+            stacklevel=3,
+        )
 
 
 def _class_path(value):
@@ -209,6 +249,7 @@ def load_object(path):
         state_schema = manifest.get("state_schema")
         if state_schema != {"name": STATE_SCHEMA, "version": STATE_SCHEMA_VERSION}:
             raise ValueError(f"unsupported checkpoint state schema: {state_schema!r}")
+        _check_library_version(manifest.get("library_version"))
         arrays = {}
         for ref in manifest.get("arrays", ()):
             try:

@@ -160,26 +160,16 @@ class RobotExperiment:
     def track_trajectory(self, trajectory, gains=(4.0, 0.4), dt=0.1, damping=0.0, state=None):
         """Track a joint trajectory using the simple simulator and PD control."""
 
-        trajectory = np.asarray(trajectory, dtype=float)
-        if trajectory.ndim != 2 or trajectory.shape[1] != len(self.links):
-            raise ValueError("trajectory must have shape (T, n_joints)")
+        from ..sim.core import track_joint_trajectory
 
-        from ..sim.core import SimpleRobotSim
-
-        kp, kd = gains
-        sim = SimpleRobotSim(self.robot, state=state, dt=dt, damping=damping)
-        states = [sim.state.copy()]
-        poses = [sim.pose()]
-        controls = []
-        for target in trajectory:
-            q_err = target - sim.q
-            qd_err = -sim.qd
-            action = kp * q_err + kd * qd_err
-            controls.append(action)
-            sim.step(action)
-            states.append(sim.state.copy())
-            poses.append(sim.pose())
-        return np.asarray(states), poses, np.asarray(controls)
+        return track_joint_trajectory(
+            self.robot,
+            trajectory,
+            gains=gains,
+            dt=dt,
+            damping=damping,
+            state=state,
+        )
 
     def estimate_pose(self, odometry, dt, heading=None, position=None, pose=None):
         """Advance the attached planar pose estimator, if present."""

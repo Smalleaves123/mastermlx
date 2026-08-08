@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- Rebuilt NLP LDA around batch variational EM with per-iteration sufficient
+  statistics, real convergence state, ELBO scoring, and perplexity reporting.
+- Made reinforcement-learning evaluation side-effect free and corrected DQN
+  and REINFORCE hidden-layer gradients to use forward-pass weights.
+- Reused fitted histogram bin edges for validation and aligned LabelSpreading
+  with the standard soft-clamped fixed point.
+- Unified DH and spatial URDF inverse-kinematics failure contracts with
+  best-effort defaults, `strict=True`, `return_info`, and clipped seeds.
+- Added checkpoint library-version validation, built-in English stop words,
+  generator-compatible KMeans initialization, and strict EXP3 reward checks.
+- Added explicit optional-build warnings, shared compiled-backend predicates,
+  deterministic test seeding, backend parity coverage, export-conflict checks,
+  and a 70% coverage floor.
 - Standardized estimator single-sample prediction and scoring shapes.
 - Fixed RRT parent links and isolated Sequential optimizer state per layer.
 - Added true out-of-fold probability calibration and enabled configured

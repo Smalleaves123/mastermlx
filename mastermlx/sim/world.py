@@ -17,7 +17,7 @@ from ..robotics.collision import (
 from ..robotics.model import RobotModel
 from ..robotics.visualizer import plot_chain
 from ..planning import rrt
-from .core import SimpleRobotSim
+from .core import track_joint_trajectory
 
 
 @dataclass(frozen=True)
@@ -257,23 +257,14 @@ class SimpleWorld:
     def trajectory_follow(self, trajectory, gains=(4.0, 0.4), dt=0.1, damping=0.0, state=None):
         """Track a joint trajectory with a simple PD joint-space controller."""
 
-        trajectory = np.asarray(trajectory, dtype=float)
-        if trajectory.ndim != 2 or trajectory.shape[1] != len(self.robot.links):
-            raise ValueError("trajectory must have shape (T, n_joints)")
-        kp, kd = gains
-        sim = SimpleRobotSim(self.robot, state=state, dt=dt, damping=damping)
-        states = [sim.state.copy()]
-        poses = [sim.pose()]
-        controls = []
-        for target in trajectory:
-            q_err = target - sim.q
-            qd_err = -sim.qd
-            action = kp * q_err + kd * qd_err
-            controls.append(action)
-            sim.step(action)
-            states.append(sim.state.copy())
-            poses.append(sim.pose())
-        return np.asarray(states), poses, np.asarray(controls)
+        return track_joint_trajectory(
+            self.robot,
+            trajectory,
+            gains=gains,
+            dt=dt,
+            damping=damping,
+            state=state,
+        )
 
 
 def load_world_config(config):

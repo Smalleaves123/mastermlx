@@ -5,6 +5,7 @@ import numpy as np
 from ..accel.ml_kernels import kmeans_assign, kmeans_update
 from ..base import BaseEstimator
 from ..utils import as_2d, check_2d_array
+from ..utils.random import resolve_rng
 
 
 class MiniBatchKMeans(BaseEstimator):
@@ -36,7 +37,7 @@ class MiniBatchKMeans(BaseEstimator):
             raise ValueError("n_init must be at least 1")
         k = self.n_clusters
         batch_size = min(self.batch_size, n)
-        rng = np.random.default_rng(self.random_state)
+        rng = resolve_rng(self.random_state)
         best_inertia = np.inf
 
         for init_run in range(self.n_init):

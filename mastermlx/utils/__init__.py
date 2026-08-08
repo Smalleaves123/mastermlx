@@ -75,6 +75,8 @@ from .kernels import (
 from .grad import clip_grads, clip_gradients
 from .random import create_rng, resolve_rng, set_seed, shuffle_indices
 from .math import log_sum_exp
+from .backend import use_cpp_backend, use_cython_backend
+from .deprecate import deprecated
 
 __all__ = [
     "ArrayLike",
@@ -100,6 +102,7 @@ __all__ = [
     "clip_gradients",
     "confusion_matrix",
     "create_rng",
+    "deprecated",
     "chebyshev_distance",
     "chi2_kernel",
     "cosine_distance",
@@ -152,6 +155,8 @@ __all__ = [
     "shuffle_arrays",
     "shuffle_indices",
     "top_k_accuracy_score",
+    "use_cpp_backend",
+    "use_cython_backend",
     "zero_one_loss",
     "wasserstein_distance",
 ]

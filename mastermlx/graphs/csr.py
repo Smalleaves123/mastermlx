@@ -11,6 +11,7 @@ import math
 import numpy as np
 
 from ..config import get_backend
+from ..utils.backend import use_cpp_backend
 from .algorithms import (
     Graph,
     _adjacency,
@@ -72,7 +73,7 @@ def _weighted_adjacency(
 def _load_cpp(backend: str | None = None):
     if backend is None:
         backend = get_backend()
-    if backend != "auto":
+    if not use_cpp_backend(backend):
         return None
     try:
         return importlib.import_module("mastermlx.graphs._graph_cpp")

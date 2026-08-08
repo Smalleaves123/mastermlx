@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 import importlib
 import xml.etree.ElementTree as ET
+import warnings
 
 import numpy as np
 
@@ -370,6 +371,23 @@ def parse_urdf(xml_text):
     if root.tag != "robot":
         raise ValueError("URDF must have a <robot> root element")
 
+    ignored = []
+    for tag in ("visual", "mimic", "safety_controller", "dynamics", "transmission"):
+        if root.findall(f".//{tag}"):
+            ignored.append(f"<{tag}>")
+    if any(
+        attribute in limit.attrib
+        for limit in root.findall(".//limit")
+        for attribute in ("effort", "velocity")
+    ):
+        ignored.append("<limit effort=... velocity=...>")
+    if ignored:
+        warnings.warn(
+            "URDF elements are currently ignored: " + ", ".join(ignored),
+            UserWarning,
+            stacklevel=2,
+        )
+
     links = []
     for node in root.findall("link"):
         collisions = []
@@ -492,8 +510,10 @@ def parse_urdf(xml_text):
 def urdf_to_dh_chain(xml_text, base_link=None, tip_link=None, *, return_limits=False):
     """Convert a simple serial URDF chain into a DHLink list.
 
-    This is intentionally conservative: only serial chains of revolute/prismatic
-    joints with pure X/Y/Z axis-aligned origins are mapped automatically.
+    This legacy compatibility conversion is intentionally conservative: only
+    serial chains of revolute/prismatic joints with axis-aligned origins are
+    mapped automatically.  Prefer :class:`URDFSerialChain` for native URDF
+    kinematics; the representations are not interchangeable in general.
     """
 
     links, joints = parse_urdf(xml_text)

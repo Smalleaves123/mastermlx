@@ -3,29 +3,38 @@ from __future__ import annotations
 import numpy as np
 
 from ..utils.random import resolve_rng
+from ..variational.utils import digamma, log_gamma
 
 
 class LDA:
-    """Latent Dirichlet Allocation via online variational Bayes.
+    """Latent Dirichlet allocation via batch variational Bayes.
 
     Parameters
     ----------
     n_topics : int
         Number of topics.
     alpha : float
-        Dirichlet prior on document-topic distributions.
+        Symmetric Dirichlet prior on document-topic distributions.
     eta : float
-        Dirichlet prior on topic-word distributions.
+        Symmetric Dirichlet prior on topic-word distributions.
     max_iter : int
-        Maximum EM iterations.
+        Maximum variational EM iterations.
     tol : float
-        Convergence tolerance on per-word bound.
-    random_state : int or None
-        Random seed.
+        Convergence tolerance on the maximum topic-word probability change.
+        Set to zero to always run ``max_iter`` iterations.
+    random_state : int, numpy.random.Generator, or None
+        Random seed or generator used to initialize the topic-word posterior.
     """
 
-    def __init__(self, n_topics=10, alpha=0.1, eta=0.1, max_iter=100,
-                 tol=1e-4, random_state=None):
+    def __init__(
+        self,
+        n_topics=10,
+        alpha=0.1,
+        eta=0.1,
+        max_iter=100,
+        tol=1e-4,
+        random_state=None,
+    ):
         self.n_topics = int(n_topics)
         self.alpha = float(alpha)
         self.eta = float(eta)
@@ -35,110 +44,190 @@ class LDA:
         self.components_ = None
         self.exp_dirichlet_component_ = None
         self.doc_topic_ = None
+        self.n_features_in_ = None
+        self.n_iter_ = 0
+        self.bound_ = None
+        self.bound_trace_ = []
+        self._lambda = None
 
-    def fit(self, X, y=None):
+    def _validate_parameters(self):
+        if self.n_topics < 1:
+            raise ValueError("n_topics must be at least 1")
+        if not np.isfinite(self.alpha) or self.alpha <= 0.0:
+            raise ValueError("alpha must be positive and finite")
+        if not np.isfinite(self.eta) or self.eta <= 0.0:
+            raise ValueError("eta must be positive and finite")
+        if self.max_iter < 1:
+            raise ValueError("max_iter must be at least 1")
+        if not np.isfinite(self.tol) or self.tol < 0.0:
+            raise ValueError("tol must be non-negative and finite")
+
+    @staticmethod
+    def _validate_counts(X, *, n_features=None):
         X = np.asarray(X, dtype=float)
         if X.ndim != 2 or X.shape[0] == 0 or X.shape[1] == 0:
             raise ValueError("X must be a non-empty 2D document-term matrix")
-        if np.any(X < 0):
-            raise ValueError("X must be non-negative")
-        n_docs, n_words = X.shape
-        k = self.n_topics
+        if n_features is not None and X.shape[1] != n_features:
+            raise ValueError(
+                f"X has {X.shape[1]} features, but the fitted model expects {n_features}"
+            )
+        if not np.all(np.isfinite(X)) or np.any(X < 0.0):
+            raise ValueError("X must contain finite non-negative counts")
+        if not np.allclose(X, np.rint(X), rtol=0.0, atol=1e-12):
+            raise ValueError("X must contain integer document-term counts")
+        return X
+
+    @staticmethod
+    def _expected_log_dirichlet(parameters):
+        parameters = np.asarray(parameters, dtype=float)
+        return digamma(parameters) - digamma(np.sum(parameters, axis=-1))[..., None]
+
+    def _infer_document(self, counts, expected_log_beta):
+        word_ids = np.flatnonzero(counts)
+        total = float(np.sum(counts))
+        if word_ids.size == 0:
+            gamma = np.full(self.n_topics, self.alpha, dtype=float)
+            return gamma, word_ids, np.empty((self.n_topics, 0), dtype=float), 0.0
+
+        word_counts = counts[word_ids]
+        gamma = np.full(
+            self.n_topics,
+            self.alpha + total / self.n_topics,
+            dtype=float,
+        )
+        phi = np.empty((self.n_topics, word_ids.size), dtype=float)
+        inner_tol = max(self.tol, 1e-8)
+        for _ in range(100):
+            expected_log_theta = self._expected_log_dirichlet(gamma[None, :])[0]
+            log_phi = expected_log_theta[:, None] + expected_log_beta[:, word_ids]
+            log_phi -= np.max(log_phi, axis=0, keepdims=True)
+            phi = np.exp(log_phi)
+            phi /= np.sum(phi, axis=0, keepdims=True)
+            gamma_new = self.alpha + phi @ word_counts
+            delta = float(np.max(np.abs(gamma_new - gamma)))
+            gamma = gamma_new
+            if delta < inner_tol:
+                break
+
+        # Recompute phi from the final gamma.  In particular, this keeps the
+        # sufficient statistics aligned when the inner loop exits early.
+        expected_log_theta = self._expected_log_dirichlet(gamma[None, :])[0]
+        log_phi = expected_log_theta[:, None] + expected_log_beta[:, word_ids]
+        log_phi -= np.max(log_phi, axis=0, keepdims=True)
+        phi = np.exp(log_phi)
+        phi /= np.sum(phi, axis=0, keepdims=True)
+
+        entropy = -np.log(np.maximum(phi, 1e-300))
+        word_bound = float(
+            np.sum(
+                word_counts[None, :]
+                * phi
+                * (expected_log_theta[:, None] + expected_log_beta[:, word_ids] + entropy)
+            )
+        )
+        topic_prior = float(
+            log_gamma(np.array([self.n_topics * self.alpha]))[0]
+            - self.n_topics * log_gamma(np.array([self.alpha]))[0]
+            + np.sum((self.alpha - 1.0) * expected_log_theta)
+        )
+        topic_entropy = float(
+            log_gamma(np.array([np.sum(gamma)]))[0]
+            - np.sum(log_gamma(gamma))
+            + np.sum((gamma - 1.0) * expected_log_theta)
+        )
+        return gamma, word_ids, phi, word_bound + topic_prior - topic_entropy
+
+    def _beta_bound(self, parameters, expected_log_beta):
+        prior = (
+            log_gamma(np.array([parameters.shape[1] * self.eta]))[0]
+            - parameters.shape[1] * log_gamma(np.array([self.eta]))[0]
+            + np.sum((self.eta - 1.0) * expected_log_beta, axis=1)
+        )
+        posterior = (
+            log_gamma(np.sum(parameters, axis=1))
+            - np.sum(log_gamma(parameters), axis=1)
+            + np.sum((parameters - 1.0) * expected_log_beta, axis=1)
+        )
+        return float(np.sum(prior - posterior))
+
+    def _e_step(self, X, parameters):
+        expected_log_beta = self._expected_log_dirichlet(parameters)
+        stats = np.zeros_like(parameters)
+        doc_topic = np.zeros((X.shape[0], self.n_topics), dtype=float)
+        bound = self._beta_bound(parameters, expected_log_beta)
+        for document_index, counts in enumerate(X):
+            gamma, word_ids, phi, document_bound = self._infer_document(
+                counts, expected_log_beta
+            )
+            doc_topic[document_index] = gamma / np.sum(gamma)
+            if word_ids.size:
+                stats[:, word_ids] += phi * counts[word_ids][None, :]
+            bound += document_bound
+        return doc_topic, stats, float(bound)
+
+    def fit(self, X, y=None):
+        self._validate_parameters()
+        X = self._validate_counts(X)
+        self.n_features_in_ = int(X.shape[1])
         rng = resolve_rng(self.random_state)
 
-        # Initialize topic-word matrix (k, n_words) as exp(E[log beta])
-        self.components_ = rng.gamma(1.0, 1.0, size=(k, n_words))
-        self.components_ /= self.components_.sum(axis=1, keepdims=True)
-        E_log_beta = np.log(self.components_ + 1e-12)
+        parameters = self.eta + rng.gamma(
+            shape=1.0,
+            scale=1.0,
+            size=(self.n_topics, self.n_features_in_),
+        )
+        previous_components = parameters / np.sum(parameters, axis=1, keepdims=True)
+        self.bound_trace_ = []
 
-        self.doc_topic_ = np.zeros((n_docs, k), dtype=float)
-        bound_prev = -np.inf
-
-        for it in range(self.max_iter):
-            bound = 0.0
-            for d in range(n_docs):
-                doc = X[d]
-                doc_sum = int(doc.sum())
-                if doc_sum == 0:
-                    self.doc_topic_[d] = 1.0 / k
-                    continue
-
-                # E-step: variational inference for doc d
-                gamma = np.full(k, self.alpha + doc_sum / k, dtype=float)
-                phi = np.zeros((doc_sum, k), dtype=float) if doc_sum > 0 else np.zeros((0, k))
-
-                if doc_sum > 0:
-                    word_ids = np.repeat(np.arange(n_words), doc.astype(int))
-                    n_tokens = len(word_ids)
-                    if n_tokens > 0:
-                        phi = rng.dirichlet(np.ones(k), size=n_tokens)
-                        for _ in range(20):  # inner VI loop
-                            phi_prev = phi.copy()
-                            # Update phi
-                            Elog_theta = np.log(gamma + 1e-12) - np.log(np.sum(gamma))
-                            log_phi = Elog_theta + E_log_beta[:, word_ids].T
-                            log_phi -= np.max(log_phi, axis=1, keepdims=True)
-                            phi = np.exp(log_phi)
-                            phi /= phi.sum(axis=1, keepdims=True)
-                            # Update gamma
-                            gamma_new = self.alpha + phi.sum(axis=0)
-                            if np.max(np.abs(phi - phi_prev)) < 1e-4:
-                                break
-                            gamma = gamma_new
-
-                self.doc_topic_[d] = gamma / gamma.sum()
-
-                # M-step: accumulate statistics
-                if doc_sum > 0:
-                    word_ids = np.repeat(np.arange(n_words), doc.astype(int))
-                    for w in range(n_words):
-                        mask = word_ids == w
-                        if np.any(mask):
-                            self.components_[:, w] += self.eta + phi[mask].sum(axis=0)
-                else:
-                    self.components_ += self.eta
-
-            # Normalize components
-            self.components_ /= self.components_.sum(axis=1, keepdims=True)
-            E_log_beta = np.log(self.components_ + 1e-12)
-
-            # Simple bound check
-            if abs(bound - bound_prev) < self.tol and it > 2:
+        for iteration in range(1, self.max_iter + 1):
+            doc_topic, stats, bound = self._e_step(X, parameters)
+            # The M-step is a replacement, not an accumulation into the
+            # normalized topic probabilities from a previous EM iteration.
+            parameters = self.eta + stats
+            components = parameters / np.sum(parameters, axis=1, keepdims=True)
+            change = float(np.max(np.abs(components - previous_components)))
+            self.bound_trace_.append(bound)
+            self.n_iter_ = iteration
+            previous_components = components
+            if self.tol > 0.0 and change < self.tol:
                 break
-            bound_prev = bound
 
-        self.exp_dirichlet_component_ = self.components_
+        # Run one final E-step so doc_topic_ and bound_ correspond to the final
+        # M-step parameters rather than the previous topic-word iterate.
+        self.doc_topic_, _, self.bound_ = self._e_step(X, parameters)
+        self._lambda = parameters
+        self.components_ = parameters / np.sum(parameters, axis=1, keepdims=True)
+        self.exp_dirichlet_component_ = np.exp(
+            self._expected_log_dirichlet(parameters)
+        )
         return self
 
     def transform(self, X):
         """Return document-topic distributions for new documents."""
-        X = np.asarray(X, dtype=float)
-        if self.components_ is None:
-            raise RuntimeError("Model has not been fit yet")
-        n_docs, n_words = X.shape
-        k = self.n_topics
-        E_log_beta = np.log(self.components_ + 1e-12)
-        doc_topic = np.zeros((n_docs, k))
 
-        for d in range(n_docs):
-            doc = X[d]
-            doc_sum = int(doc.sum())
-            if doc_sum == 0:
-                doc_topic[d] = 1.0 / k
-                continue
-                continue
-            gamma = np.full(k, self.alpha + doc_sum / k, dtype=float)
-            word_ids = np.repeat(np.arange(n_words), doc.astype(int))
-            phi = np.ones((len(word_ids), k)) / k
-            for _ in range(20):
-                Elog_theta = np.log(gamma + 1e-12) - np.log(np.sum(gamma))
-                log_phi = Elog_theta + E_log_beta[:, word_ids].T
-                log_phi -= np.max(log_phi, axis=1, keepdims=True)
-                phi = np.exp(log_phi)
-                phi /= phi.sum(axis=1, keepdims=True)
-                gamma = self.alpha + phi.sum(axis=0)
-            doc_topic[d] = gamma / gamma.sum()
+        if self._lambda is None or self.n_features_in_ is None:
+            raise RuntimeError("Model has not been fit yet")
+        X = self._validate_counts(X, n_features=self.n_features_in_)
+        doc_topic, _, _ = self._e_step(X, self._lambda)
         return doc_topic
 
+    def score(self, X, y=None):
+        """Return the variational evidence lower bound for ``X``."""
+
+        if self._lambda is None or self.n_features_in_ is None:
+            raise RuntimeError("Model has not been fit yet")
+        X = self._validate_counts(X, n_features=self.n_features_in_)
+        _, _, bound = self._e_step(X, self._lambda)
+        return float(bound)
+
+    def perplexity(self, X):
+        """Return an ELBO-based approximate perplexity for ``X``."""
+
+        X = self._validate_counts(X, n_features=self.n_features_in_)
+        tokens = float(np.sum(X))
+        if tokens <= 0.0:
+            raise ValueError("perplexity requires at least one observed token")
+        return float(np.exp(-self.score(X) / tokens))
+
     def fit_transform(self, X, y=None):
-        return self.fit(X).doc_topic_
+        return self.fit(X, y).doc_topic_

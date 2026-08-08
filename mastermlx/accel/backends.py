@@ -198,6 +198,12 @@ def _load_optional_module(name, api):
 
 
 def get_active_backend():
+    """Return the active generic distance fallback backend.
+
+    Under ``auto``, operation-specific C++ kernels may take precedence; use
+    :func:`backend_report` for the complete capability selection.
+    """
+
     preferred = get_backend()
     if preferred == "numpy":
         return "numpy"
@@ -251,6 +257,13 @@ def backend_report():
              _has_api(_import_cpp_signal(), ("frame_signal", "iir_filter_1d", "online_cusum", "ridge_path")))
         ),
     }
+    active_backends = ["numpy"]
+    if any(report[name] for name in ("cython", "cython_tree", "cnn", "conv1d", "rnn", "signal")):
+        active_backends.append("cython")
+    if report["cpp"]:
+        active_backends.append("cpp")
+    report["active_backends"] = tuple(active_backends)
+    report["selection_policy"] = "cpp > cython > numpy"
     return report
 
 

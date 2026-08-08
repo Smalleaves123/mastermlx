@@ -1,4 +1,5 @@
 import inspect
+import importlib
 
 import numpy as np
 import pytest
@@ -10,6 +11,16 @@ from mastermlx.neural_net import MLPClassifier, MLPRegressor, Sequential
 from mastermlx.nlp import LDA as NLP_LDA
 from mastermlx.preprocessing import Pipeline, PolynomialFeatures, StandardScaler
 from mastermlx.probabilistic import DiscriminantLDA
+
+
+PUBLIC_PACKAGES = (
+    "base", "anomaly", "bandits", "data", "decomposition", "ensemble",
+    "control", "estimation", "linear_models", "math_tools", "graphs",
+    "optimize", "planning", "manifold", "neighbors", "neural_net", "nlp",
+    "probabilistic", "rl", "preprocessing", "selection", "semi_supervised",
+    "signal", "tabular", "robotics", "svm", "trees", "variational", "viz",
+    "vision", "clustering",
+)
 
 
 def test_core_public_api_remains_available():
@@ -42,6 +53,28 @@ def test_ambiguous_lda_models_have_explicit_namespaced_aliases():
     assert "LDA" not in mastermlx.__all__
     with pytest.raises(AttributeError, match="ambiguous"):
         getattr(mastermlx, "LDA")
+
+
+def test_top_level_exports_do_not_silently_overwrite_subpackage_objects():
+    owners = {}
+    for package_name in PUBLIC_PACKAGES:
+        package = importlib.import_module(f"mastermlx.{package_name}")
+        for name in package.__all__:
+            if package_name == "variational" and name in {"BayesGMM", "VGMM"}:
+                continue
+            owners.setdefault(name, []).append((package_name, getattr(package, name)))
+
+    conflicts = {
+        name
+        for name, values in owners.items()
+        if len({id(value) for _, value in values}) > 1
+    }
+    assert conflicts == {"LDA"}
+    for name, values in owners.items():
+        if name == "LDA":
+            continue
+        assert name in mastermlx.__all__
+        assert getattr(mastermlx, name) is values[-1][1]
 
 
 def test_public_base_interfaces_expose_type_annotations():

@@ -24,16 +24,6 @@ class GMM(BaseEstimator):
         self.resp_ = None
         self.lower_bound_ = []
 
-    def _log_gauss(self, X, mean, cov):
-        d = X.shape[1]
-        sign, logdet = np.linalg.slogdet(cov)
-        if sign <= 0:
-            raise ValueError("Covariance matrix must be positive definite")
-        diff = X - mean
-        sol = np.linalg.solve(cov, diff.T).T
-        quad = np.sum(diff * sol, axis=1)
-        return -0.5 * (d * np.log(2.0 * np.pi) + logdet + quad)
-
     def _log_gaussian_components(self, X):
         means = cast(np.ndarray, self.means_)
         covariances = cast(np.ndarray, self.covariances_)

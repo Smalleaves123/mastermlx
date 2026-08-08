@@ -15,10 +15,30 @@ except ImportError:  # pragma: no cover - optional compiled extension
     _predict_hist_cpp = None
 
 
-def _bin_data(X, n_bins=256):
-    """Quantile-bin each feature column. Returns binned X (0..n_bins-1) and bin edges."""
+def _bin_data(X, n_bins=256, *, edges=None):
+    """Bin feature columns, optionally reusing fitted training edges."""
     X = np.asarray(X, dtype=float)
     n, d = X.shape
+    if edges is not None:
+        if len(edges) != d:
+            raise ValueError("bin edges must contain one array per feature")
+        binned = np.zeros((n, d), dtype=np.int32)
+        for j, fitted_edges in enumerate(edges):
+            fitted_edges = np.asarray(fitted_edges, dtype=float)
+            if fitted_edges.ndim != 1 or fitted_edges.size == 0:
+                raise ValueError("each fitted bin edge array must be non-empty and 1D")
+            if np.isneginf(fitted_edges[0]) and np.isposinf(fitted_edges[-1]):
+                values = np.digitize(X[:, j], fitted_edges[:-1]) - 1
+                max_bin = fitted_edges.size - 2
+            else:
+                # Low-cardinality training columns store their sorted unique
+                # values.  searchsorted maps unseen validation/prediction
+                # values to the same ordered bin coordinate system.
+                values = np.searchsorted(fitted_edges, X[:, j], side="left")
+                max_bin = fitted_edges.size - 1
+            binned[:, j] = np.clip(values, 0, max_bin)
+        return binned, list(edges)
+
     n_bins = min(n_bins, n)
     binned = np.zeros((n, d), dtype=np.int32)
     edges = []
@@ -337,7 +357,7 @@ class _HistGBBase(BaseEstimator):
         validation_binned = None
         if validation_X is not None:
             validation_X = _fill_missing_values(validation_X, self._missing_values_)
-            validation_binned, _ = _bin_data(validation_X, self.max_bins)
+            validation_binned, _ = _bin_data(validation_X, edges=self._edges)
         raw_pred = np.full(y.shape[0], self.init_, dtype=float)
         validation_raw = (
             None
@@ -394,11 +414,7 @@ class _HistGBBase(BaseEstimator):
         if X.shape[1] != self.n_features_in_:
             raise ValueError("X has a different number of features than the fitted data")
         X = _fill_missing_values(X, cast(np.ndarray, self._missing_values_))
-        X_binned = np.zeros((X.shape[0], X.shape[1]), dtype=np.int32)
-        for j, edges in enumerate(cast(list[np.ndarray], self._edges)):
-            if edges is not None:
-                X_binned[:, j] = np.digitize(X[:, j], edges[:-1]) - 1
-                X_binned[:, j] = np.clip(X_binned[:, j], 0, self.max_bins - 1)
+        X_binned, _ = _bin_data(X, edges=cast(list[np.ndarray], self._edges))
         raw = np.full(X.shape[0], self.init_, dtype=float)
         for tree in self.trees_:
             raw += self.learning_rate * tree.predict(X_binned)

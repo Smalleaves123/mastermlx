@@ -1,7 +1,8 @@
 import numpy as np
+import pytest
 
 from mastermlx import get_backend, set_backend
-from mastermlx.robotics import URDFRobotModel, URDFSerialChain
+from mastermlx.robotics import RobotModel, URDFRobotModel, URDFSerialChain
 from mastermlx.robotics.urdf_parser import _load_cpp_spatial
 
 
@@ -158,3 +159,42 @@ def test_spatial_urdf_full_pose_ik_and_joint_clipping():
     assert result.error_norm < 1e-8
     assert np.allclose(robot.fk(result.joint_values), target, atol=1e-6)
     assert np.allclose(robot.clip_joint_values([3.0, -2.0, 2.0, 2.0]), [1.2, -1.0, 1.0, 1.0])
+
+
+def test_legacy_dh_and_spatial_urdf_match_on_representable_chain():
+    xml = """
+    <robot name="representable">
+      <link name="base"/><link name="one"/><link name="two"/>
+      <joint name="one" type="revolute">
+        <parent link="base"/><child link="one"/>
+        <origin xyz="0 0 1"/><axis xyz="0 0 1"/>
+        <limit lower="-2" upper="2"/>
+      </joint>
+      <joint name="two" type="revolute">
+        <parent link="one"/><child link="two"/>
+        <origin xyz="0 0 1"/><axis xyz="0 0 1"/>
+        <limit lower="-2" upper="2"/>
+      </joint>
+    </robot>
+    """
+    legacy = RobotModel.from_urdf(xml)
+    spatial = URDFRobotModel.from_urdf(xml)
+    configurations = np.array([[0.0, 0.0], [0.3, -0.2], [-0.4, 0.6]])
+
+    assert np.allclose(legacy.fk_batch(configurations), spatial.fk_batch(configurations))
+
+
+def test_urdf_parser_warns_about_ignored_elements():
+    xml = """
+    <robot name="warnings">
+      <link name="base"><visual/></link><link name="tip"/>
+      <joint name="joint" type="revolute">
+        <parent link="base"/><child link="tip"/><axis xyz="0 0 1"/>
+        <mimic joint="other"/><dynamics damping="0.1"/>
+        <limit lower="-1" upper="1" effort="2" velocity="3"/>
+      </joint>
+    </robot>
+    """
+
+    with pytest.warns(UserWarning, match="currently ignored"):
+        URDFRobotModel.from_urdf(xml)

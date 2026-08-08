@@ -8,7 +8,8 @@ from typing import Any
 import numpy as np
 
 from ..config import get_backend
-from .constraints import check_joint_limits, clip_joint_values, validate_joint_limits
+from .constraints import clip_joint_values, validate_joint_limits
+from .results import RobotResult
 
 try:
     from ._robotics_ops import (
@@ -399,6 +400,8 @@ def inverse_kinematics(
     damping=1e-4,
     step_size=1.0,
     joint_limits=None,
+    strict=False,
+    return_info=False,
 ):
     """Solve inverse kinematics with damped least squares.
 
@@ -409,6 +412,12 @@ def inverse_kinematics(
 
     links, a, alpha, d, theta, joint_type, offset = _pack_links_cached(links)
     n = len(links)
+    max_iter = int(max_iter)
+    tol = float(tol)
+    damping = float(damping)
+    step_size = float(step_size)
+    if max_iter < 1 or tol <= 0.0 or damping < 0.0 or step_size <= 0.0:
+        raise ValueError("max_iter, tol, damping, and step_size must be valid positive values")
     joint_limits = validate_joint_limits(joint_limits, n)
     if joint_values is None:
         q = np.zeros(n, dtype=float)
@@ -420,7 +429,7 @@ def inverse_kinematics(
             raise ValueError(f"Expected {n} joint values, got {q.size}")
         if not np.all(np.isfinite(q)):
             raise ValueError("joint_values must contain only finite values")
-    check_joint_limits(q, joint_limits)
+    q = clip_joint_values(q, joint_limits)
 
     target = np.asarray(target, dtype=float)
     if target.shape == (3,):
@@ -432,7 +441,10 @@ def inverse_kinematics(
     else:
         raise ValueError("target must be a 3-vector or 4x4 transform")
 
-    for _ in range(int(max_iter)):
+    converged = False
+    error_norm = np.inf
+    iterations = 0
+    for iterations in range(1, max_iter + 1):
         T = _forward_kinematics_packed(a, alpha, d, theta, joint_type, offset, q, base=base, tool=tool, return_all=False)
         pos_err = target_pos - T[:3, 3]
 
@@ -452,13 +464,54 @@ def inverse_kinematics(
             error = np.concatenate([pos_err, rot_err])
             J = _geometric_jacobian_packed(a, alpha, d, theta, joint_type, offset, q, base=base, tool=tool)
 
-        if np.linalg.norm(error) <= tol:
-            return q
+        error_norm = float(np.linalg.norm(error))
+        if error_norm <= tol:
+            converged = True
+            break
 
         JJt = J @ J.T
         dq = J.T @ np.linalg.solve(JJt + (damping**2) * np.eye(JJt.shape[0], dtype=float), error)
         q = clip_joint_values(q + step_size * dq, joint_limits)
 
+    if not converged:
+        final_transform = _forward_kinematics_packed(
+            a,
+            alpha,
+            d,
+            theta,
+            joint_type,
+            offset,
+            q,
+            base=base,
+            tool=tool,
+            return_all=False,
+        )
+        final_error = target_pos - final_transform[:3, 3]
+        if pose_target is not None:
+            rotation_error = pose_target[:3, :3] @ final_transform[:3, :3].T
+            final_error = np.concatenate([
+                final_error,
+                0.5 * np.array([
+                    rotation_error[2, 1] - rotation_error[1, 2],
+                    rotation_error[0, 2] - rotation_error[2, 0],
+                    rotation_error[1, 0] - rotation_error[0, 1],
+                ]),
+            ])
+        error_norm = float(np.linalg.norm(final_error))
+
+    if strict and not converged:
+        raise RuntimeError(
+            f"inverse kinematics did not converge within {max_iter} iterations "
+            f"(error_norm={error_norm:.3e})"
+        )
+    if return_info:
+        return RobotResult({
+            "joint_values": q,
+            "converged": converged,
+            "iterations": iterations,
+            "error_norm": error_norm,
+            "position_only": pose_target is None,
+        })
     return q
 
 
@@ -511,13 +564,12 @@ def inverse_kinematics_batch(
             raise ValueError("joint_values must be a vector or a per-target matrix")
         if not np.all(np.isfinite(seeds)):
             raise ValueError("joint_values must contain only finite values")
+        seeds = clip_joint_values(seeds, joint_limits)
 
     cpp = _load_cpp_ik(get_backend())
     if normalized_targets.ndim == 2 and cpp is not None and callable(
         getattr(cpp, "inverse_kinematics_position_batch_dh", None)
     ):
-        if seeds is not None:
-            check_joint_limits(seeds, joint_limits)
         links, a, alpha, d, theta, joint_type, offset = _pack_links_cached(links)
         return np.asarray(
             cpp.inverse_kinematics_position_batch_dh(

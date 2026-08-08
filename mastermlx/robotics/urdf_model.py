@@ -895,6 +895,7 @@ class URDFRobotModel:
         position_weight=1.0,
         orientation_weight=1.0,
         return_info=False,
+        strict=False,
     ):
         """Solve a position or full-pose target with damped least squares."""
 
@@ -947,6 +948,21 @@ class URDFRobotModel:
             if self.joint_limits is not None:
                 q = self.clip_joint_values(q)
 
+        if not converged:
+            current = self.fk(q)
+            final_error = position_weight * (target_position - current[:3, 3])
+            if target_pose is not None:
+                final_error = np.concatenate([
+                    final_error,
+                    orientation_weight * _pose_orientation_error(current, target_pose),
+                ])
+            error_norm = float(np.linalg.norm(final_error))
+
+        if strict and not converged:
+            raise RuntimeError(
+                f"inverse kinematics did not converge within {max_iter} iterations "
+                f"(error_norm={error_norm:.3e})"
+            )
         if return_info:
             return RobotResult({
                 "joint_values": q,
@@ -955,11 +971,6 @@ class URDFRobotModel:
                 "error_norm": error_norm,
                 "position_only": position_only,
             })
-        if not converged:
-            raise RuntimeError(
-                f"inverse kinematics did not converge within {max_iter} iterations "
-                f"(error_norm={error_norm:.3e})"
-            )
         return q
 
 

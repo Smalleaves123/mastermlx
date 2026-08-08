@@ -260,6 +260,11 @@ try:
     ], language_level=3, force=True)
     extensions = cpp_exts + cy_exts
 except ImportError:
+    warnings.warn(
+        "Cython is not installed; building C++ extensions only. "
+        "Install cython>=3.0 for the full accelerated build.",
+        RuntimeWarning,
+    )
     extensions = cpp_exts
 
 setup(ext_modules=extensions)

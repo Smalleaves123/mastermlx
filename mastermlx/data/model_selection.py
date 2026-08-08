@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import time
 from typing import Any
 
@@ -86,10 +87,19 @@ def _resolve_scorers(scoring):
 def _split_cv(splitter, X, y, groups=None):
     if isinstance(splitter, int):
         splitter = KFold(n_splits=int(splitter), shuffle=True, random_state=0)
-    try:
-        return splitter.split(X, y, groups=groups)
-    except TypeError:
+    if groups is None:
         return splitter.split(X, y)
+    try:
+        signature = inspect.signature(splitter.split)
+    except (TypeError, ValueError):
+        return splitter.split(X, y, groups=groups)
+    accepts_groups = "groups" in signature.parameters or any(
+        parameter.kind == parameter.VAR_KEYWORD
+        for parameter in signature.parameters.values()
+    )
+    if accepts_groups:
+        return splitter.split(X, y, groups=groups)
+    return splitter.split(X, y)
 
 
 def _single_scorer(scoring):

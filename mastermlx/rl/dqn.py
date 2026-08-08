@@ -94,19 +94,23 @@ class DQNAgent:
 
         # Backward: MSE loss gradients
         diff = (Q - target) / self.batch_size
+        output_W, output_b = self.weights_[-1]
         dW = activations[-1].T @ diff
         db = np.sum(diff, axis=0)
-        self.weights_[-1] = (self.weights_[-1][0] - self.lr * dW,
-                              self.weights_[-1][1] - self.lr * db)
-        dout = diff @ self.weights_[-1][0].T
+        # Propagate through the weights used by the forward pass.  Updating the
+        # layer first would make the hidden gradient depend on a different
+        # network from the one that produced ``Q``.
+        dout = diff @ output_W.T
+        self.weights_[-1] = (output_W - self.lr * dW, output_b - self.lr * db)
         for i in range(len(self.weights_) - 2, -1, -1):
             dout = dout * (activations[i + 1] > 0)
+            W, b = self.weights_[i]
             dW = activations[i].T @ dout
             db = np.sum(dout, axis=0)
-            self.weights_[i] = (self.weights_[i][0] - self.lr * dW,
-                                 self.weights_[i][1] - self.lr * db)
+            next_dout = dout @ W.T if i > 0 else None
+            self.weights_[i] = (W - self.lr * dW, b - self.lr * db)
             if i > 0:
-                dout = dout @ self.weights_[i][0].T
+                dout = next_dout
 
         self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
 

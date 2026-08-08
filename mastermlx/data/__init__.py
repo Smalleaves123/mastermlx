@@ -1,4 +1,4 @@
-"""Data loading and synthetic dataset helpers."""
+"""Cross-validation, model selection, data quality, contracts, and drift reports."""
 
 from .cv import GroupKFold, KFold, LeaveOneOut, RepeatedKFold, ShuffleSplit, StratifiedKFold, TimeSeriesSplit
 from .contract import DataContract

@@ -7,7 +7,7 @@ import numbers
 
 import numpy as np
 
-from ..config import get_backend
+from ..utils.backend import use_cpp_backend
 
 try:
     from ._grid_cpp import astar as _astar_cpp
@@ -177,7 +177,7 @@ def astar(grid, start, goal, diagonal=False):
     """
 
     grid, start, goal = _grid_check(grid, start, goal)
-    if get_backend() != "numpy" and _astar_cpp is not None:
+    if use_cpp_backend() and _astar_cpp is not None:
         path, cost = _astar_cpp(np.asarray(grid, dtype=np.int32), start, goal, bool(diagonal))
         if path is None:
             return None, math.inf

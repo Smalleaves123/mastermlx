@@ -139,7 +139,6 @@ class LabelSpreading(_LabelBase):
             prev = F.copy()
             propagated = S.propagate(F) if isinstance(S, _SparseAffinity) else S @ F
             F = alpha * propagated + (1.0 - alpha) * Y0
-            F[labeled] = (1.0 - alpha) * Y[labeled] + alpha * F[labeled]
             delta = np.max(np.abs(F - prev))
             if delta < self.tol:
                 self.n_iter_ = it

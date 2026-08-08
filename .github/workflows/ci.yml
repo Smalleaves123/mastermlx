@@ -109,7 +109,11 @@ jobs:
         run: >-
           python -m pytest -q
           tests/test_accel_backend.py tests/test_accel_recurrent_signal.py
-          tests/test_graph_cpp.py tests/test_kernels_and_distance.py
+          tests/test_backend_parity_contracts.py tests/test_graph_cpp.py
+          tests/test_kernels_and_distance.py tests/test_ml_kernels_cpp.py
+          tests/test_histgb_sfs_adamw.py tests/test_robotics.py
+          tests/test_robotics_cpp.py tests/test_robotics_collision_cpp.py
+          tests/test_robotics_ik_cpp.py tests/test_robotics_retiming_cpp.py
 
   benchmark:
     runs-on: ubuntu-latest
@@ -177,7 +181,9 @@ jobs:
       - name: Install
         run: python -m pip install -e ".[dev]"
       - name: Measure test coverage
-        run: python -m pytest tests/ -q --cov=mastermlx --cov-report=term-missing --cov-report=xml
+        run: >-
+          python -m pytest tests/ -q --cov=mastermlx
+          --cov-report=term-missing --cov-report=xml --cov-fail-under=70
       - uses: actions/upload-artifact@v4
         with:
           name: coverage-xml

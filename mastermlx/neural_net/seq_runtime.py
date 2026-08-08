@@ -196,12 +196,6 @@ class _SequentialRuntime:
         finally:
             self._set_mode(was_training)
 
-    def _snapshot_layers(self):
-        return copy.deepcopy(self.layers)
-
-    def _restore_layers(self, snapshot):
-        self.layers = copy.deepcopy(snapshot)
-
     def _snapshot_state(self):
         return copy.deepcopy(self.layers)
 

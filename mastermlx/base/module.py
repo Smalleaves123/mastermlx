@@ -15,7 +15,7 @@ def _name(name):
 
 
 def _is_param(name, value):
-    if value is None or name.startswith("d"):
+    if value is None:
         return False
     if not _looks_param_name(name):
         return False

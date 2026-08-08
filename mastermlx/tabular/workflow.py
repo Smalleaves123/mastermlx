@@ -184,7 +184,11 @@ class TabularExperiment(BaseExperiment):
             n_splits = min(5, np.asarray(X).shape[0])
             if n_splits < 2:
                 raise ValueError("at least two samples are required for cross-validation")
-            cv = KFold(n_splits=n_splits, shuffle=True, random_state=0)
+            cv = KFold(
+                n_splits=n_splits,
+                shuffle=True,
+                random_state=self.random_state,
+            )
         pipe = _build_pipeline(clone(self.model), self.preprocessing)
         scores = cross_val_score(pipe, X, y, cv=cv, scoring=self.scoring, groups=groups)
         self.cv_scores_ = np.asarray(scores, dtype=float)

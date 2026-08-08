@@ -7,6 +7,7 @@ from ..accel import pairwise_squared_euclidean
 from ..accel.ml_kernels import kmeans_assign, kmeans_update
 from ..base import BaseEstimator
 from ..utils import as_2d, check_2d_array
+from ..utils.random import resolve_rng
 
 
 def _squared_euclidean_distances(X, centers):
@@ -81,8 +82,11 @@ class KMeans(BaseEstimator):
         best_iter = 0
 
         n_runs = self.n_init
-        for run in range(n_runs):
-            run_rng = np.random.default_rng(None if self.random_state is None else self.random_state + run)
+        rng = resolve_rng(self.random_state)
+        for _ in range(n_runs):
+            run_rng = np.random.default_rng(
+                int(rng.integers(0, np.iinfo(np.uint32).max))
+            )
             centers = self._init_centers(X, run_rng)
             prev_centers = centers.copy()
             prev_inertia = None

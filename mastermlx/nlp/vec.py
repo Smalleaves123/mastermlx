@@ -34,6 +34,26 @@ class SparseCOO:
 __all__ = ["SparseCOO", "CountVectorizer", "TfidfVectorizer", "HashingVectorizer"]
 
 
+# Compact built-in list for the sklearn-compatible ``stop_words="english"``
+# option.  Keeping it in-package avoids a runtime corpus download.
+ENGLISH_STOP_WORDS = frozenset({
+    "a", "about", "after", "again", "against", "all", "am", "an", "and",
+    "any", "are", "as", "at", "be", "because", "been", "before", "being",
+    "between", "both", "but", "by", "can", "could", "did", "do", "does",
+    "doing", "down", "during", "each", "few", "for", "from", "further",
+    "had", "has", "have", "having", "he", "her", "here", "hers", "herself",
+    "him", "himself", "his", "how", "i", "if", "in", "into", "is", "it",
+    "its", "itself", "just", "me", "more", "most", "my", "myself", "no",
+    "nor", "not", "now", "of", "off", "on", "once", "only", "or", "other",
+    "our", "ours", "ourselves", "out", "over", "own", "same", "she", "should",
+    "so", "some", "such", "than", "that", "the", "their", "theirs", "them",
+    "themselves", "then", "there", "these", "they", "this", "those", "through",
+    "to", "too", "under", "until", "up", "very", "was", "we", "were", "what",
+    "when", "where", "which", "while", "who", "whom", "why", "will", "with",
+    "would", "you", "your", "yours", "yourself", "yourselves",
+})
+
+
 class CountVectorizer:
     """Bag-of-ngrams vectorizer backed by NumPy."""
 
@@ -51,7 +71,9 @@ class CountVectorizer:
         if self.stop_words is None:
             return None
         if isinstance(self.stop_words, str):
-            stop_words = {self.stop_words}
+            if self.stop_words.lower() != "english":
+                raise ValueError("stop_words string must be 'english'")
+            stop_words = set(ENGLISH_STOP_WORDS)
         else:
             stop_words = set(self.stop_words)
         if self.lowercase:

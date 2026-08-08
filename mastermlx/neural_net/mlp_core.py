@@ -311,12 +311,6 @@ class _BaseMLP(Module):
         finally:
             self._set_mode(was_training)
 
-    def _snapshot_layers(self):
-        return copy.deepcopy(self.layers_)
-
-    def _restore_layers(self, snapshot):
-        self.layers_ = copy.deepcopy(snapshot)
-
     def _snapshot_state(self):
         return copy.deepcopy(self.layers_)
 

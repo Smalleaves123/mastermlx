@@ -23,17 +23,13 @@ from .model import RobotModel
 from .urdf_model import URDFRobotModel
 from .results import JointTrajectory, RobotResult
 from .trajectory import (
+    _constraint_durations,
     _retime_quintic_path_compiled,
     optimize_joint_path as _optimize_joint_path,
     sample_joint_trajectory_segments,
     trajectory_peaks_batch,
 )
 from .transforms import homogeneous_transform, interpolate_pose_batch
-
-
-_QUINTIC_MAX_VELOCITY = 1.875
-_QUINTIC_MAX_ACCELERATION = 10.0 / np.sqrt(3.0)
-_QUINTIC_MAX_JERK = 60.0
 
 
 def _joint_vector(values, n_joints, name):
@@ -137,20 +133,16 @@ class _SpatialWorkcellWorld:
         return rrt(q_start, q_goal, bounds, hit=self.hit if hit is None else hit, **kwargs)
 
     def trajectory_follow(self, trajectory, *, gains=(4.0, 0.4), dt=0.1, damping=0.0, state=None):
-        from ..sim.core import SimpleRobotSim
+        from ..sim.core import track_joint_trajectory
 
-        sim = SimpleRobotSim(self.robot, state=state, dt=dt, damping=damping)
-        states = [sim.state.copy()]
-        poses = [sim.pose()]
-        controls = []
-        kp, kd = gains
-        for target in np.asarray(trajectory, dtype=float):
-            action = kp * (target - sim.q) + kd * (-sim.qd)
-            controls.append(action)
-            sim.step(action)
-            states.append(sim.state.copy())
-            poses.append(sim.pose())
-        return np.asarray(states), poses, np.asarray(controls)
+        return track_joint_trajectory(
+            self.robot,
+            trajectory,
+            gains=gains,
+            dt=dt,
+            damping=damping,
+            state=state,
+        )
 
 
 class RobotWorkcell(BaseExperiment):
@@ -1504,15 +1496,13 @@ class RobotWorkcell(BaseExperiment):
             minimum_duration,
         )
         if compiled is None:
-            duration_values: list[float] = []
-            for delta in np.abs(np.diff(path, axis=0)):
-                candidates = [_QUINTIC_MAX_VELOCITY * delta / velocity_limits]
-                if acceleration_limits is not None:
-                    candidates.append(np.sqrt(_QUINTIC_MAX_ACCELERATION * delta / acceleration_limits))
-                if jerk_limits is not None:
-                    candidates.append(np.cbrt(_QUINTIC_MAX_JERK * delta / jerk_limits))
-                duration_values.append(max(minimum_duration, float(np.max(np.concatenate(candidates)))))
-            durations = np.asarray(duration_values, dtype=float)
+            durations = _constraint_durations(
+                path,
+                velocity_limits,
+                acceleration_limits,
+                jerk_limits,
+                minimum_duration,
+            )
             time, position, velocity, acceleration = sample_joint_trajectory_segments(
                 path,
                 durations,

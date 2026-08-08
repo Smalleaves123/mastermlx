@@ -128,6 +128,39 @@ class SimpleRobotSim:
         return self.state
 
 
+def track_joint_trajectory(
+    robot,
+    trajectory,
+    *,
+    gains=(4.0, 0.4),
+    dt=0.1,
+    damping=0.0,
+    state=None,
+):
+    """Track joint targets with the shared deterministic PD controller."""
+
+    trajectory = np.asarray(trajectory, dtype=float)
+    if trajectory.ndim != 2 or trajectory.shape[1] != robot.n_joints:
+        raise ValueError("trajectory must have shape (T, n_joints)")
+    if not np.all(np.isfinite(trajectory)):
+        raise ValueError("trajectory must contain only finite values")
+    gains = np.asarray(gains, dtype=float).reshape(-1)
+    if gains.shape != (2,) or not np.all(np.isfinite(gains)):
+        raise ValueError("gains must contain finite proportional and derivative values")
+    kp, kd = gains
+    simulation = SimpleRobotSim(robot, state=state, dt=dt, damping=damping)
+    states = [simulation.state.copy()]
+    poses = [simulation.pose()]
+    controls = []
+    for target in trajectory:
+        action = kp * (target - simulation.q) - kd * simulation.qd
+        controls.append(action)
+        simulation.step(action)
+        states.append(simulation.state.copy())
+        poses.append(simulation.pose())
+    return np.asarray(states), poses, np.asarray(controls)
+
+
 class RobotSimulation:
     """Small Gym-like environment for deterministic robot task simulation.
 

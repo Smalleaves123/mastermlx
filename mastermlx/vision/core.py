@@ -179,16 +179,25 @@ def histogram_of_oriented_gradients(image, cell_size=8, bins=9, block_size=2, ep
             x0 = cx * cell_size
             cell_mag = mag[y0 : y0 + cell_size, x0 : x0 + cell_size]
             cell_ang = ang[y0 : y0 + cell_size, x0 : x0 + cell_size]
-            flat_bins = np.floor(cell_ang / bin_width).astype(int) % bins
+            bin_position = cell_ang / bin_width
+            lower_bins = np.floor(bin_position).astype(int) % bins
+            upper_bins = (lower_bins + 1) % bins
+            upper_weight = bin_position - np.floor(bin_position)
             for b in range(bins):
-                hist[cy, cx, b] = np.sum(cell_mag[flat_bins == b])
+                hist[cy, cx, b] = np.sum(
+                    cell_mag * (
+                        (lower_bins == b) * (1.0 - upper_weight)
+                        + (upper_bins == b) * upper_weight
+                    )
+                )
     if n_cells_y < block_size or n_cells_x < block_size:
         return hist.reshape(-1)
     descriptors = []
     for by in range(n_cells_y - block_size + 1):
         for bx in range(n_cells_x - block_size + 1):
             block = hist[by : by + block_size, bx : bx + block_size].reshape(-1)
-            block = block / max(np.linalg.norm(block), eps)
+            norm = float(np.linalg.norm(block))
+            block = np.zeros_like(block) if norm == 0.0 else block / (norm + eps)
             descriptors.append(block)
     return np.concatenate(descriptors, axis=0)
 
