@@ -398,16 +398,16 @@ def rolling_backtest(
 
     if not rows:
         raise ValueError("no rolling backtest folds were produced")
-    true = np.concatenate(true)
-    pred = np.concatenate(pred)
+    true_values = np.concatenate(true)
+    pred_values = np.concatenate(pred)
     return {
         "scores": np.asarray(scores, dtype=float),
         "mean": float(np.mean(scores)),
         "std": float(np.std(scores)),
-        "true": true,
-        "pred": pred,
+        "true": true_values,
+        "pred": pred_values,
         "folds": rows,
-        "metrics": ForecastMetrics.report(true, pred),
+        "metrics": ForecastMetrics.report(true_values, pred_values),
     }
 
 
