@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.15
+
 - Stabilized F-test and chi-square p-values across large degrees of freedom,
   preserved tied quantiles, and aggregated multiclass linear coefficients
   along the feature axis.

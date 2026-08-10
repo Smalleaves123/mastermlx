@@ -1,3 +1,6 @@
 include README.md
 include LICENSE
 recursive-include mastermlx *.pyx *.c *.cpp
+prune build
+prune dist
+prune release-dist

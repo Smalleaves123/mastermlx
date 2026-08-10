@@ -1,11 +1,13 @@
 import numpy as np
 import pytest
-from scipy import sparse
 
 from mastermlx import LinearRegression, LogisticRegression, RidgeRegression, SGDRegressor
 from mastermlx.ensemble import MultiOutputClassifier, MultiOutputRegressor
 from mastermlx.preprocessing import Pipeline, SimpleImputer
 from mastermlx.utils import check_X, check_sample_weight
+
+
+sparse = pytest.importorskip("scipy.sparse")
 
 
 def test_sample_weight_matches_integer_replication_for_linear_regression():

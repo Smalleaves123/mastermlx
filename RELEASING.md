@@ -37,7 +37,7 @@ Prefer testing both the source distribution and the wheel in a clean environment
 - Push a tag like `v0.1.1` to trigger `.github/workflows/release.yml`
 - For a dry run, open the `Release` workflow in GitHub Actions and run `workflow_dispatch` with `target=testpypi`
 - Store the following repository secrets:
-  - `PYPI_API_TOKEN`
+  - `PYPI_TOKEN`
   - `TEST_PYPI_API_TOKEN`
 - The workflow builds distributions, checks them with `twine`, publishes to the selected index, and creates a GitHub Release for tag pushes
 
