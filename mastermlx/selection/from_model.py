@@ -3,7 +3,9 @@ from __future__ import annotations
 import numpy as np
 
 from ..base import BaseTransformer
+from ..utils.estimator import clone
 from ..utils.validation import check_2d_array
+from ._importance import feature_importances
 
 
 class SelectFromModel(BaseTransformer):
@@ -18,24 +20,14 @@ class SelectFromModel(BaseTransformer):
 
     def fit(self, X, y=None):
         X = check_2d_array(X)
+        estimator = clone(self.estimator)
         if y is not None:
-            self.estimator.fit(X, y)
+            estimator.fit(X, y)
         else:
-            self.estimator.fit(X)
-        self.estimator_ = self.estimator
+            estimator.fit(X)
+        self.estimator_ = estimator
 
-        # Get feature importance
-        if hasattr(self.estimator, 'coef_'):
-            imp = np.abs(np.asarray(self.estimator.coef_)).ravel()
-        elif hasattr(self.estimator, 'feature_importances_'):
-            imp = np.asarray(self.estimator.feature_importances_).ravel()
-        else:
-            raise ValueError("estimator must have coef_ or feature_importances_")
-        if imp.size != X.shape[1]:
-            raise ValueError(
-                "estimator feature importance length must match X "
-                f"({imp.size} != {X.shape[1]})"
-            )
+        imp = feature_importances(estimator, X.shape[1])
 
         # Compute threshold
         if self.threshold == "mean":

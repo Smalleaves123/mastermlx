@@ -4,7 +4,7 @@ import numpy as np
 from typing import cast
 
 from ..base import BaseEstimator
-from ..utils import accuracy, as_2d, check_1d_array, check_2d_array, r2_score
+from ..utils import accuracy, as_2d, check_1d_array, check_2d_array, clone, r2_score
 
 
 class VotingClassifier(BaseEstimator):
@@ -20,10 +20,11 @@ class VotingClassifier(BaseEstimator):
         y = check_1d_array(y)
         if X.shape[0] != y.shape[0]:
             raise ValueError("X and y must contain the same number of samples")
+        if not self.estimators:
+            raise ValueError("estimators must contain at least one estimator")
         self.estimators_ = []
         for est in self.estimators:
-            est.fit(X, y)
-            self.estimators_.append(est)
+            self.estimators_.append(clone(est).fit(X, y))
         self.classes_ = np.asarray(getattr(self.estimators_[0], "classes_", np.unique(y)))
         return self
 
@@ -32,6 +33,10 @@ class VotingClassifier(BaseEstimator):
             return np.ones(len(self.estimators_), dtype=float)
         if self.weights.shape[0] != len(self.estimators_):
             raise ValueError("weights must match number of estimators")
+        if not np.all(np.isfinite(self.weights)) or np.any(self.weights < 0.0):
+            raise ValueError("weights must contain finite non-negative values")
+        if np.sum(self.weights) <= 0.0:
+            raise ValueError("weights must contain at least one positive value")
         return self.weights
 
     def predict_proba(self, X):
@@ -59,10 +64,12 @@ class VotingClassifier(BaseEstimator):
             raise RuntimeError("Model has not been fit yet")
         X = as_2d(X)
         preds = np.asarray([est.predict(X) for est in self.estimators_])
+        weights = self._w()
         out: list[object] = []
         for col in preds.T:
-            vals, cnt = np.unique(col, return_counts=True)
-            out.append(vals[np.argmax(cnt)])
+            values = np.unique(col)
+            scores = np.asarray([np.sum(weights[col == value]) for value in values])
+            out.append(values[np.argmax(scores)])
         result = np.asarray(out)
         return result
 
@@ -81,10 +88,11 @@ class VotingRegressor(BaseEstimator):
         y = check_1d_array(y).astype(float)
         if X.shape[0] != y.shape[0]:
             raise ValueError("X and y must contain the same number of samples")
+        if not self.estimators:
+            raise ValueError("estimators must contain at least one estimator")
         self.estimators_ = []
         for est in self.estimators:
-            est.fit(X, y)
-            self.estimators_.append(est)
+            self.estimators_.append(clone(est).fit(X, y))
         return self
 
     def predict(self, X):
@@ -97,6 +105,10 @@ class VotingRegressor(BaseEstimator):
         else:
             if self.weights.shape[0] != len(self.estimators_):
                 raise ValueError("weights must match number of estimators")
+            if not np.all(np.isfinite(self.weights)) or np.any(self.weights < 0.0):
+                raise ValueError("weights must contain finite non-negative values")
+            if np.sum(self.weights) <= 0.0:
+                raise ValueError("weights must contain at least one positive value")
             w = self.weights / np.sum(self.weights)
             out = np.average(preds, axis=0, weights=w)
         return out

@@ -7,6 +7,7 @@ import importlib
 import io
 import json
 from pathlib import Path
+import re
 from typing import Any
 import warnings
 import zipfile
@@ -23,11 +24,11 @@ STATE_SCHEMA_VERSION = 1
 
 
 def _version_parts(value):
-    parts = str(value).split(".")
-    try:
-        return tuple(int(part.split("+", 1)[0].split("-", 1)[0]) for part in parts[:3])
-    except ValueError:
+    public = str(value).strip().rsplit("!", 1)[-1]
+    match = re.match(r"^[vV]?(\d+)(?:\.(\d+))?(?:\.(\d+))?", public)
+    if match is None:
         return ()
+    return tuple(int(part) if part is not None else 0 for part in match.groups())
 
 
 def _check_library_version(saved_version):

@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- Stabilized F-test and chi-square p-values across large degrees of freedom,
+  preserved tied quantiles, and aggregated multiclass linear coefficients
+  along the feature axis.
+- Added legacy Sequential optimizer-key migration, robust scheduler/splitter
+  callable handling, PEP 440 checkpoint version parsing, and side-effect-free
+  learning-rate range tests for slot-based or non-deepcopyable estimators.
+- Added an always-numeric `best_loss_` training attribute while preserving
+  `best_val_loss_=None` when no validation set exists.
+- Preserved deterministic default `TabularExperiment.cv_score()` folds while
+  continuing to honor an explicitly configured `random_state`.
+- Made Voting and Stacking ensembles clone user-provided base estimators, and
+  made SelectFromModel clone its estimator, applied hard-voting weights, and
+  made RANSAC honor explicit zero-valued parameters instead of replacing them.
+- Documented corrected sklearn-style contracts: MiniBatchKMeans rejects more
+  clusters than samples and reports summed inertia; weighted AdaBoostRegressor
+  fitting is stochastic unless `random_state` is set; IK uses best-effort mode
+  unless `strict=True` is requested.
 - Rebuilt NLP LDA around batch variational EM with per-iteration sufficient
   statistics, real convergence state, ELBO scoring, and perplexity reporting.
 - Made reinforcement-learning evaluation side-effect free and corrected DQN

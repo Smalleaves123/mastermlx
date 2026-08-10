@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 import os
+import warnings
 
 
 _VALID_BACKENDS = {"auto", "numpy", "cython"}
 _backend = os.environ.get("MASTERML_BACKEND", "auto").lower()
 if _backend not in _VALID_BACKENDS:
+    warnings.warn(
+        f"invalid MASTERML_BACKEND={_backend!r}; falling back to 'auto'",
+        RuntimeWarning,
+        stacklevel=2,
+    )
     _backend = "auto"
 
 

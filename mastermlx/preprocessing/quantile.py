@@ -34,10 +34,26 @@ class QuantileTransform(BaseTransformer):
         X = self._check_X(X, dtype=float)
         if self.ref_ is None or self.quantiles_ is None:
             raise RuntimeError("Transform has not been fit yet")
-        uniform = np.column_stack([
-            np.interp(X[:, j], self.quantiles_[:, j], self.ref_)
-            for j in range(X.shape[1])
-        ])
+        columns = []
+        for j in range(X.shape[1]):
+            quantiles = self.quantiles_[:, j]
+            if quantiles[0] == quantiles[-1]:
+                columns.append(np.full(X.shape[0], 0.5, dtype=float))
+                continue
+            # Averaging interpolation in both directions maps tied values to
+            # the middle of their quantile interval.  A one-way interpolation
+            # selects the right-most duplicate and maps constant columns to 1.
+            forward = np.interp(X[:, j], quantiles, self.ref_)
+            backward = -np.interp(
+                -X[:, j],
+                -quantiles[::-1],
+                -self.ref_[::-1],
+            )
+            column = 0.5 * (forward + backward)
+            column[X[:, j] <= quantiles[0]] = 0.0
+            column[X[:, j] >= quantiles[-1]] = 1.0
+            columns.append(column)
+        uniform = np.column_stack(columns)
         if self.output_distribution == "uniform":
             return uniform
         return _norm_ppf(np.clip(uniform, 1e-12, 1.0 - 1e-12))

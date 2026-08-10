@@ -92,14 +92,58 @@ def _split_cv(splitter, X, y, groups=None):
     try:
         signature = inspect.signature(splitter.split)
     except (TypeError, ValueError):
+        return _split_opaque(splitter.split, X, y, groups)
+    group_parameter = signature.parameters.get("groups")
+    if group_parameter is not None:
+        if group_parameter.kind == inspect.Parameter.POSITIONAL_ONLY:
+            return splitter.split(X, y, groups)
         return splitter.split(X, y, groups=groups)
-    accepts_groups = "groups" in signature.parameters or any(
-        parameter.kind == parameter.VAR_KEYWORD
+    if any(
+        parameter.kind == inspect.Parameter.VAR_KEYWORD
         for parameter in signature.parameters.values()
-    )
-    if accepts_groups:
+    ):
         return splitter.split(X, y, groups=groups)
+    if any(
+        parameter.kind == inspect.Parameter.VAR_POSITIONAL
+        for parameter in signature.parameters.values()
+    ):
+        return splitter.split(X, y, groups)
     return splitter.split(X, y)
+
+
+def _split_opaque(split, X, y, groups):
+    """Call a non-introspectable splitter without hiding internal failures."""
+
+    try:
+        return split(X, y, groups=groups)
+    except TypeError as exc:
+        if not _looks_like_argument_binding_error(exc):
+            raise
+    try:
+        return split(X, y, groups)
+    except TypeError as exc:
+        if not _looks_like_argument_binding_error(exc):
+            raise
+    return split(X, y)
+
+
+def _looks_like_argument_binding_error(error):
+    message = str(error).lower()
+    return any(
+        fragment in message
+        for fragment in (
+            "unexpected keyword",
+            "takes no keyword",
+            "invalid keyword",
+            "too many positional",
+            "positional arguments but",
+            "positional argument but",
+            "positional arguments (but",
+            "takes exactly",
+            "takes at most",
+            "expected at most",
+        )
+    )
 
 
 def _single_scorer(scoring):

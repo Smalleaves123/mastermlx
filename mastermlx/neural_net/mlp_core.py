@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import copy
-import inspect
 import numpy as np
 
 from ..base import Module
@@ -13,6 +12,7 @@ from ..utils.validation import check_1d_array, check_2d_array
 from .config import OptCfg, OptimizerConfig, build_opt, normalize_metrics, resolve_opt_cfg, resolve_train_cfg
 from .layers import Dense, ReLU, Sigmoid, Tanh
 from .metric_eval import evaluate_metrics
+from ._scheduler import step_scheduler
 
 
 def _softmax(logits):
@@ -115,6 +115,7 @@ class _BaseMLP(Module):
         self.val_loss_ = []
         self.optimizer_ = None
         self.best_epoch_ = None
+        self.best_loss_ = None
         self.best_val_loss_ = None
         self.history_ = []
 
@@ -321,20 +322,7 @@ class _BaseMLP(Module):
         scheduler = self.lr_scheduler
         if scheduler is None:
             return
-        monitor_loss = logs.get("monitor_loss")
-        parameters = inspect.signature(scheduler.step).parameters.values()
-        accepts_metric = any(
-            parameter.kind in {
-                parameter.POSITIONAL_ONLY,
-                parameter.POSITIONAL_OR_KEYWORD,
-                parameter.VAR_POSITIONAL,
-            }
-            for parameter in parameters
-        )
-        if monitor_loss is not None and accepts_metric:
-            scheduler.step(monitor_loss)
-        else:
-            scheduler.step()
+        step_scheduler(scheduler, logs.get("monitor_loss"))
 
 
 __all__ = ["_BaseMLP", "_softmax"]

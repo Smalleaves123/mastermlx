@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import copy
-import inspect
 from typing import Any
+import warnings
 
 import numpy as np
 
@@ -12,6 +12,7 @@ from .config import OptCfg, OptimizerConfig, build_opt, normalize_metrics, resol
 from .layers import Dense, Embedding
 from .losses import BinaryCrossEntropyLoss, CrossEntropyLoss, MSELoss
 from .metric_eval import evaluate_metrics
+from ._scheduler import step_scheduler
 
 
 class _SequentialRuntime:
@@ -146,6 +147,7 @@ class _SequentialRuntime:
 
         l2 = self.training_config_.l2
         lr = self.training_config_.lr
+        self._migrate_legacy_optimizer_state()
         begin_step = getattr(self.optimizer_, "begin_step", None)
         end_step = getattr(self.optimizer_, "end_step", None)
         if begin_step is not None:
@@ -161,6 +163,52 @@ class _SequentialRuntime:
         finally:
             if end_step is not None:
                 end_step()
+
+    def _migrate_legacy_optimizer_state(self):
+        """Translate pre-0.1.15 Sequential optimizer keys once."""
+
+        if getattr(self, "_optimizer_keys_migrated_", False):
+            return False
+        self._optimizer_keys_migrated_ = True
+        optimizer = self.optimizer_
+        if optimizer is None:
+            return False
+
+        prefixes: dict[str, list[str]] = {}
+        dense_index = 0
+        for layer_index, layer in enumerate(self.layers):
+            current = f"layer{layer_index}.{layer.__class__.__name__.lower()}"
+            if isinstance(layer, (Dense, Embedding)):
+                legacy = f"dense{dense_index}"
+                dense_index += 1
+            else:
+                legacy = layer.__class__.__name__.lower()
+            prefixes.setdefault(legacy, []).append(current)
+
+        migrated = False
+        for attribute in ("_velocity", "_avg_sq", "_G", "_m", "_v"):
+            state = getattr(optimizer, attribute, None)
+            if not isinstance(state, dict):
+                continue
+            for legacy, current_prefixes in prefixes.items():
+                legacy_prefix = f"{legacy}."
+                old_keys = [key for key in state if str(key).startswith(legacy_prefix)]
+                for old_key in old_keys:
+                    suffix = str(old_key)[len(legacy):]
+                    for current in current_prefixes:
+                        new_key = f"{current}{suffix}"
+                        if new_key not in state:
+                            state[new_key] = copy.deepcopy(state[old_key])
+                            migrated = True
+                    del state[old_key]
+        if migrated:
+            warnings.warn(
+                "migrated legacy Sequential optimizer state keys; repeated same-type "
+                "layers in old checkpoints shared state and cannot be separated exactly",
+                UserWarning,
+                stacklevel=3,
+            )
+        return migrated
 
     def _evaluate_loss(self, X, y, loss_fn, classes=None):
         was_training = self._current_mode()
@@ -206,20 +254,7 @@ class _SequentialRuntime:
         scheduler = self.lr_scheduler
         if scheduler is None:
             return
-        monitor_loss = logs.get("monitor_loss")
-        parameters = inspect.signature(scheduler.step).parameters.values()
-        accepts_metric = any(
-            parameter.kind in {
-                parameter.POSITIONAL_ONLY,
-                parameter.POSITIONAL_OR_KEYWORD,
-                parameter.VAR_POSITIONAL,
-            }
-            for parameter in parameters
-        )
-        if monitor_loss is not None and accepts_metric:
-            scheduler.step(monitor_loss)
-        else:
-            scheduler.step()
+        step_scheduler(scheduler, logs.get("monitor_loss"))
 
     def evaluate(self, X, y, metrics=None):
         """Return a consistent ``{"loss": ..., "metrics": ...}`` result."""

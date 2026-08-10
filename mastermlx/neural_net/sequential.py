@@ -116,10 +116,18 @@ class Sequential(_SequentialRuntime, _SequentialFit, Module, BaseEstimator):
         self.loss_ = []
         self.val_loss_ = []
         self.optimizer_ = None
+        self._optimizer_keys_migrated_ = False
         self.classes_: np.ndarray | None = None
         self.best_epoch_ = None
+        self.best_loss_ = None
         self.best_val_loss_ = None
         self.history_ = []
+
+    @classmethod
+    def load_checkpoint(cls, path):
+        model = super().load_checkpoint(path)
+        model._migrate_legacy_optimizer_state()
+        return model
 
 
     def predict_proba(self, X):

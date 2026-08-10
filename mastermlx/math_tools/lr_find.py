@@ -3,6 +3,8 @@ from __future__ import annotations
 import copy
 import numpy as np
 
+from ..utils.estimator import clone
+
 
 def lr_find(model, X, y, start=1e-8, end=10.0, n_iters=100, batch_size=None, random_state=None):
     """Run a learning-rate range test (Leslie Smith 2015).
@@ -21,38 +23,43 @@ def lr_find(model, X, y, start=1e-8, end=10.0, n_iters=100, batch_size=None, ran
     lr = float(start)
     lrs, losses = [], []
 
-    original_state = copy.deepcopy(vars(model))
     try:
-        for _ in range(n_iters):
-            idx = rng.integers(0, n, size=bs)
-            xb, yb = X[idx], y[idx]
+        working_model = copy.deepcopy(model)
+    except (TypeError, ValueError):
+        try:
+            working_model = clone(model)
+        except (TypeError, ValueError) as exc:
+            raise TypeError(
+                "model must support deepcopy or estimator cloning for a side-effect-free lr_find"
+            ) from exc
 
-            for attr in ('lr', 'learning_rate', 'eta0'):
-                if hasattr(model, attr):
-                    setattr(model, attr, lr)
+    for _ in range(n_iters):
+        idx = rng.integers(0, n, size=bs)
+        xb, yb = X[idx], y[idx]
 
-            if hasattr(model, "partial_fit"):
-                model.partial_fit(xb, yb)
-            else:
-                model.fit(xb, yb)
+        for attr in ('lr', 'learning_rate', 'eta0'):
+            if hasattr(working_model, attr):
+                setattr(working_model, attr, lr)
 
-            if hasattr(model, 'loss_') and model.loss_:
-                loss = float(model.loss_[-1])
-            elif hasattr(model, 'loss_curve_') and model.loss_curve_:
-                loss = float(model.loss_curve_[-1])
-            elif hasattr(model, "score"):
-                loss = -float(model.score(xb, yb))
-            else:
-                raise ValueError("model must expose a loss history or score method")
+        if hasattr(working_model, "partial_fit"):
+            working_model.partial_fit(xb, yb)
+        else:
+            working_model.fit(xb, yb)
 
-            lrs.append(lr)
-            losses.append(loss)
-            lr *= factor
+        if hasattr(working_model, 'loss_') and working_model.loss_:
+            loss = float(working_model.loss_[-1])
+        elif hasattr(working_model, 'loss_curve_') and working_model.loss_curve_:
+            loss = float(working_model.loss_curve_[-1])
+        elif hasattr(working_model, "score"):
+            loss = -float(working_model.score(xb, yb))
+        else:
+            raise ValueError("model must expose a loss history or score method")
 
-            if len(losses) > 5 and loss > 10.0 * np.min(losses[:-1]):
-                break
-    finally:
-        vars(model).clear()
-        vars(model).update(original_state)
+        lrs.append(lr)
+        losses.append(loss)
+        lr *= factor
+
+        if len(losses) > 5 and loss > 10.0 * np.min(losses[:-1]):
+            break
 
     return np.array(lrs, dtype=float), np.array(losses, dtype=float)

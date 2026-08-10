@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
-from math import gamma as _gamma, log as _log, sqrt as _sqrt, exp as _exp
+from math import exp as _exp, lgamma as _lgamma, log as _log, sqrt as _sqrt
 
 
 # ---------------------------------------------------------------------------
@@ -16,33 +16,55 @@ def _norm_cdf(x):
 
 
 def _chi2_cdf(x, df):
-    """Chi-square CDF via series or continued fraction."""
+    """Chi-square CDF via the regularized lower incomplete gamma."""
     x = max(float(x), 0.0)
     df = float(df)
     if df <= 0 or x <= 0:
         return 0.0
-    # For df=1, use normal CDF directly
-    if abs(df - 1.0) < 1e-10:
-        return float(_norm_cdf(_sqrt(x)))
-    # For large x, use normal approximation
-    if x > 20 * df and df > 2:
-        z = (x / df) ** (1.0 / 3.0) - (1.0 - 2.0 / (9.0 * df))
-        z /= _sqrt(2.0 / (9.0 * df))
-        return float(_norm_cdf(z))
-    s = x / 2.0
-    a = df / 2.0
-    log_term = a * _log(max(s, 1e-15)) - s - _log(_gamma(a))
-    if log_term < -700:
-        # Series underflows → use normal approx at lower threshold
-        return float(_norm_cdf((x - df) / _sqrt(2.0 * df)))
-    term = _exp(log_term)
-    total = term
-    for k in range(1, 500):
-        term *= s / (a + k)
-        total += term
-        if abs(term) < 1e-16 * abs(total):
+    return _regularized_gamma_p(df / 2.0, x / 2.0)
+
+
+def _regularized_gamma_p(a, x):
+    """Return P(a, x) using a series or a continued-fraction complement."""
+
+    if x <= 0.0:
+        return 0.0
+    log_scale = -x + a * _log(x) - _lgamma(a)
+    scale = _exp(log_scale) if log_scale > -745.0 else 0.0
+    if x < a + 1.0:
+        denominator = a
+        term = 1.0 / a
+        total = term
+        for _ in range(1, 1001):
+            denominator += 1.0
+            term *= x / denominator
+            total += term
+            if abs(term) <= abs(total) * 3e-14:
+                break
+        return float(np.clip(total * scale, 0.0, 1.0))
+
+    tiny = np.finfo(float).tiny / np.finfo(float).eps
+    denominator = x + 1.0 - a
+    c = 1.0 / tiny
+    d = 1.0 / max(abs(denominator), tiny)
+    if denominator < 0.0:
+        d = -d
+    fraction = d
+    for iteration in range(1, 1001):
+        coefficient = -iteration * (iteration - a)
+        denominator += 2.0
+        d = coefficient * d + denominator
+        if abs(d) < tiny:
+            d = tiny
+        c = denominator + coefficient / c
+        if abs(c) < tiny:
+            c = tiny
+        d = 1.0 / d
+        delta = d * c
+        fraction *= delta
+        if abs(delta - 1.0) <= 3e-14:
             break
-    return float(min(total, 1.0))
+    return float(np.clip(1.0 - scale * fraction, 0.0, 1.0))
 
 
 def _f_cdf(x, df1, df2):
@@ -52,14 +74,12 @@ def _f_cdf(x, df1, df2):
     df2 = float(df2)
     if x <= 0 or df1 <= 0 or df2 <= 0:
         return 0.0
-    if x > 1e6:  # very large F, essentially 1.0
-        return 1.0
-    z = df1 * x / (df1 * x + df2)
+    z = 1.0 / (1.0 + df2 / df1 / x)
     return _betainc(df1 / 2.0, df2 / 2.0, z)
 
 
 def _betainc(a, b, x):
-    """Regularized incomplete beta via power series (I_x(a,b))."""
+    """Regularized incomplete beta via a stable continued fraction."""
     a = float(a)
     b = float(b)
     x = float(x)
@@ -67,17 +87,63 @@ def _betainc(a, b, x):
         return 0.0
     if x >= 1:
         return 1.0
-    lbeta = _log(_gamma(a)) + _log(_gamma(b)) - _log(_gamma(a + b))
-    # Use the power series: I_x(a,b) = x^a (1-x)^b / (a*B(a,b)) * sum
-    front = _exp(a * _log(x) + b * _log(1.0 - x) - lbeta) / a
-    result = 1.0
-    term = 1.0
-    for k in range(1, 500):
-        term *= (a + b + k - 1.0) * x / (a + k)
-        result += term
-        if abs(term) < 1e-16 * result:
+    log_front = (
+        _lgamma(a + b)
+        - _lgamma(a)
+        - _lgamma(b)
+        + a * _log(x)
+        + b * np.log1p(-x)
+    )
+    front = _exp(log_front) if log_front > -745.0 else 0.0
+    if x < (a + 1.0) / (a + b + 2.0):
+        value = front * _beta_continued_fraction(a, b, x) / a
+    else:
+        value = 1.0 - front * _beta_continued_fraction(b, a, 1.0 - x) / b
+    return float(np.clip(value, 0.0, 1.0))
+
+
+def _beta_continued_fraction(a, b, x):
+    """Evaluate the incomplete-beta continued fraction (Lentz method)."""
+
+    tiny = np.finfo(float).tiny / np.finfo(float).eps
+    qab = a + b
+    qap = a + 1.0
+    qam = a - 1.0
+    c = 1.0
+    d = 1.0 - qab * x / qap
+    if abs(d) < tiny:
+        d = tiny
+    d = 1.0 / d
+    result = d
+    for iteration in range(1, 501):
+        twice = 2 * iteration
+        coefficient = iteration * (b - iteration) * x / (
+            (qam + twice) * (a + twice)
+        )
+        d = 1.0 + coefficient * d
+        if abs(d) < tiny:
+            d = tiny
+        c = 1.0 + coefficient / c
+        if abs(c) < tiny:
+            c = tiny
+        d = 1.0 / d
+        result *= d * c
+
+        coefficient = -(a + iteration) * (qab + iteration) * x / (
+            (a + twice) * (qap + twice)
+        )
+        d = 1.0 + coefficient * d
+        if abs(d) < tiny:
+            d = tiny
+        c = 1.0 + coefficient / c
+        if abs(c) < tiny:
+            c = tiny
+        d = 1.0 / d
+        delta = d * c
+        result *= delta
+        if abs(delta - 1.0) <= 3e-14:
             break
-    return min(float(front * result), 1.0)
+    return result
 
 
 def _rank(x):

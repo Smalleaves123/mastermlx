@@ -37,7 +37,7 @@ def _oof_preds(estimators, X, y, cv, method):
 class StackingClassifier(BaseEstimator):
     def __init__(self, estimators, final_estimator=None, cv=5, use_proba=True, random_state=None):
         self.estimators = list(estimators)
-        self.final_estimator = final_estimator or LogisticRegression()
+        self.final_estimator = LogisticRegression() if final_estimator is None else final_estimator
         self.cv = cv
         self.use_proba = use_proba
         self.random_state = random_state
@@ -54,14 +54,15 @@ class StackingClassifier(BaseEstimator):
         y = check_1d_array(y)
         if X.shape[0] != y.shape[0]:
             raise ValueError("X and y must contain the same number of samples")
+        if not self.estimators:
+            raise ValueError("estimators must contain at least one estimator")
 
         cv = self.cv if hasattr(self.cv, "split") else KFold(n_splits=int(self.cv), shuffle=True, random_state=self.random_state)
         method = "predict_proba" if self.use_proba else "predict"
         feats = _oof_preds(self.estimators, X, y, cv, method)
         self.estimators_ = []
         for est in self.estimators:
-            est.fit(X, y)
-            self.estimators_.append(est)
+            self.estimators_.append(clone(est).fit(X, y))
         self.final_estimator_ = clone(self.final_estimator).fit(feats, y)
         return self
 
@@ -98,7 +99,7 @@ class StackingClassifier(BaseEstimator):
 class StackingRegressor(BaseEstimator):
     def __init__(self, estimators, final_estimator=None, cv=5, use_pred=True, random_state=None):
         self.estimators = list(estimators)
-        self.final_estimator = final_estimator or LinearRegression()
+        self.final_estimator = LinearRegression() if final_estimator is None else final_estimator
         self.cv = cv
         self.random_state = random_state
         self.use_pred = use_pred
@@ -115,13 +116,14 @@ class StackingRegressor(BaseEstimator):
         y = check_1d_array(y).astype(float)
         if X.shape[0] != y.shape[0]:
             raise ValueError("X and y must contain the same number of samples")
+        if not self.estimators:
+            raise ValueError("estimators must contain at least one estimator")
 
         cv = self.cv if hasattr(self.cv, "split") else KFold(n_splits=int(self.cv), shuffle=True, random_state=self.random_state)
         feats = _oof_preds(self.estimators, X, y, cv, "predict")
         self.estimators_ = []
         for est in self.estimators:
-            est.fit(X, y)
-            self.estimators_.append(est)
+            self.estimators_.append(clone(est).fit(X, y))
         self.final_estimator_ = clone(self.final_estimator).fit(feats, y)
         return self
 

@@ -28,15 +28,19 @@ def test_checkpoint_rejects_incompatible_major_and_warns_on_other_versions(tmp_p
     original = tmp_path / "original.mlx"
     minor = tmp_path / "minor.mlx"
     major = tmp_path / "major.mlx"
+    major_prerelease = tmp_path / "major-prerelease.mlx"
     model.save(original)
     _rewrite_checkpoint_version(original, minor, "0.2.0")
     _rewrite_checkpoint_version(original, major, "1.0.0")
+    _rewrite_checkpoint_version(original, major_prerelease, "1.0.0rc1")
 
     with pytest.warns(UserWarning, match="created by mastermlx v0.2.0"):
         restored = LinearRegression.load(minor)
     assert isinstance(restored, LinearRegression)
     with pytest.raises(RuntimeError, match="incompatible"):
         LinearRegression.load(major)
+    with pytest.raises(RuntimeError, match="incompatible"):
+        LinearRegression.load(major_prerelease)
 
 
 class _BrokenSplitter:

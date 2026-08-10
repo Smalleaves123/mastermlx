@@ -4,13 +4,18 @@ import pytest
 sklearn = pytest.importorskip("sklearn")
 from sklearn.cluster import KMeans as SklearnKMeans  # noqa: E402
 from sklearn.decomposition import PCA as SklearnPCA  # noqa: E402
+from sklearn.feature_selection import f_classif as sklearn_f_classif  # noqa: E402
 from sklearn.linear_model import LinearRegression as SklearnLinearRegression  # noqa: E402
+from sklearn.preprocessing import QuantileTransformer as SklearnQuantileTransformer  # noqa: E402
 from sklearn.preprocessing import StandardScaler as SklearnStandardScaler  # noqa: E402
+from scipy.stats import chi2 as scipy_chi2  # noqa: E402
 
 from mastermlx.clustering import KMeans  # noqa: E402
 from mastermlx.decomposition import PCA  # noqa: E402
 from mastermlx.linear_models import LinearRegression  # noqa: E402
-from mastermlx.preprocessing import StandardScaler  # noqa: E402
+from mastermlx.preprocessing import QuantileTransform, StandardScaler  # noqa: E402
+from mastermlx.selection import f_classif  # noqa: E402
+from mastermlx.math_tools.stats import _chi2_cdf  # noqa: E402
 
 
 @pytest.mark.parametrize("fit_intercept", [True, False])
@@ -74,4 +79,40 @@ def test_kmeans_matches_sklearn_inertia_and_partition():
     assert np.array_equal(
         np.sort(np.bincount(ours.labels_)),
         np.sort(np.bincount(reference.labels_)),
+    )
+
+
+def test_large_sample_f_classif_matches_sklearn():
+    rng = np.random.default_rng(7)
+    X = rng.normal(size=(600, 4))
+    y = np.arange(X.shape[0]) % 3
+
+    scores, pvalues = f_classif(X, y)
+    reference_scores, reference_pvalues = sklearn_f_classif(X, y)
+
+    np.testing.assert_allclose(scores, reference_scores, rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(pvalues, reference_pvalues, rtol=1e-9, atol=1e-12)
+
+
+def test_tied_quantiles_match_sklearn_midpoint_interpolation():
+    X = np.array([[0.0], [1.0], [1.0], [1.0], [2.0]])
+    ours = QuantileTransform(n_quantiles=5).fit_transform(X)
+    reference = SklearnQuantileTransformer(
+        n_quantiles=5,
+        random_state=0,
+    ).fit_transform(X)
+
+    np.testing.assert_allclose(ours, reference)
+
+
+@pytest.mark.parametrize(
+    ("value", "degrees_of_freedom"),
+    [(0.1, 1), (5.0, 3), (5.0, 10), (400.0, 400)],
+)
+def test_chi_square_cdf_matches_scipy(value, degrees_of_freedom):
+    assert np.isclose(
+        _chi2_cdf(value, degrees_of_freedom),
+        scipy_chi2.cdf(value, degrees_of_freedom),
+        rtol=1e-11,
+        atol=1e-13,
     )

@@ -3,6 +3,7 @@ from __future__ import annotations
 import numpy as np
 
 from ..base import BaseEstimator
+from ..utils.metrics import r2_score
 from ..utils.validation import check_1d_array, check_2d_array, check_same_rows
 
 
@@ -27,10 +28,20 @@ class RANSACRegressor(BaseEstimator):
         n, d = X.shape
         if self.max_trials < 1:
             raise ValueError("max_trials must be at least 1")
-        min_s = self.min_samples or max(d + 1, int(n * 0.1))
+        min_s = (
+            max(d + 1, int(n * 0.1))
+            if self.min_samples is None
+            else int(self.min_samples)
+        )
         if min_s < 1 or min_s > n:
             raise ValueError("min_samples must be between 1 and the number of samples")
-        thresh = self.residual_threshold or np.median(np.abs(y - np.median(y))) * 2.0
+        thresh = (
+            np.median(np.abs(y - np.median(y))) * 2.0
+            if self.residual_threshold is None
+            else float(self.residual_threshold)
+        )
+        if not np.isfinite(thresh) or thresh < 0.0:
+            raise ValueError("residual_threshold must be a finite non-negative value")
         rng = np.random.default_rng(self.random_state)
 
         best_inliers = 0
@@ -47,7 +58,7 @@ class RANSACRegressor(BaseEstimator):
             except np.linalg.LinAlgError:
                 continue
             resid = np.abs(y - Xb @ beta)
-            inliers = int(np.sum(resid < thresh))
+            inliers = int(np.sum(resid <= thresh))
             if inliers > best_inliers:
                 best_inliers = inliers
                 best_coef = beta[1:]
@@ -58,24 +69,26 @@ class RANSACRegressor(BaseEstimator):
         # Refit on all inliers
         if best_coef is not None:
             resid = np.abs(y - Xb @ np.r_[best_intercept, best_coef])
-            mask = resid < thresh
+            mask = resid <= thresh
             if np.sum(mask) >= min_s:
                 beta = np.linalg.lstsq(Xb[mask], y[mask], rcond=None)[0]
                 best_coef = beta[1:]
                 best_intercept = float(beta[0])
             self.inlier_mask_ = mask
 
+        if best_coef is None:
+            raise RuntimeError("RANSAC failed to find a valid consensus set")
         self.coef_ = best_coef
         self.intercept_ = best_intercept
         self.n_trials_ = trial
+        self._set_n_features(X)
         return self
 
     def predict(self, X):
-        X = check_2d_array(X).astype(float)
+        X = self._check_X(X, dtype=float)
         if self.coef_ is None:
             raise RuntimeError("Model has not been fit yet")
         return X @ self.coef_ + self.intercept_
 
     def score(self, X, y):
-        from ..utils.metrics import r2_score
         return r2_score(y, self.predict(X))

@@ -133,5 +133,6 @@ def run_supervised_training_loop(
         "val_loss": val_loss_history,
         "history": history,
         "best_epoch": best_epoch,
+        "best_loss": float(best_loss),
         "best_val_loss": best_val_loss,
     }

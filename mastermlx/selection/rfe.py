@@ -4,6 +4,7 @@ import numpy as np
 
 from ..base import BaseTransformer
 from ..utils import check_1d_array, check_2d_array, clone
+from ._importance import feature_importances
 
 
 class RFE(BaseTransformer):
@@ -34,16 +35,6 @@ class RFE(BaseTransformer):
             raise ValueError("step must be at least 1")
         return step
 
-    def _importance(self, est):
-        if hasattr(est, "coef_"):
-            coef = np.asarray(est.coef_, dtype=float)
-            if coef.ndim == 1:
-                return np.abs(coef)
-            return np.sum(np.abs(coef), axis=0)
-        if hasattr(est, "feature_importances_"):
-            return np.asarray(est.feature_importances_, dtype=float)
-        raise ValueError("estimator must expose coef_ or feature_importances_ after fit")
-
     def fit(self, X, y=None):
         X = check_2d_array(X).astype(float)
         y = check_1d_array(y, name="y")
@@ -56,7 +47,7 @@ class RFE(BaseTransformer):
         while np.sum(active) > n_keep:
             est = clone(self.estimator)
             est.fit(X[:, active], y)
-            imp = self._importance(est)
+            imp = feature_importances(est, int(np.sum(active)))
             if imp.shape[0] != np.sum(active):
                 raise ValueError("importance vector has wrong shape")
             drop = min(self._step(np.sum(active)), np.sum(active) - n_keep)

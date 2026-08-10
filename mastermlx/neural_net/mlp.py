@@ -90,6 +90,7 @@ class MLPClassifier(_BaseMLP, BaseEstimator):
         self.val_loss_ = result["val_loss"]
         self.history_ = result["history"]
         self.best_epoch_ = result["best_epoch"]
+        self.best_loss_ = result["best_loss"]
         self.best_val_loss_ = result["best_val_loss"]
 
         return self
@@ -195,6 +196,7 @@ class MLPRegressor(_BaseMLP, BaseEstimator):
         self.val_loss_ = result["val_loss"]
         self.history_ = result["history"]
         self.best_epoch_ = result["best_epoch"]
+        self.best_loss_ = result["best_loss"]
         self.best_val_loss_ = result["best_val_loss"]
 
         return self

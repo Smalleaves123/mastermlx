@@ -187,7 +187,7 @@ class TabularExperiment(BaseExperiment):
             cv = KFold(
                 n_splits=n_splits,
                 shuffle=True,
-                random_state=self.random_state,
+                random_state=0 if self.random_state is None else self.random_state,
             )
         pipe = _build_pipeline(clone(self.model), self.preprocessing)
         scores = cross_val_score(pipe, X, y, cv=cv, scoring=self.scoring, groups=groups)
