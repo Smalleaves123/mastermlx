@@ -3,6 +3,14 @@
 This folder contains copy-and-run robotics and simulation demos for
 `mastermlx.robotics` and `mastermlx.sim`.
 
+The examples target `mastermlx` 0.1.15. Run them from the repository root so
+relative URDF and output paths resolve consistently.
+
+The core pattern is model/state input, an explicit planner or controller call,
+and a structured result/report. Kinematics use joint vectors with shape
+`(n_joints,)`; trajectories use `(n_steps, n_joints)`. Spatial APIs use 4x4
+homogeneous poses unless their docstring states otherwise.
+
 ## Intended demos
 
 - forward and inverse kinematics on a small serial arm
@@ -50,3 +58,5 @@ The general spatial URDF API is documented in
 [`docs/robotics_3d.md`](../../docs/robotics_3d.md).
 The simulation contract is documented in
 [`docs/robotics_simulation.md`](../../docs/robotics_simulation.md).
+The task-oriented [`0.1.15 API guide`](../API_REFERENCE.md#robotics-planning-control-and-simulation)
+links the robotics, planning, control, and simulation surfaces.

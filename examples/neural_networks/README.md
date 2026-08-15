@@ -1,20 +1,37 @@
-# Neural Network Examples
+# Neural Network Tutorial
 
-This folder contains neural-network demos for the `mastermlx.neural_net` package.
+[`mlp_spirals.py`](mlp_spirals.py) trains an `MLPClassifier` on a nonlinear
+two-class dataset and plots the learned decision regions.
 
-## Intended demos
+## Run
 
-- MLP classification on toy data
-- regression with a compact feed-forward network
-- optimizer comparisons
-- sequential wrappers for higher-level workflows
+```bash
+python -m pip install "mastermlx[viz]==0.1.15"
+MPLBACKEND=Agg python examples/neural_networks/mlp_spirals.py
+```
 
-## Good example stories
+The figure is saved as `examples/outputs/mlp_spirals.png`.
 
-- a small end-to-end training loop that is easy to read in interviews
-- an optimizer comparison that shows the effect of different update rules
-- a minimal sequential model that makes the API feel more product-like
+## High-level estimator interface
 
-## Benchmark link
+```python
+from mastermlx.neural_net import MLPClassifier
 
-The tabular workflow benchmark is a good companion for model-training demos: [`benchmarks/bench_tabular.py`](../../benchmarks/bench_tabular.py).
+model = MLPClassifier(
+    hidden_layer_sizes=(32, 32),
+    n_iter=200,
+    random_state=0,
+)
+model.fit(X_train, y_train)
+labels = model.predict(X_test)
+accuracy = model.score(X_test, y_test)
+```
+
+Use `Sequential` when you need explicit layers, optimizers, callbacks, or
+schedulers. The public layer set includes dense, convolutional, recurrent,
+normalization, embedding, and attention components.
+
+See the [`neural API contract`](../../docs/neural_api.md) for tensor shapes,
+training, evaluation results, optimizers, persistence, and backends. The
+[`0.1.15 API guide`](../API_REFERENCE.md#neural-networks) provides the concise
+interface index.

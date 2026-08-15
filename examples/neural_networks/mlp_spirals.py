@@ -10,15 +10,17 @@ import mastermlx as mlx
 from mastermlx.viz import plot_loss
 
 
-def make_spirals(n=200, noise=0.1):
+def make_spirals(n=200, noise=0.1, random_state=None):
+    rng = np.random.default_rng(random_state)
     t = np.linspace(0, 4 * np.pi, n)
     r = t / (4 * np.pi)
-    X1 = np.column_stack([r * np.cos(t), r * np.sin(t)]) + noise * np.random.randn(n, 2)
-    X2 = np.column_stack([r * np.cos(t + np.pi), r * np.sin(t + np.pi)]) + noise * np.random.randn(n, 2)
+    X1 = np.column_stack([r * np.cos(t), r * np.sin(t)]) + noise * rng.normal(size=(n, 2))
+    X2 = np.column_stack([r * np.cos(t + np.pi), r * np.sin(t + np.pi)])
+    X2 += noise * rng.normal(size=(n, 2))
     return np.vstack([X1, X2]), np.array([0] * n + [1] * n)
 
 
-X, y = make_spirals(300)
+X, y = make_spirals(300, random_state=42)
 mlp = mlx.MLPClassifier(hidden_layer_sizes=(16, 8), lr=0.05, n_iter=500, random_state=0)
 mlp.fit(X, y)
 print(f"MLP spiral acc: {mlp.score(X, y):.3f}")

@@ -75,7 +75,8 @@ print(mlx.entropy(np.array([0.2, 0.3, 0.5])))
 ```
 
 For copy-and-run tutorials covering robotics and core ML APIs, see the
-[public examples](examples/README.md).
+[public examples](examples/README.md) and the
+[0.1.15 task-oriented API guide](examples/API_REFERENCE.md).
 
 ## Highlights
 

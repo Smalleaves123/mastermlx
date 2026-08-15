@@ -2,6 +2,18 @@
 
 This folder contains signal-processing demos for the `mastermlx.signal` package.
 
+The examples target `mastermlx` 0.1.15. From the repository root, start with:
+
+```bash
+MPLBACKEND=Agg python examples/signal/fourier_demo.py
+python examples/signal/experiment_demo.py
+```
+
+Low-level functions accept NumPy arrays and return arrays or explicit result
+objects. Streaming objects retain state between chunks; create a new instance
+for an independent stream. High-level experiments expose reports compatible
+with the shared interface in [`docs/workflows.md`](../../docs/workflows.md).
+
 ## Intended demos
 
 - waveform normalization and pre-emphasis
@@ -36,3 +48,6 @@ The multi-sensor online monitoring demo lives in [`multichannel_monitoring.py`](
 and writes a health-score plot to `examples/outputs/signal/`.
 The real-time filter and STFT demo lives in [`realtime_streaming.py`](realtime_streaming.py)
 and writes a time/frequency plot with its packet-loss interval marked.
+
+See the [`signal API overview`](../API_REFERENCE.md#anomaly-detection-signal-and-time-series)
+for import guidance.
