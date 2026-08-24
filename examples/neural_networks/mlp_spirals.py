@@ -4,8 +4,9 @@ MLP on two interleaving spirals — loss curve + decision boundary.
 Expected output:
     MLP spiral acc: ~0.60 (improves with more iters/layers)
 """
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
+from pathlib import Path
 import mastermlx as mlx
 from mastermlx.viz import plot_loss
 
@@ -41,6 +42,8 @@ ax2.set_xlabel("x1")
 ax2.set_ylabel("x2")
 
 fig.tight_layout()
-fig.savefig("examples/outputs/mlp_spirals.png", dpi=120, bbox_inches="tight")
+output_path = Path(__file__).resolve().parents[1] / "outputs" / "mlp_spirals.png"
+output_path.parent.mkdir(parents=True, exist_ok=True)
+fig.savefig(output_path, dpi=120, bbox_inches="tight")
 plt.close()
-print("→ Saved examples/outputs/mlp_spirals.png")
+print(f"→ Saved {output_path}")

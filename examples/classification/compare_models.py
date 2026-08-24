@@ -7,8 +7,9 @@ Expected output:
     RandomForest               acc: ~0.97
     SVC                        acc: ~0.97
 """
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
+from pathlib import Path
 import mastermlx as mlx
 from mastermlx.viz import plot_cm
 
@@ -32,6 +33,8 @@ for ax, (name, model) in zip(axes.flat, models.items()):
 
 fig.suptitle("Confusion Matrices — 4 Classifiers", fontsize=14, y=1.01)
 fig.tight_layout()
-fig.savefig("examples/outputs/compare_models.png", dpi=120, bbox_inches="tight")
+output_path = Path(__file__).resolve().parents[1] / "outputs" / "compare_models.png"
+output_path.parent.mkdir(parents=True, exist_ok=True)
+fig.savefig(output_path, dpi=120, bbox_inches="tight")
 plt.close()
-print("\n→ Saved examples/outputs/compare_models.png")
+print(f"\n→ Saved {output_path}")

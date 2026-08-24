@@ -5,8 +5,9 @@ Expected output:
     TF-IDF + LR acc: ~1.00
     Features: ['the', 'cat', 'dog', 'fish', 'the cat', 'the dog', ...]
 """
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
+from pathlib import Path
 import mastermlx as mlx
 from mastermlx.viz import plot_cm
 
@@ -47,6 +48,8 @@ ax2.set_title("Top Features (by |weight|)")
 ax2.set_xlabel("|coefficient|")
 
 fig.tight_layout()
-fig.savefig("examples/outputs/text_classify.png", dpi=120, bbox_inches="tight")
+output_path = Path(__file__).resolve().parents[1] / "outputs" / "text_classify.png"
+output_path.parent.mkdir(parents=True, exist_ok=True)
+fig.savefig(output_path, dpi=120, bbox_inches="tight")
 plt.close()
-print("→ Saved examples/outputs/text_classify.png")
+print(f"→ Saved {output_path}")

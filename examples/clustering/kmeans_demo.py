@@ -6,8 +6,9 @@ Expected output:
     k=3  inertia=~200   silhouette=~0.74  ← best
     k=4  inertia=~170   silhouette=~0.61
 """
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
+from pathlib import Path
 import mastermlx as mlx
 from mastermlx import silhouette
 from mastermlx.viz import plot_scatter
@@ -28,6 +29,8 @@ for k, ax in zip([2, 3, 4], axes):
 
 fig.suptitle("KMeans Clustering", fontsize=14, y=1.02)
 fig.tight_layout()
-fig.savefig("examples/outputs/kmeans_demo.png", dpi=120, bbox_inches="tight")
+output_path = Path(__file__).resolve().parents[1] / "outputs" / "kmeans_demo.png"
+output_path.parent.mkdir(parents=True, exist_ok=True)
+fig.savefig(output_path, dpi=120, bbox_inches="tight")
 plt.close()
-print("\n→ Saved examples/outputs/kmeans_demo.png")
+print(f"\n→ Saved {output_path}")

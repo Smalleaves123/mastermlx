@@ -12,8 +12,9 @@ Expected output:
     salt_pepper:   [ 1. -9.  9.  9.  1.]
     SMOTE: 60 → 100 (class 1: 50)
 """
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
+from pathlib import Path
 from mastermlx import (
     entropy, kl_divergence, mann_whitney, pearson_r, PCA,
     Normal, Poisson, StudentT,
@@ -100,6 +101,8 @@ axes[1, 2].legend(fontsize=7)
 
 fig.suptitle("math_tools Showcase", fontsize=14, y=1.01)
 fig.tight_layout()
-fig.savefig("examples/outputs/math_tools_demo.png", dpi=120, bbox_inches="tight")
+output_path = Path(__file__).resolve().parents[1] / "outputs" / "math_tools_demo.png"
+output_path.parent.mkdir(parents=True, exist_ok=True)
+fig.savefig(output_path, dpi=120, bbox_inches="tight")
 plt.close()
-print("\n→ Saved examples/outputs/math_tools_demo.png")
+print(f"\n→ Saved {output_path}")
