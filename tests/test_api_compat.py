@@ -64,6 +64,19 @@ def test_top_level_exports_do_not_silently_overwrite_subpackage_objects():
                 continue
             owners.setdefault(name, []).append((package_name, getattr(package, name)))
 
+    expected = {
+        "__version__",
+        "get_backend",
+        "set_backend",
+        "create_rng",
+        "set_seed",
+        "log_sum_exp",
+        *owners,
+    }
+    expected.remove("LDA")
+    assert len(mastermlx.__all__) == len(set(mastermlx.__all__))
+    assert set(mastermlx.__all__) == expected
+
     conflicts = {
         name
         for name, values in owners.items()

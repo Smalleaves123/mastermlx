@@ -21,6 +21,47 @@ surface grows.
 Use `python -m pytest` in local and CI commands so the selected interpreter
 and the test runner cannot drift apart.
 
+## Top-Level Import Budget
+
+`import mastermlx` is a lazy facade. It may load version metadata, backend
+configuration, and the static export registry, but it must not import NumPy or
+domain packages until a public symbol is accessed.
+
+Run the cold-import guard locally with:
+
+```bash
+python scripts/check_import_budget.py --budget-ms 250 --runs 5
+```
+
+The CI budget uses the median of fresh interpreter runs. Deterministic tests
+also assert the exact initial `mastermlx.*` module set, so a regression cannot
+hide behind a generous timing threshold. Add new top-level exports to
+the owning package's `__all__`, then regenerate and validate the static
+registry:
+
+```bash
+python scripts/generate_lazy_exports.py
+python scripts/generate_lazy_exports.py --check
+```
+
+CI runs the check mode, and `tests/test_api_compat.py` compares the combined
+registry against every public package's `__all__`.
+
+## Examples Smoke Suite
+
+Public examples are executable documentation. Run the curated deterministic
+subset from the repository root before release:
+
+```bash
+MPLBACKEND=Agg python scripts/run_examples_smoke.py
+```
+
+The suite covers quickstart, regression, probabilistic models, bandits, RL,
+tabular readiness, classification visualization, and signal visualization. It
+uses a headless Matplotlib backend and verifies that the plotting examples
+create their expected files. Add a new example to this suite only when it is
+fast, deterministic, and representative of a supported public workflow.
+
 ## Dependency Policy
 
 Core dependencies should stay small. Visualization belongs in the `viz` extra,

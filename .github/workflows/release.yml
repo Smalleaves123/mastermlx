@@ -7,82 +7,91 @@ on:
   workflow_dispatch:
     inputs:
       target:
-        description: "Publish target"
+        description: Publish target
         required: true
-        default: "testpypi"
+        default: testpypi
         type: choice
         options:
           - testpypi
           - pypi
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
+  build_wheels:
+    name: Build wheel (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
     env:
       CIBW_TEST_COMMAND: >-
         python -c "import mastermlx; from mastermlx.accel import backend_report;
         report=backend_report(); assert report['cython']; print(mastermlx.__version__)"
-        && python -m pytest {project}/tests/test_nn_api.py
+        && python -m pytest {project}/tests/test_api_compat.py
+        {project}/tests/test_lazy_imports.py {project}/tests/test_nn_api.py
         {project}/tests/test_nn_layers_conv_rnn.py
         {project}/tests/test_accel_recurrent_signal.py
         {project}/tests/test_kernels_and_distance.py -q
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
-      - name: Install release tools
+      - name: Install build tools
+        run: python -m pip install --upgrade pip cibuildwheel twine
+      - name: Build and validate wheels
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install build twine cibuildwheel
-
-      - name: Build distributions
-        run: |
-          python -m build --sdist
-          cibuildwheel --output-dir dist
-
-      - name: Check distributions
-        run: twine check dist/*
-
-      - name: Upload distributions
-        uses: actions/upload-artifact@v4
+          cibuildwheel --output-dir wheelhouse
+          twine check wheelhouse/*
+      - uses: actions/upload-artifact@v4
         with:
-          name: dist
+          name: wheels-${{ matrix.os }}
+          path: wheelhouse/*
+          if-no-files-found: error
+
+  build_sdist:
+    name: Build source distribution
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build and validate source distribution
+        run: |
+          python -m pip install --upgrade pip build twine
+          python -m build --sdist
+          twine check dist/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdist
           path: dist/*
           if-no-files-found: error
 
-  sdist-smoke:
-    needs: build
+  sdist_smoke:
+    name: Source-distribution smoke test
+    needs: build_sdist
     runs-on: ubuntu-latest
-    steps:
-      - name: Download distributions
-        uses: actions/download-artifact@v4
-        with:
-          name: dist
-          path: dist
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdist
+          path: dist
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
-      - name: Install sdist
+      - name: Install and smoke test source distribution
         run: |
           python -m pip install --upgrade pip
           python -m pip install dist/*.tar.gz
+          python -c "import mastermlx; from mastermlx import KMeans; assert len(mastermlx.__all__) == 766; assert KMeans.__name__ == 'KMeans'; print(mastermlx.__version__)"
 
-      - name: Smoke test sdist
-        run: |
-          python -c "import numpy as np, mastermlx; from mastermlx.accel import pairwise_squared_euclidean; X=np.zeros((2, 2)); assert pairwise_squared_euclidean(X, X).shape == (2, 2); print(mastermlx.__version__)"
-
-  publish-testpypi:
-    needs: [build, sdist-smoke]
+  publish_testpypi:
+    name: Publish to TestPyPI
+    needs: [build_wheels, sdist_smoke]
     if: github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi'
     runs-on: ubuntu-latest
     permissions:
@@ -90,53 +99,52 @@ jobs:
       id-token: write
 
     steps:
-      - name: Download distributions
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
-          name: dist
+          pattern: "*"
           path: dist
-
-      - name: Publish to TestPyPI
+          merge-multiple: true
+      - name: Publish artifacts
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
           password: ${{ secrets.TEST_PYPI_API_TOKEN }}
 
-  publish-pypi:
-    needs: [build, sdist-smoke]
-    if: github.event_name == 'workflow_dispatch' && inputs.target == 'pypi'
+  publish_pypi:
+    name: Publish to PyPI
+    needs: [build_wheels, sdist_smoke]
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.target == 'pypi')
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
 
     steps:
-      - name: Download distributions
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
-          name: dist
+          pattern: "*"
           path: dist
-
-      - name: Publish to PyPI
+          merge-multiple: true
+      - name: Publish artifacts
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           password: ${{ secrets.PYPI_TOKEN }}
 
-  create-github-release:
-    needs: [build, sdist-smoke]
+  create_github_release:
+    name: Create GitHub release
+    needs: publish_pypi
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
-      - name: Download distributions
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
-          name: dist
+          pattern: "*"
           path: dist
-
-      - name: Create GitHub Release
+          merge-multiple: true
+      - name: Create release and attach artifacts
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*

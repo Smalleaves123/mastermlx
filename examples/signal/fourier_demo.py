@@ -45,7 +45,13 @@ def main():
     ).transform(x)
 
     inverse = InverseFourierTransformer(n_fft=2048, length=x.size, real=True)
-    reconstructed = inverse.transform(spectrum)
+    _, reconstruction_spectrum = fft_spectrum(
+        x,
+        sample_rate=sample_rate,
+        n_fft=2048,
+        window=None,
+    )
+    reconstructed = inverse.transform(reconstruction_spectrum)
     reconstruction_error = float(np.mean(np.abs(reconstructed - x)))
 
     print("spectrum_bins:", freqs.shape[0])
@@ -64,7 +70,7 @@ def main():
     axes[0].set_title("Multi-tone signal and inverse FFT")
     axes[0].set_xlabel("time (s)")
     axes[0].legend()
-    axes[1].plot(freqs, spectrum)
+    axes[1].plot(freqs, np.abs(spectrum))
     axes[1].set_xlim(0.0, 512.0)
     axes[1].set_title("Amplitude spectrum")
     axes[1].set_xlabel("frequency (Hz)")

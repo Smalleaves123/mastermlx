@@ -15,8 +15,9 @@ This document captures the design ideas that differentiate `mastermlx` from a ba
 
 `mastermlx` now has a compute backend layer:
 
-- default backend: `numpy`
-- optional backend: `cython`
+- default backend: `auto` (uses compiled kernels when available)
+- explicit compatibility backend: `numpy`
+- explicit compiled preference: `cython`
 - runtime switch via `mastermlx.set_backend("numpy" | "cython" | "auto")`
 
 This is meant to show engineering thinking beyond algorithm reproduction.
@@ -48,7 +49,15 @@ names. Workflow and reporting logic belongs in focused implementation modules:
 This keeps compatibility imports stable while making individual areas easier
 to test, profile, and extend.
 
-### 3. Interview-ready technical story
+### 4. Lazy public facade
+
+The broad compatibility namespace is now lazy: `import mastermlx` loads only
+version/configuration metadata and a static export registry. A domain package
+loads only when one of its public names is accessed. The registry is generated
+from subpackage `__all__` values and guarded in CI, so import performance does
+not trade away API compatibility.
+
+### 5. Interview-ready technical story
 
 The project is designed to support a strong narrative:
 
@@ -57,12 +66,26 @@ The project is designed to support a strong narrative:
 - modular architecture proves package design ability
 - broad tests prove engineering discipline
 
-## Next Technical Milestones
+## Current Technical Milestones
 
-1. Move more heavy kernels into `mastermlx.accel`
-2. Add benchmark reports that compare NumPy vs Cython backends
-3. Expand compiled coverage in `mastermlx.control`, `mastermlx.robotics`, and `mastermlx.math_tools`
-4. Add packaging automation for wheel/sdist validation
-5. Add API docs and stable versioning policy
+Completed foundations:
+
+- wheel/sdist build, install smoke tests, artifact validation, and release
+  publication are automated in one workflow;
+- public examples have an executable, headless CI smoke suite;
+- examples provide a task-oriented API guide and copy-and-run tutorials;
+- import performance has a deterministic eager-load contract and timing budget.
+
+Next priorities:
+
+1. Define Stable, Beta, Experimental, and Internal API tiers.
+2. Raise contract and branch coverage for Stable packages rather than adding
+   unstructured test count.
+3. Expand type annotations from `base`, validation, preprocessing, and data
+   into the stable estimator families.
+4. Track performance and parity baselines for existing hot paths before adding
+   further compiled kernels.
+5. Complete documented URDF semantics and workcell boundaries before expanding
+   the robotics feature surface.
 
 For the implementation-level plan, see [`docs/cython_roadmap.md`](cython_roadmap.md).

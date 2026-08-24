@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Made the 766-name top-level facade lazy, reducing a cold `import mastermlx`
+  from loading the full domain stack to four lightweight modules, and added a
+  deterministic eager-load check plus a 250 ms median import-time CI budget.
+- Added a deterministic headless smoke suite for representative public
+  examples and consolidated release builds, artifact validation, and PyPI
+  publication into one workflow.
+
 ## 0.1.15
 
 - Stabilized F-test and chi-square p-values across large degrees of freedom,

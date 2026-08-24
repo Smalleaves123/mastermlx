@@ -20,6 +20,9 @@ twine check dist/*
 
 ```bash
 python -m pytest tests/
+MPLBACKEND=Agg python scripts/run_examples_smoke.py
+python scripts/check_import_budget.py --budget-ms 250 --runs 5
+python scripts/generate_lazy_exports.py --check
 ```
 
 ## 4. Verify install from artifacts
@@ -28,20 +31,35 @@ Prefer testing both the source distribution and the wheel in a clean environment
 
 ## 5. Publish
 
-- Upload the distribution artifacts to PyPI
-- Create a Git tag that matches the release version
-- Create a GitHub release with a short summary and links
+The single [`Release`](.github/workflows/release.yml) workflow owns build,
+validation, publication, and GitHub release creation. Do not upload artifacts
+or create a release separately.
 
-### GitHub Actions path
+### TestPyPI dry run
 
-- Push a tag like `v0.1.1` to trigger `.github/workflows/release.yml`
-- For a dry run, open the `Release` workflow in GitHub Actions and run `workflow_dispatch` with `target=testpypi`
-- Store the following repository secrets:
-  - `PYPI_TOKEN`
-  - `TEST_PYPI_API_TOKEN`
-- The workflow builds distributions, checks them with `twine`, publishes to the selected index, and creates a GitHub Release for tag pushes
+Run the `Release` workflow manually with `target=testpypi`. It builds Linux,
+macOS, and Windows wheels plus the source distribution, runs wheel and sdist
+smoke tests, then uploads the exact validated artifacts to TestPyPI.
+
+### PyPI release
+
+1. Commit the version and changelog updates.
+2. Push a matching tag such as `v0.1.16`.
+3. The workflow builds and validates all artifacts, publishes them to PyPI, and
+   creates the GitHub Release only after publication succeeds.
+
+Manual `target=pypi` publication is available for recovery, but normal releases
+should use an annotated version tag.
+
+Store these repository secrets until trusted publishing is configured:
+
+- `PYPI_TOKEN`
+- `TEST_PYPI_API_TOKEN`
 
 ## 6. Post-release
 
-- Confirm installation with `pip install mastermlx`
-- Smoke test the top-level import and one or two core models
+- Confirm installation with `pip install mastermlx==<version>` in a clean
+  environment.
+- Smoke test the lazy top-level import, one core model, and one compiled path.
+- Confirm the GitHub Release contains all validated wheels and the source
+  distribution.

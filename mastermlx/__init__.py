@@ -1,129 +1,90 @@
-"""mastermlx: a NumPy-first machine learning playground."""
+"""mastermlx: a NumPy-first machine learning playground.
 
-from .version import __version__
-from .config import get_backend, set_backend
+The top-level facade is intentionally lazy. Importing :mod:`mastermlx` loads
+only version/configuration metadata; domain packages are imported when their
+public names are first accessed.
+"""
 
-from .base import *  # noqa: F401,F403
-from .anomaly import *  # noqa: F401,F403
-from .bandits import *  # noqa: F401,F403
-from .data import *  # noqa: F401,F403
-from .decomposition import *  # noqa: F401,F403
-from .ensemble import *  # noqa: F401,F403
-from .control import *  # noqa: F401,F403
-from .linear_models import *  # noqa: F401,F403
-from .manifold import *  # noqa: F401,F403
-from .estimation import *  # noqa: F401,F403
-from .neighbors import *  # noqa: F401,F403
-from .neural_net import *  # noqa: F401,F403
-from .nlp import *  # noqa: F401,F403
-from .probabilistic import *  # type: ignore  # noqa: F401,F403
-from .rl import *  # noqa: F401,F403
-from .selection import *  # noqa: F401,F403
-from .semi_supervised import *  # noqa: F401,F403
-from .signal import *  # noqa: F401,F403
-from .tabular import *  # noqa: F401,F403
-from .robotics import *  # noqa: F401,F403
-from .svm import *  # noqa: F401,F403
-from .trees import *  # noqa: F401,F403
-from .variational import *  # noqa: F401,F403
-from .viz import *  # noqa: F401,F403
-from .vision import *  # noqa: F401,F403
-from .preprocessing import *  # noqa: F401,F403
-from .math_tools import *  # noqa: F401,F403
-from .graphs import *  # noqa: F401,F403
-from .optimize import *  # noqa: F401,F403
-from .planning import *  # noqa: F401,F403
+from importlib import import_module as _import_module
+from typing import TYPE_CHECKING
 
-from .clustering import *  # noqa: F401,F403  # overrides BayesGMM/VGMM with clustering aliases
-from .utils import create_rng, log_sum_exp, set_seed
-
-from . import anomaly as _anomaly
-from . import base as _base
-from . import bandits as _bandits
-from . import clustering as _clustering
-from . import data as _data
-from . import decomposition as _decomposition
-from . import ensemble as _ensemble
-from . import control as _control
-from . import estimation as _estimation
-from . import linear_models as _linear_models
-from . import math_tools as _math_tools
-from . import graphs as _graphs
-from . import optimize as _optimize
-from . import planning as _planning
-from . import manifold as _manifold
-from . import neighbors as _neighbors
-from . import neural_net as _neural_net
-from . import nlp as _nlp
-from . import probabilistic as _probabilistic
-from . import rl as _rl
-from . import robotics as _robotics
-from . import selection as _selection
-from . import semi_supervised as _semi_supervised
-from . import preprocessing as _preprocessing
-from . import signal as _signal
-from . import tabular as _tabular
-from . import svm as _svm
-from . import trees as _trees
-from . import variational as _variational
-from . import viz as _viz
-from . import vision as _vision
+from ._lazy_exports import (
+    _AMBIGUOUS_EXPORTS,
+    _PUBLIC_SUBMODULES,
+    EXPORTS as _EXPORTS,
+    PUBLIC_NAMES as _PUBLIC_NAMES,
+)
+from .config import get_backend as get_backend, set_backend as set_backend
+from .version import __version__ as __version__
 
 
-def _extend_unique(names, items):
-    for name in items:
-        if name not in names:
-            names.append(name)
+if TYPE_CHECKING:
+    # Keep static analyzers aware of the broad compatibility facade without
+    # paying the runtime import cost. Runtime ownership comes from the static
+    # registry, including the explicit LDA ambiguity rule.
+    from .anomaly import *  # noqa: F401,F403
+    from .bandits import *  # noqa: F401,F403
+    from .base import *  # noqa: F401,F403
+    from .clustering import *  # noqa: F401,F403
+    from .control import *  # noqa: F401,F403
+    from .data import *  # noqa: F401,F403
+    from .decomposition import *  # noqa: F401,F403
+    from .ensemble import *  # noqa: F401,F403
+    from .estimation import *  # noqa: F401,F403
+    from .graphs import *  # noqa: F401,F403
+    from .linear_models import *  # noqa: F401,F403
+    from .manifold import *  # noqa: F401,F403
+    from .math_tools import *  # noqa: F401,F403
+    from .neighbors import *  # noqa: F401,F403
+    from .neural_net import *  # noqa: F401,F403
+    from .nlp import *  # noqa: F401,F403
+    from .optimize import *  # noqa: F401,F403
+    from .planning import *  # noqa: F401,F403
+    from .preprocessing import *  # noqa: F401,F403
+    from .probabilistic import *  # noqa: F401,F403
+    from .rl import *  # noqa: F401,F403
+    from .robotics import *  # noqa: F401,F403
+    from .selection import *  # noqa: F401,F403
+    from .semi_supervised import *  # noqa: F401,F403
+    from .signal import *  # noqa: F401,F403
+    from .svm import *  # noqa: F401,F403
+    from .tabular import *  # noqa: F401,F403
+    from .trees import *  # noqa: F401,F403
+    from .variational import *  # noqa: F401,F403
+    from .vision import *  # noqa: F401,F403
+    from .viz import *  # noqa: F401,F403
 
 
-__all__ = ["__version__", "get_backend", "set_backend", "create_rng", "set_seed", "log_sum_exp"]
-_extend_unique(__all__, _base.__all__)
-_extend_unique(__all__, _anomaly.__all__)
-_extend_unique(__all__, _bandits.__all__)
-_extend_unique(__all__, _data.__all__)
-_extend_unique(__all__, _decomposition.__all__)
-_extend_unique(__all__, _ensemble.__all__)
-_extend_unique(__all__, _control.__all__)
-_extend_unique(__all__, _estimation.__all__)
-_extend_unique(__all__, _linear_models.__all__)
-_extend_unique(__all__, _math_tools.__all__)
-_extend_unique(__all__, _graphs.__all__)
-_extend_unique(__all__, _optimize.__all__)
-_extend_unique(__all__, _planning.__all__)
-_extend_unique(__all__, _manifold.__all__)
-_extend_unique(__all__, _neighbors.__all__)
-_extend_unique(__all__, _neural_net.__all__)
-_extend_unique(__all__, _nlp.__all__)
-_extend_unique(__all__, _probabilistic.__all__)
-_extend_unique(__all__, _rl.__all__)
-_extend_unique(__all__, _preprocessing.__all__)
-_extend_unique(__all__, _selection.__all__)
-_extend_unique(__all__, _semi_supervised.__all__)
-_extend_unique(__all__, _signal.__all__)
-_extend_unique(__all__, _tabular.__all__)
-_extend_unique(__all__, _robotics.__all__)
-_extend_unique(__all__, _svm.__all__)
-_extend_unique(__all__, _trees.__all__)
-_extend_unique(__all__, [name for name in _variational.__all__ if name not in {"BayesGMM", "VGMM"}])
-_extend_unique(__all__, _viz.__all__)
-_extend_unique(__all__, _vision.__all__)
-_extend_unique(__all__, _clustering.__all__)
-
-# ``LDA`` denotes unrelated topic-model and discriminant-analysis classes.
-# Requiring an explicit alias prevents import order from silently selecting one.
-_AMBIGUOUS_TOP_LEVEL_EXPORTS = {
-    "LDA": ("mastermlx.nlp.NLP_LDA", "mastermlx.probabilistic.DiscriminantLDA"),
-}
-for _ambiguous_name in _AMBIGUOUS_TOP_LEVEL_EXPORTS:
-    globals().pop(_ambiguous_name, None)
-    if _ambiguous_name in __all__:
-        __all__.remove(_ambiguous_name)
+__all__ = list(_PUBLIC_NAMES)
+_SHADOWED_SUBMODULES = set(_PUBLIC_SUBMODULES).intersection(_EXPORTS)
 
 
 def __getattr__(name):
-    choices = _AMBIGUOUS_TOP_LEVEL_EXPORTS.get(name)
+    choices = _AMBIGUOUS_EXPORTS.get(name)
     if choices is not None:
         raise AttributeError(
             f"mastermlx.{name} is ambiguous; import one of: {', '.join(choices)}"
         )
+
+    module_name = _EXPORTS.get(name)
+    if module_name is not None:
+        module = _import_module(module_name)
+        value = getattr(module, name)
+        globals()[name] = value
+        # Importing ``mastermlx.utils`` temporarily binds that submodule on
+        # the package. ``utils`` is also a historical signal export, so keep
+        # the documented top-level binding lazy and order-independent.
+        for shadowed_name in _SHADOWED_SUBMODULES.difference({name}):
+            globals().pop(shadowed_name, None)
+        return value
+
+    if name in _PUBLIC_SUBMODULES:
+        module = _import_module(f"{__name__}.{name}")
+        globals()[name] = module
+        return module
+
     raise AttributeError(f"module 'mastermlx' has no attribute {name!r}")
+
+
+def __dir__():
+    return sorted(set(globals()).union(__all__).union(_PUBLIC_SUBMODULES))
