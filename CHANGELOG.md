@@ -2,12 +2,19 @@
 
 ## Unreleased
 
+## 0.1.16
+
+- Added copy-and-run tutorials and an API reference across the public examples,
+  including regression, probabilistic models, bandits, reinforcement learning,
+  and NLP topic modelling.
 - Made the 766-name top-level facade lazy, reducing a cold `import mastermlx`
   from loading the full domain stack to four lightweight modules, and added a
   deterministic eager-load check plus a 250 ms median import-time CI budget.
 - Added a deterministic headless smoke suite for representative public
   examples and consolidated release builds, artifact validation, and PyPI
   publication into one workflow.
+- Made plotting examples create their own ignored output directories so they
+  run successfully from a fresh source checkout.
 
 ## 0.1.15
 
