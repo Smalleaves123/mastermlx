@@ -22,6 +22,8 @@
 - Added a cross-family Stable API contract matrix for cloning, fitted feature
   metadata, prediction shapes, multi-output and incremental learning, and
   sparse validation behavior.
+- Added a versioned backend benchmark record with fixed workload metadata,
+  enforced distance/IIR parity bounds, and retained CI benchmark artifacts.
 
 ## 0.1.16
 

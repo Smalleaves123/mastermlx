@@ -142,12 +142,17 @@ jobs:
       - name: Benchmark smoke tests
         run: |
           python benchmarks/bench_models.py
-          python benchmarks/bench_ml_comparison.py --json-output /tmp/ml_comparison.json
-          python benchmarks/bench_backend_matrix.py --json-output /tmp/backend_matrix.json
-          python benchmarks/bench_signal_comparison.py --json-output /tmp/signal_comparison.json
+          python benchmarks/bench_ml_comparison.py --json-output benchmark-results/ml_comparison.json
+          python benchmarks/bench_backend_matrix.py --json-output benchmark-results/backend_matrix.json
+          python benchmarks/bench_signal_comparison.py --json-output benchmark-results/signal_comparison.json
           python benchmarks/bench_tabular.py
           python benchmarks/bench_signal.py
           python benchmarks/bench_workflows.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: benchmark-results/
+          if-no-files-found: error
 
   quality:
     runs-on: ubuntu-latest
