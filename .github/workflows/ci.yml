@@ -180,6 +180,7 @@ jobs:
           mastermlx/linear_models/sgd.py
           mastermlx/preprocessing/normalize.py mastermlx/trees/decision_tree.py
           mastermlx/robotics/urdf_parser.py
+          mastermlx/math_tools/ts_core.py mastermlx/utils/metrics.py
           mastermlx/preprocessing/auto.py mastermlx/preprocessing/column.py
           mastermlx/preprocessing/encoders.py mastermlx/preprocessing/imputers.py
           mastermlx/preprocessing/pipeline.py

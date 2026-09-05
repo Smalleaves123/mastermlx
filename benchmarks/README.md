@@ -70,9 +70,10 @@ pip install -e ".[compare]"
 labels metric sections as fallback paths when Cython is not installed.
 For a full NumPy/Cython/auto matrix with parity errors, use
 `bench_backend_matrix.py`. Its JSON record has a versioned schema, fixed
-workload, seed, repeat count, and numerical error checks (distance `1e-10`,
-IIR `1e-12` by default), so results remain comparable across CI runs. CI
-uploads these JSON records as the `benchmark-results` artifact on `main`.
+workload, seed, repeat count, and numerical error checks for pairwise distance,
+IIR filtering, rolling means, autocorrelation, exponential smoothing, and
+confusion matrices. CI uploads these JSON records as the `benchmark-results`
+artifact on `main`.
 
 For repeatable SciPy and scikit-learn comparisons, pin BLAS thread counts in
 the shell, for example `OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1`.

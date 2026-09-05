@@ -75,6 +75,8 @@ Completed foundations:
 - public examples have an executable, headless CI smoke suite;
 - examples provide a task-oriented API guide and copy-and-run tutorials;
 - import performance has a deterministic eager-load contract and timing budget.
+- compiled hot paths have a versioned, fixed-workload parity benchmark artifact
+  for distance, filtering, time-series primitives, and metric accumulation.
 
 Next priorities:
 

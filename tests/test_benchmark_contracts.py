@@ -2,6 +2,8 @@ from benchmarks.bench_backend_matrix import (
     BENCHMARK_SCHEMA,
     DEFAULT_MAX_DISTANCE_ERROR,
     DEFAULT_MAX_IIR_ERROR,
+    DEFAULT_MAX_TIME_SERIES_ERROR,
+    DEFAULT_MAX_CONFUSION_ERROR,
     assert_parity,
     run_backend_matrix,
 )
@@ -22,14 +24,28 @@ def test_backend_matrix_returns_a_versioned_reproducible_parity_record():
         "distance_x_shape": [1200, 32],
         "distance_y_shape": [400, 32],
         "iir_samples": 20_000,
+        "time_series_samples": 20_000,
+        "rolling_window": 128,
+        "autocorrelation_max_lag": 64,
+        "confusion_samples": 100_000,
+        "confusion_classes": 8,
     }
     assert [result["backend"] for result in record["results"]][0] == "numpy"
-    assert all(result["distance_seconds"] >= 0.0 for result in record["results"])
-    assert all(result["iir_seconds"] >= 0.0 for result in record["results"])
+    for key in (
+        "distance_seconds",
+        "iir_seconds",
+        "rolling_mean_seconds",
+        "autocorrelation_function_seconds",
+        "exponential_smoothing_seconds",
+        "confusion_matrix_seconds",
+    ):
+        assert all(result[key] >= 0.0 for result in record["results"])
     assert_parity(
         record,
         max_distance_error=DEFAULT_MAX_DISTANCE_ERROR,
         max_iir_error=DEFAULT_MAX_IIR_ERROR,
+        max_time_series_error=DEFAULT_MAX_TIME_SERIES_ERROR,
+        max_confusion_error=DEFAULT_MAX_CONFUSION_ERROR,
     )
 
 
@@ -40,9 +56,19 @@ def test_backend_matrix_parity_guard_rejects_numerical_drift():
                 "backend": "cython",
                 "distance_max_error": 2e-10,
                 "iir_max_error": 0.0,
+                "rolling_mean_max_error": 0.0,
+                "autocorrelation_function_max_error": 0.0,
+                "exponential_smoothing_max_error": 0.0,
+                "confusion_matrix_max_error": 0.0,
             }
         ]
     }
 
     with pytest.raises(RuntimeError, match="distance error"):
-        assert_parity(record, max_distance_error=1e-10, max_iir_error=1e-12)
+        assert_parity(
+            record,
+            max_distance_error=1e-10,
+            max_iir_error=1e-12,
+            max_time_series_error=1e-10,
+            max_confusion_error=0.0,
+        )
