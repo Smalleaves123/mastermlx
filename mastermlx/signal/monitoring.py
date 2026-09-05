@@ -350,8 +350,10 @@ class MultiChannelSignalMonitor:
         if self.adaptation_rate == 0.0:
             return
         previous_mean = self.baseline_mean_
+        baseline_std = self.baseline_std_
+        assert previous_mean is not None and baseline_std is not None
         updated_mean = (1.0 - self.adaptation_rate) * previous_mean + self.adaptation_rate * vector
-        variance = self.baseline_std_ * self.baseline_std_
+        variance = baseline_std * baseline_std
         updated_variance = (1.0 - self.adaptation_rate) * variance + self.adaptation_rate * (vector - updated_mean) ** 2
         self.baseline_mean_ = updated_mean
         self.baseline_std_ = np.maximum(np.sqrt(updated_variance), self.baseline_std_floor)
@@ -360,6 +362,7 @@ class MultiChannelSignalMonitor:
         quality_scores = np.asarray([item["score"] for item in quality], dtype=float)
         if self.baseline_mean_ is None:
             return quality_scores, float("nan"), None
+        assert self.baseline_std_ is not None
         weights = np.asarray([self.fusion_weights[channel] for channel in self.channel_names], dtype=float)
         if not np.all(np.isfinite(features)):
             return quality_scores, float(np.average(quality_scores, weights=weights)), None

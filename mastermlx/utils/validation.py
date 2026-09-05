@@ -19,11 +19,12 @@ def _is_sparse(X: Any) -> bool:
     return _scipy_issparse is not None and bool(_scipy_issparse(X))
 
 
-def check_2d_array(X: ArrayLike):
+def check_2d_array(X: ArrayLike) -> Any:
     if _is_sparse(X):
-        if len(X.shape) != 2 or X.shape[0] == 0 or X.shape[1] == 0:
-            raise ValueError(f"Expected a non-empty 2D array, got shape {X.shape}")
-        return X
+        sparse_X: Any = X
+        if len(sparse_X.shape) != 2 or sparse_X.shape[0] == 0 or sparse_X.shape[1] == 0:
+            raise ValueError(f"Expected a non-empty 2D array, got shape {sparse_X.shape}")
+        return sparse_X
     X = np.asarray(X)
     if X.size == 0:
         raise ValueError("Expected a non-empty array")
@@ -95,21 +96,21 @@ def check_X(
     dtype: Any | None = None,
     allow_1d: bool = False,
     ensure_all_finite: bool = False,
-):
+) -> Any:
     """Validate a feature matrix and optionally coerce its dtype."""
 
-    X = as_2d(X) if allow_1d else check_2d_array(X)
+    checked_X: Any = as_2d(X) if allow_1d else check_2d_array(X)
     if dtype is not None:
-        X = X.astype(dtype)
+        checked_X = checked_X.astype(dtype)
     if ensure_all_finite:
-        values = X.data if _is_sparse(X) else X
+        values = checked_X.data if _is_sparse(checked_X) else checked_X
         try:
             finite = np.isfinite(values).all()
         except TypeError as exc:
             raise ValueError("X must contain only finite numeric values") from exc
         if not finite:
             raise ValueError("X must contain only finite values")
-    return X
+    return checked_X
 
 
 def check_X_y(
@@ -122,7 +123,7 @@ def check_X_y(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Validate a feature matrix and target vector together."""
 
-    X = check_X(X, dtype=dtype, ensure_all_finite=ensure_all_finite)
+    checked_X: Any = check_X(X, dtype=dtype, ensure_all_finite=ensure_all_finite)
     y = check_1d_array(y)
     if y_dtype is not None:
         y = y.astype(y_dtype)
@@ -133,7 +134,7 @@ def check_X_y(
             raise ValueError("y must contain only finite numeric values") from exc
         if not finite:
             raise ValueError("y must contain only finite values")
-    return check_same_rows(X, y)
+    return check_same_rows(checked_X, y)
 
 
 def check_sample_weight(
@@ -156,7 +157,7 @@ def check_sample_weight(
     return weights
 
 
-def to_dense(X):
+def to_dense(X: Any) -> np.ndarray:
     """Return a NumPy view/copy for algorithms without sparse kernels."""
 
     return X.toarray() if _is_sparse(X) else np.asarray(X)

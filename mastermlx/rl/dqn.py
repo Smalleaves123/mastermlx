@@ -107,10 +107,9 @@ class DQNAgent:
             W, b = self.weights_[i]
             dW = activations[i].T @ dout
             db = np.sum(dout, axis=0)
-            next_dout = dout @ W.T if i > 0 else None
             self.weights_[i] = (W - self.lr * dW, b - self.lr * db)
             if i > 0:
-                dout = next_dout
+                dout = dout @ W.T
 
         self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
 

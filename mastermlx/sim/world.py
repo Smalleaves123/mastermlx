@@ -47,8 +47,8 @@ class SimulationObject:
     radius: float = 0.05
     graspable: bool = True
     attached: bool = field(default=False, init=False)
-    _initial_position: np.ndarray = field(default=None, init=False, repr=False)
-    _attachment_offset: np.ndarray = field(default=None, init=False, repr=False)
+    _initial_position: np.ndarray = field(init=False, repr=False)
+    _attachment_offset: np.ndarray = field(init=False, repr=False)
 
     def __post_init__(self):
         self.name = str(self.name)
@@ -120,7 +120,7 @@ class SimpleWorld:
         ]
         if not candidates:
             return None
-        item = min(candidates, key=lambda value: np.linalg.norm(value.position - tcp_position))
+        item = min(candidates, key=lambda value: float(np.linalg.norm(value.position - tcp_position)))
         item.attach(tcp_position)
         return {"command": "grasp", "object": item.name}
 

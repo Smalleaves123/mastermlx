@@ -251,16 +251,6 @@ class _BaseSGD(BaseEstimator):
         self.loss_curve_.append(float(self._loss(decision, y) + self._reg_penalty()))
         return self
 
-    def partial_fit(self, X, y=None, sample_weight=None):
-        """Incrementally update a regression model with one batch."""
-
-        X = to_dense(check_X(X, dtype=float, ensure_all_finite=True))
-        y = check_1d_array(y).astype(float)
-        X, y = check_same_rows(X, y)
-        if not np.isfinite(y).all():
-            raise ValueError("y must contain only finite values")
-        return self._partial_update(X, y, sample_weight)
-
     def _reg_penalty(self):
         if self.penalty not in {"l1", "l2", "elasticnet"} or self.alpha == 0:
             return 0.0
@@ -483,6 +473,16 @@ class SGDRegressor(_BaseSGD):
         if not np.isfinite(y).all():
             raise ValueError("y must contain only finite values")
         return super().fit(X, y, sample_weight=sample_weight)
+
+    def partial_fit(self, X, y=None, sample_weight=None):
+        """Incrementally update the regressor with one batch."""
+
+        X = to_dense(check_X(X, dtype=float, ensure_all_finite=True))
+        y = check_1d_array(y).astype(float)
+        X, y = check_same_rows(X, y)
+        if not np.isfinite(y).all():
+            raise ValueError("y must contain only finite values")
+        return self._partial_update(X, y, sample_weight)
 
     def predict(self, X):
         X = to_dense(self._check_X(X, dtype=float, ensure_all_finite=True))

@@ -78,7 +78,6 @@ class REINFORCEAgent:
                 a_prev = activations[i]
                 dW = np.outer(a_prev, dout)
                 db = dout
-                next_dout = (dout @ W.T) * (a_prev > 0) if i > 0 else None
                 self.layers[i] = (W - self.lr * dW, b - self.lr * db)
                 if i > 0:
-                    dout = next_dout
+                    dout = (dout @ W.T) * (a_prev > 0)

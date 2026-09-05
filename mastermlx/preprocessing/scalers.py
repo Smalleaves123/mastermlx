@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 from numpy.typing import ArrayLike
 
@@ -15,10 +17,10 @@ class StandardScaler(BaseTransformer):
         self.scale_ = None
 
     def fit(self, X: ArrayLike, y: ArrayLike | None = None) -> "StandardScaler":
-        X = check_X(X, dtype=float)
-        self._set_n_features(X)
-        self.mean_ = np.mean(X, axis=0)
-        self.scale_ = np.std(X, axis=0)
+        checked_X: Any = check_X(X, dtype=float)
+        self._set_n_features(checked_X)
+        self.mean_ = np.mean(checked_X, axis=0)
+        self.scale_ = np.std(checked_X, axis=0)
         self.scale_ = np.where(self.scale_ == 0.0, 1.0, self.scale_)
         return self
 

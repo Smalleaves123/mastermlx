@@ -941,7 +941,7 @@ class RobotWorkcell(BaseExperiment):
         ik_options = {} if ik_kwargs is None else dict(ik_kwargs)
         reachable = np.zeros(len(candidate_poses), dtype=bool)
         candidate_joint_targets = np.full((len(candidate_poses), self.n_joints), np.nan, dtype=float)
-        reachability_errors = [None] * len(candidate_poses)
+        reachability_errors: list[str | None] = [None] * len(candidate_poses)
         for index, target in enumerate(candidate_poses):
             try:
                 solved = self.solve_tcp_path(
@@ -1152,7 +1152,7 @@ class RobotWorkcell(BaseExperiment):
         joint_targets = []
         position_errors = np.full(len(scan_poses), np.inf, dtype=float)
         orientation_errors = np.full(len(scan_poses), np.inf, dtype=float)
-        reachability_errors = [None] * len(scan_poses)
+        reachability_errors: list[str | None] = [None] * len(scan_poses)
         q_seed = q_start.copy()
         for index, target in enumerate(scan_poses):
             try:

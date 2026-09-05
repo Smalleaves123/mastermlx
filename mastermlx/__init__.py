@@ -41,7 +41,7 @@ if TYPE_CHECKING:
     from .optimize import *  # noqa: F401,F403
     from .planning import *  # noqa: F401,F403
     from .preprocessing import *  # noqa: F401,F403
-    from .probabilistic import *  # noqa: F401,F403
+    from .probabilistic import *  # type: ignore[assignment]  # noqa: F401,F403
     from .rl import *  # noqa: F401,F403
     from .robotics import *  # noqa: F401,F403
     from .selection import *  # noqa: F401,F403

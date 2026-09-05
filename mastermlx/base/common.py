@@ -28,7 +28,7 @@ class BaseAPI:
         allow_1d: bool = False,
         ensure_all_finite: bool = False,
     ) -> np.ndarray:
-        X = check_X(
+        checked_X: Any = check_X(
             X,
             dtype=dtype,
             allow_1d=allow_1d,
@@ -36,8 +36,8 @@ class BaseAPI:
         )
         n_features = getattr(self, "n_features_in_", None)
         if n_features is not None:
-            check_feature_count(X, n_features)
-        return X
+            check_feature_count(checked_X, n_features)
+        return checked_X
 
     def _set_n_features(self: API_T, X: ArrayLike) -> API_T:
         set_n_features(self, X)

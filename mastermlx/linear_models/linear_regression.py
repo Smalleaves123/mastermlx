@@ -12,7 +12,7 @@ class LinearRegression(BaseEstimator):
     def __init__(self, fit_intercept: bool = True):
         self.fit_intercept = fit_intercept
         self.coef_: np.ndarray | None = None
-        self.intercept_: float | None = None
+        self.intercept_: float | np.ndarray | None = None
 
     def fit(self, X, y=None, sample_weight=None):
         X = check_X(X, dtype=float, ensure_all_finite=True)
@@ -52,9 +52,12 @@ class LinearRegression(BaseEstimator):
     def predict(self, X):
         self._check_fitted(["coef_", "intercept_"])
         X = to_dense(self._check_X(X, dtype=float, ensure_all_finite=True))
-        if np.ndim(self.coef_) == 1:
-            return X @ self.coef_ + self.intercept_
-        return X @ self.coef_.T + self.intercept_
+        coef = self.coef_
+        intercept = self.intercept_
+        assert coef is not None and intercept is not None
+        if np.ndim(coef) == 1:
+            return X @ coef + intercept
+        return X @ coef.T + intercept
 
     def score(self, X, y, sample_weight=None):
         y = check_y(y, allow_2d=True, dtype=float, ensure_all_finite=True)

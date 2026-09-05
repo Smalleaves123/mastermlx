@@ -205,6 +205,7 @@ class StreamingIIRFilter:
         if self._sos is not None:
             self._zi = np.zeros((self._sos.shape[0], 2), dtype=self._dtype)
             return
+        assert self._b is not None and self._a is not None
         self._x_state = np.zeros(max(0, self._b.size - 1), dtype=self._dtype)
         self._y_state = np.zeros(max(0, self._a.size - 1), dtype=self._dtype)
 
@@ -254,6 +255,7 @@ class StreamingIIRFilter:
     def _filter_direct(self, values):
         output = np.empty(values.size, dtype=np.result_type(values.dtype, self._dtype))
         self._promote_state(output.dtype)
+        assert self._b is not None and self._a is not None
         for index, value in enumerate(values):
             filtered = self._b[0] * value
             if self._x_state.size:
@@ -272,6 +274,7 @@ class StreamingIIRFilter:
     def _filter_sos(self, values):
         output = np.empty(values.size, dtype=np.result_type(values.dtype, self._dtype))
         self._promote_state(output.dtype)
+        assert self._sos is not None
         for index, value in enumerate(values):
             filtered = value
             for section, coefficients in enumerate(self._sos):

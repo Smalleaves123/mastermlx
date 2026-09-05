@@ -28,9 +28,9 @@ class LogisticRegression(BaseEstimator):
         self.tol = tol
         self.random_state = random_state
         self.warm_start = bool(warm_start)
-        self.coef_ = None
-        self.intercept_ = None
-        self.loss_ = []
+        self.coef_: np.ndarray | None = None
+        self.intercept_: float | np.ndarray | None = None
+        self.loss_: list[float] = []
         self.n_iter_ = 0
         self.multi_class_ = False
 
@@ -85,14 +85,16 @@ class LogisticRegression(BaseEstimator):
                 and self.coef_ is not None
                 and np.asarray(self.coef_).shape == (X.shape[1],)
             )
+            w: np.ndarray
             if reuse:
+                assert self.intercept_ is not None
                 w = (
                     np.concatenate([[float(self.intercept_)], np.asarray(self.coef_)])
                     if self.fit_intercept
                     else np.asarray(self.coef_).copy()
                 )
             else:
-                w = rng.normal(scale=0.01, size=Xb.shape[1])
+                w = np.asarray(rng.normal(scale=0.01, size=Xb.shape[1]))
 
             prev = None
             total_weight = float(np.sum(sample_weight))

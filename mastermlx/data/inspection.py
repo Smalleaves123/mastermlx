@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numbers
+from typing import Any, cast
 
 import numpy as np
 
@@ -140,7 +141,7 @@ def _is_missing_number(value):
     if not isinstance(value, numbers.Number):
         return False
     try:
-        return bool(np.isnan(value))
+        return bool(np.isnan(cast(Any, value)))
     except TypeError:
         return False
 

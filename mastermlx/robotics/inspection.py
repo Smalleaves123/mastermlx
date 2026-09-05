@@ -336,7 +336,7 @@ def select_inspection_viewpoints(
 
     positions = np.asarray([_target_position(pose) for pose in poses], dtype=float)
     covered = np.zeros(n_points, dtype=bool)
-    selected = []
+    selected: list[int] = []
     marginal_gain = []
     segment_distances = []
     current = start_position
