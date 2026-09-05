@@ -126,6 +126,8 @@ def _find_serial_joint_path(joints, links, base_link=None, tip_link=None):
     path = search(base_link, set())
     if path is None:
         raise ValueError(f"No URDF joint path from {base_link!r} to {tip_link!r}")
+    if any(len(outgoing[joint.parent]) > 1 for joint in path):
+        raise ValueError("branching URDF chains are not supported")
     unsupported = {"floating", "planar", "spherical"}
     for joint in path:
         if joint.joint_type not in {"fixed", "revolute", "continuous", "prismatic"}:

@@ -24,6 +24,8 @@
   sparse validation behavior.
 - Added a versioned backend benchmark record with fixed workload metadata,
   enforced distance/IIR parity bounds, and retained CI benchmark artifacts.
+- Enforced the documented serial-URDF boundary by rejecting explicit-tip
+  branching chains, with regression coverage for all unsupported joint types.
 
 ## 0.1.16
 

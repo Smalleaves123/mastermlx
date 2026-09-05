@@ -198,3 +198,38 @@ def test_urdf_parser_warns_about_ignored_elements():
 
     with pytest.warns(UserWarning, match="currently ignored"):
         URDFRobotModel.from_urdf(xml)
+
+
+def test_spatial_urdf_rejects_branching_even_when_tip_is_explicit():
+    xml = """
+    <robot name="branching">
+      <link name="base" /><link name="arm" /><link name="tip" /><link name="side" />
+      <joint name="base_to_arm" type="revolute">
+        <parent link="base" /><child link="arm" /><axis xyz="0 0 1" />
+      </joint>
+      <joint name="arm_to_tip" type="fixed">
+        <parent link="arm" /><child link="tip" />
+      </joint>
+      <joint name="base_to_side" type="fixed">
+        <parent link="base" /><child link="side" />
+      </joint>
+    </robot>
+    """
+
+    with pytest.raises(ValueError, match="branching URDF chains"):
+        URDFRobotModel.from_urdf(xml, base_link="base", tip_link="tip")
+
+
+@pytest.mark.parametrize("joint_type", ["floating", "planar", "spherical"])
+def test_spatial_urdf_rejects_documented_unsupported_joint_types(joint_type):
+    xml = f"""
+    <robot name="unsupported">
+      <link name="base" /><link name="tip" />
+      <joint name="unsupported" type="{joint_type}">
+        <parent link="base" /><child link="tip" />
+      </joint>
+    </robot>
+    """
+
+    with pytest.raises(ValueError, match="not supported"):
+        URDFRobotModel.from_urdf(xml)

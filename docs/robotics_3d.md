@@ -148,9 +148,10 @@ acceleration, jerk, durations, and the configured limits.
 
 ## Design boundary
 
-The current implementation intentionally rejects branching chains and URDF
-`floating`, `planar`, and `spherical` joints. Visual materials, transmissions,
-and hardware-specific execution adapters remain outside the current scope.
+The current implementation intentionally rejects branching chains (even when
+`tip_link` is supplied) and URDF `floating`, `planar`, and `spherical` joints.
+Visual materials, transmissions, and hardware-specific execution adapters
+remain outside the current scope.
 
 ## Joint-path optimization
 

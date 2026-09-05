@@ -179,6 +179,7 @@ jobs:
           mastermlx/linear_models/logistic_regression.py
           mastermlx/linear_models/sgd.py
           mastermlx/preprocessing/normalize.py mastermlx/trees/decision_tree.py
+          mastermlx/robotics/urdf_parser.py
           mastermlx/preprocessing/auto.py mastermlx/preprocessing/column.py
           mastermlx/preprocessing/encoders.py mastermlx/preprocessing/imputers.py
           mastermlx/preprocessing/pipeline.py
