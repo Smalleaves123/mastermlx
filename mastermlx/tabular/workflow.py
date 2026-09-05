@@ -7,9 +7,13 @@ from copy import deepcopy
 import numpy as np
 from typing import Any
 
-from ..base import BaseExperiment, BaseReport, BaseResult
+from ..base import BaseExperiment, BaseReport, BaseResult, ModelBundle
 from ..data.contract import DataContract
 from ..data.evaluation import EvaluationReport
+from ..data.inspection import (
+    partial_dependence as compute_partial_dependence,
+    permutation_importance as compute_permutation_importance,
+)
 from ..data.search import GridSearchCV, RandomizedSearchCV
 from ..data.cv import KFold
 from ..data.drift import drift_report
@@ -91,6 +95,9 @@ class TabularExperiment(BaseExperiment):
         self.reference_X_ = None
         self.reference_y_ = None
         self.reference_input_ = None
+        self.permutation_importance_ = None
+        self.partial_dependence_ = {}
+        self.bundle_ = None
 
     def _resolve_searcher(self, pipeline):
         if self.search is None:
@@ -270,7 +277,82 @@ class TabularExperiment(BaseExperiment):
             ],
         }
 
-    def report(self, X=None, y=None, *, drift_reference=None, n_bins=10):
+    def permutation_importance(
+        self,
+        X=None,
+        y=None,
+        *,
+        scoring=None,
+        n_repeats=5,
+        random_state=None,
+    ):
+        """Compute and retain model-agnostic feature importance."""
+
+        best = self._require_fitted()
+        if X is None:
+            X = self.reference_input_ if self.reference_input_ is not None else self.reference_X_
+        if y is None and (X is self.reference_X_ or X is self.reference_input_):
+            y = self.reference_y_
+        if X is None or y is None:
+            raise ValueError("X and y are required for permutation importance")
+        self._validate_input(X)
+        self.permutation_importance_ = compute_permutation_importance(
+            best,
+            X,
+            y,
+            scoring=self.scoring if scoring is None else scoring,
+            n_repeats=n_repeats,
+            random_state=self.random_state if random_state is None else random_state,
+        )
+        return self.permutation_importance_
+
+    def partial_dependence(self, feature, X=None, **kwargs):
+        """Compute and retain a PDP/ICE report for one input feature."""
+
+        best = self._require_fitted()
+        if X is None:
+            X = self.reference_input_ if self.reference_input_ is not None else self.reference_X_
+        if X is None:
+            raise ValueError("X is required for partial dependence")
+        self._validate_input(X)
+        result = compute_partial_dependence(best, X, feature, **kwargs)
+        self.partial_dependence_[str(result["feature"])] = result
+        return result
+
+    def to_bundle(self, *, metadata=None):
+        """Package the fitted best pipeline for validated local inference."""
+
+        best = self._require_fitted()
+        reference = self.reference_input_ if self.reference_input_ is not None else self.reference_X_
+        if reference is None:
+            raise RuntimeError("TabularExperiment has no reference schema")
+        values = np.asarray(reference)
+        columns = getattr(reference, "columns", None)
+        feature_names = (
+            [f"x{index}" for index in range(values.shape[1])]
+            if columns is None
+            else [str(name) for name in columns]
+        )
+        bundle_metadata = {} if metadata is None else dict(metadata)
+        bundle_metadata.setdefault("task", self.task)
+        self.bundle_ = ModelBundle.from_fitted(
+            best,
+            feature_names=feature_names,
+            data_contract=self.data_contract,
+            metadata=bundle_metadata,
+        )
+        return self.bundle_
+
+    def report(
+        self,
+        X=None,
+        y=None,
+        *,
+        drift_reference=None,
+        n_bins=10,
+        include_permutation_importance=False,
+        permutation_repeats=5,
+    ):
         """Build a compact quality, drift, performance, and calibration report.
 
         With no arguments, the report describes the training reference data.
@@ -287,11 +369,21 @@ class TabularExperiment(BaseExperiment):
         self._validate_input(X)
         y_array = None if y is None else np.asarray(y)
         reference = self.reference_input_ if drift_reference is None else drift_reference
+        if include_permutation_importance:
+            if y_array is None:
+                raise ValueError("y is required when include_permutation_importance=True")
+            self.permutation_importance(
+                X,
+                y_array,
+                n_repeats=permutation_repeats,
+            )
         result = {
             "summary": self.summary(),
             "quality": quality_report(X, y_array),
             "drift": None if reference is None else drift_report(reference, X, bins=n_bins),
             "feature_importance": self._feature_importance_report(),
+            "permutation_importance": self.permutation_importance_,
+            "partial_dependence": self.partial_dependence_ or None,
             "contract": None if self.data_contract is None else self.data_contract.validate(X),
         }
         if y_array is None:

@@ -32,6 +32,7 @@ _PACKAGE_EXPORTS = {
         "BaseReport",
         "BaseResult",
         "Module",
+        "ModelBundle",
         "Parameter",
         "Est",
         "Trans",
@@ -89,6 +90,8 @@ _PACKAGE_EXPORTS = {
         "DataContract",
         "EvaluationReport",
         "OnlineTabularExperiment",
+        "partial_dependence",
+        "permutation_importance",
         "compare_schema",
         "data_drift",
         "data_quality",
@@ -925,6 +928,7 @@ _SPECIAL_EXPORTS = {
 
 _PUBLIC_SUBMODULES = [
     "accel",
+    "api",
     "anomaly",
     "bandits",
     "base",

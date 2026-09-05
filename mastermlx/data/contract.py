@@ -6,8 +6,41 @@ from copy import deepcopy
 
 import numpy as np
 
-from .quality import _as_table, _is_numeric, _key, _missing_mask, quality_report
-from .schema import compare_schema
+from .quality import _as_table, _dtype_at, _is_numeric, _key, _missing_mask, quality_report
+
+
+def _schema_snapshot(X):
+    arr, names = _as_table(X)
+    return {
+        "shape": tuple(int(value) for value in arr.shape),
+        "columns": list(names),
+        "dtypes": [_dtype_at(X, idx, arr[:, idx]) for idx in range(arr.shape[1])],
+    }
+
+
+def _compare_schema_snapshot(reference, X):
+    test_arr, test_names = _as_table(X)
+    train_names = list(reference["columns"])
+    train_dtypes = list(reference["dtypes"])
+    train_map = {name: idx for idx, name in enumerate(train_names)}
+    test_map = {name: idx for idx, name in enumerate(test_names)}
+    dtype_changes = []
+    for name in (name for name in train_names if name in test_map):
+        test_idx = test_map[name]
+        test_dtype = _dtype_at(X, test_idx, test_arr[:, test_idx])
+        train_dtype = train_dtypes[train_map[name]]
+        if train_dtype != test_dtype:
+            dtype_changes.append({"name": name, "train": train_dtype, "test": test_dtype})
+    return {
+        "train_shape": tuple(reference["shape"]),
+        "test_shape": tuple(int(value) for value in test_arr.shape),
+        "train_columns": train_names,
+        "test_columns": list(test_names),
+        "missing_columns": [name for name in train_names if name not in test_map],
+        "extra_columns": [name for name in test_names if name not in train_map],
+        "order_match": train_names == test_names,
+        "dtype_changes": dtype_changes,
+    }
 
 
 class DataContract:
@@ -37,6 +70,7 @@ class DataContract:
         self.allow_extra_columns = bool(allow_extra_columns)
         self.strict_dtypes = bool(strict_dtypes)
         self.reference_ = None
+        self.reference_schema_ = None
         self.reference_quality_ = None
         self.feature_names_ = None
 
@@ -67,14 +101,23 @@ class DataContract:
         if unknown_unique:
             raise ValueError(f"unique columns are missing from fit data: {unknown_unique}")
 
-        self.reference_ = deepcopy(X)
+        # Store only the schema needed at inference time. Keeping the complete
+        # training table in a fitted contract made model artifacts needlessly
+        # large and could retain sensitive rows.
+        self.reference_schema_ = _schema_snapshot(X)
+        self.reference_ = None
         self.feature_names_ = list(names)
         self.required_columns = list(required)
         self.reference_quality_ = quality_report(X, y)
         return self
 
     def _require_fitted(self):
-        if self.reference_ is None or self.feature_names_ is None:
+        reference_schema = getattr(self, "reference_schema_", None)
+        legacy_reference = getattr(self, "reference_", None)
+        if reference_schema is None and legacy_reference is not None:
+            reference_schema = _schema_snapshot(legacy_reference)
+            self.reference_schema_ = reference_schema
+        if reference_schema is None or self.feature_names_ is None:
             raise RuntimeError("DataContract has not been fit yet")
 
     @staticmethod
@@ -89,7 +132,7 @@ class DataContract:
         self._require_fitted()
         test_arr, test_names = _as_table(X)
         test_map = {name: index for index, name in enumerate(test_names)}
-        schema = compare_schema(self.reference_, X)
+        schema = _compare_schema_snapshot(self.reference_schema_, X)
         errors: list[dict[str, object]] = []
         warnings: list[dict[str, object]] = []
         required_columns = list(self.required_columns or [])

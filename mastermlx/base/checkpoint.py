@@ -108,11 +108,16 @@ class _Encoder:
                 return ref
             return {"kind": "rng", "ref": ref, "state": self.encode(value.bit_generator.state)}
         if isinstance(value, np.ndarray):
-            if value.dtype.hasobject:
-                raise TypeError("object arrays are not supported in checkpoints")
             ref = self._ref(value)
             if isinstance(ref, dict):
                 return ref
+            if value.dtype.hasobject:
+                return {
+                    "kind": "object_array",
+                    "ref": ref,
+                    "shape": list(value.shape),
+                    "items": [self.encode(item) for item in value.ravel(order="C")],
+                }
             self.arrays[ref] = np.array(value, copy=True)
             return {"kind": "array", "ref": ref}
         if isinstance(value, dict):
@@ -171,6 +176,16 @@ class _Decoder:
         if kind == "array":
             array_value = np.array(self.arrays[node["ref"]], copy=True)
             self.refs[node["ref"]] = array_value
+            return array_value
+        if kind == "object_array":
+            shape = tuple(int(value) for value in node["shape"])
+            nodes = node["items"]
+            if int(np.prod(shape, dtype=int)) != len(nodes):
+                raise ValueError("checkpoint object array shape does not match its items")
+            array_value = np.empty(shape, dtype=object)
+            self.refs[node["ref"]] = array_value
+            for index, item in enumerate(nodes):
+                array_value.flat[index] = self.decode(item)
             return array_value
         if kind == "rng":
             rng_value = np.random.default_rng()

@@ -5,6 +5,7 @@ from .contract import DataContract
 from .drift import data_drift, drift_report
 from .evaluation import EvaluationReport, compare_estimators
 from .online import OnlineTabularExperiment
+from .inspection import partial_dependence, permutation_importance
 from .model_selection import cross_val_predict, cross_val_score, cross_validate, learning_curve, validation_curve
 from .quality import (
     DataQualityReport,
@@ -32,6 +33,8 @@ __all__ = [
     "DataContract",
     "EvaluationReport",
     "OnlineTabularExperiment",
+    "partial_dependence",
+    "permutation_importance",
     "compare_schema",
     "data_drift",
     "data_quality",

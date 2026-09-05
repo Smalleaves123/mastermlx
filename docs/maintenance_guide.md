@@ -9,6 +9,18 @@ surface grows.
 2. Reuse domain helpers and `BaseResult` before adding a new result shape.
 3. Keep optional heavy dependencies behind extras.
 4. Add a narrow unit test and, for workflow features, one business-facing test.
+5. Classify every new public name in `mastermlx.api` before release.
+
+## API Stability
+
+Run the API contract test after changing public exports:
+
+```bash
+python -m pytest tests/test_api_compat.py tests/test_api_stability_bundle.py -q
+```
+
+Package defaults and explicit overrides are kept in `mastermlx/api.py`.
+Stable names require compatibility tests and a documented deprecation path.
 
 ## Test Tiers
 

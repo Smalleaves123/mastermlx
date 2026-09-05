@@ -3,6 +3,9 @@
 `mastermlx` keeps a broad top-level namespace for convenience, but new public
 surfaces should be categorized before release.
 
+The machine-readable classification and query API are documented in
+[`api_stability.md`](api_stability.md).
+
 ## Stability Levels
 
 - Stable: documented names used in README, docs, or examples; preserve behavior

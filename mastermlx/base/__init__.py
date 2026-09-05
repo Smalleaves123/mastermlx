@@ -2,6 +2,7 @@ from .estimator import BaseEstimator
 from .transformer import BaseTransformer
 from .layer import BaseLayer
 from .module import Module, Parameter
+from .bundle import ModelBundle
 from .results import BaseExperiment, BaseReport, BaseResult, export_reports, to_json_safe
 
 Est = BaseEstimator
@@ -16,6 +17,7 @@ __all__ = [
     "BaseReport",
     "BaseResult",
     "Module",
+    "ModelBundle",
     "Parameter",
     "Est",
     "Trans",

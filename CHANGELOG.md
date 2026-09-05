@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+- Added machine-readable Stable, Beta, Experimental, and Internal API tiers
+  with lazy stability queries for all top-level public names.
+- Added `ModelBundle` for validated preprocessing, prediction, safe versioned
+  persistence, metadata summaries, and end-to-end data-contract enforcement.
+- Changed fitted data contracts to retain a lightweight schema snapshot rather
+  than the complete training table, and safely encoded categorical object
+  arrays without pickle in checkpoints.
+- Added deterministic, model-agnostic permutation importance and integrated it
+  into `TabularExperiment` reports as an opt-in inspection section.
+- Added one-feature partial-dependence and ICE analysis with numeric or
+  categorical grids, response selection, centering, and tabular report storage.
+- Added structured model cards plus `mastermlx inspect`, `validate`, and
+  `predict` commands for JSON/CSV model-bundle inference.
+- Added `TabularExperiment.to_bundle()` to package the selected fitted pipeline
+  and data contract for deployment without retraining.
+- Included project documentation and the changelog in source distributions so
+  packaged README links resolve in release artifacts.
+
 ## 0.1.16
 
 - Added copy-and-run tutorials and an API reference across the public examples,

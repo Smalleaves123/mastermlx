@@ -87,7 +87,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install dist/*.tar.gz
-          python -c "import mastermlx; from mastermlx import KMeans; assert len(mastermlx.__all__) == 766; assert KMeans.__name__ == 'KMeans'; print(mastermlx.__version__)"
+          python -c "import mastermlx; from mastermlx import KMeans, ModelBundle; assert KMeans.__name__ == 'KMeans'; assert ModelBundle.__name__ == 'ModelBundle'; print(mastermlx.__version__)"
 
   publish_testpypi:
     name: Publish to TestPyPI

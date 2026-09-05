@@ -74,6 +74,9 @@ print(kmeans.inertia_)
 print(mlx.entropy(np.array([0.2, 0.3, 0.5])))
 ```
 
+For validated, portable inference, package a contract, preprocessor, and model
+with `mlx.ModelBundle`; see [`docs/model_bundles.md`](docs/model_bundles.md).
+
 For copy-and-run tutorials covering robotics and core ML APIs, see the
 [public examples](examples/README.md) and the
 [0.1.15 task-oriented API guide](examples/API_REFERENCE.md).
@@ -96,6 +99,8 @@ For the recommended use cases and workflow conventions, see:
 - [`docs/business_use_cases.md`](docs/business_use_cases.md)
 - [`docs/workflows.md`](docs/workflows.md)
 - [`docs/api_policy.md`](docs/api_policy.md)
+- [`docs/api_stability.md`](docs/api_stability.md)
+- [`docs/model_inspection.md`](docs/model_inspection.md)
 - [`docs/semi_supervised.md`](docs/semi_supervised.md)
 
 ## Benchmarks

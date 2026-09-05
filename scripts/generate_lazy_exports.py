@@ -93,6 +93,7 @@ SPECIAL_EXPORTS = {
 
 PUBLIC_SUBMODULES = [
     "accel",
+    "api",
     "anomaly",
     "bandits",
     "base",

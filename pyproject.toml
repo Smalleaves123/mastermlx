@@ -33,6 +33,9 @@ dependencies = [
   "numpy>=1.26",
 ]
 
+[project.scripts]
+mastermlx = "mastermlx.cli:main"
+
 [project.urls]
 Homepage = "https://github.com/Smalleaves123/mastermlx"
 Repository = "https://github.com/Smalleaves123/mastermlx"
