@@ -16,13 +16,12 @@ class Normalizer(BaseTransformer):
         X = check_2d_array(X).astype(float)
         if self.norm not in {"l1", "l2", "max"}:
             raise ValueError("norm must be one of: l1, l2, max")
-        self.n_features_in_ = X.shape[1]
+        self._set_n_features(X)
         return self
 
     def transform(self, X):
-        X = check_2d_array(X).astype(float)
-        if not hasattr(self, "n_features_in_"):
-            raise RuntimeError("Normalizer has not been fit yet")
+        self._check_fitted("n_features_in_")
+        X = self._check_X(X, dtype=float)
         if self.norm == "l1":
             scale = np.sum(np.abs(X), axis=1, keepdims=True)
         elif self.norm == "l2":

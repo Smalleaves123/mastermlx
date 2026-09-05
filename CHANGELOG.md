@@ -19,6 +19,9 @@
   and data contract for deployment without retraining.
 - Included project documentation and the changelog in source distributions so
   packaged README links resolve in release artifacts.
+- Added a cross-family Stable API contract matrix for cloning, fitted feature
+  metadata, prediction shapes, multi-output and incremental learning, and
+  sparse validation behavior.
 
 ## 0.1.16
 

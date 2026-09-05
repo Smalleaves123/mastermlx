@@ -38,6 +38,7 @@ jobs:
         run: >-
           python -m pytest -q
           tests/test_api_compat.py tests/test_api_stability_bundle.py
+          tests/test_stable_api_contracts.py
           tests/test_model_bundle_cli.py tests/test_model_inspection.py
           tests/test_lazy_imports.py tests/test_infrastructure.py
           tests/test_tabular_workflow.py tests/test_signal_business.py
@@ -165,12 +166,14 @@ jobs:
           mypy
           mastermlx/api.py mastermlx/base/bundle.py mastermlx/base/checkpoint.py
           mastermlx/base/common.py mastermlx/cli.py mastermlx/data/inspection.py
+          mastermlx/clustering/kmeans.py mastermlx/clustering/minibatch.py
           mastermlx/data/search_core.py mastermlx/utils/validation.py
           mastermlx/data/search.py mastermlx/tabular/workflow.py
           mastermlx/base/results.py mastermlx/signal/condition.py
           mastermlx/linear_models/linear_regression.py
           mastermlx/linear_models/logistic_regression.py
           mastermlx/linear_models/sgd.py
+          mastermlx/preprocessing/normalize.py mastermlx/trees/decision_tree.py
           mastermlx/preprocessing/auto.py mastermlx/preprocessing/column.py
           mastermlx/preprocessing/encoders.py mastermlx/preprocessing/imputers.py
           mastermlx/preprocessing/pipeline.py

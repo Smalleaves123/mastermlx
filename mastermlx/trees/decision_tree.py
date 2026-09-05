@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 
 from ..base import BaseEstimator
-from ..utils import accuracy, as_2d, check_1d_array, check_2d_array, r2_score
+from ..utils import accuracy, check_1d_array, check_2d_array, r2_score
 
 
 class _Node:
@@ -41,6 +41,7 @@ class DecisionTreeClassifier(BaseEstimator):
         if self.min_samples_split < 2 * self.min_samples_leaf:
             raise ValueError("min_samples_split must be at least twice min_samples_leaf")
 
+        self._set_n_features(X)
         self.classes_ = np.unique(y)
         self.root_ = self._grow(X, y, depth=0)
         return self
@@ -128,9 +129,7 @@ class DecisionTreeClassifier(BaseEstimator):
     def predict(self, X):
         if self.root_ is None:
             raise RuntimeError("Model has not been fit yet")
-        X = as_2d(X)
-        if X.shape[1] is None:
-            raise ValueError("Invalid input shape")
+        X = self._check_X(X, allow_1d=True)
         pred = np.array([self._predict_one(x, self.root_) for x in X])
         return pred
 
@@ -159,6 +158,7 @@ class DecisionTreeRegressor(BaseEstimator):
         if self.min_samples_split < 2 * self.min_samples_leaf:
             raise ValueError("min_samples_split must be at least twice min_samples_leaf")
 
+        self._set_n_features(X)
         self.root_ = self._grow(X, y.astype(float), depth=0)
         return self
 
@@ -244,7 +244,7 @@ class DecisionTreeRegressor(BaseEstimator):
     def predict(self, X):
         if self.root_ is None:
             raise RuntimeError("Model has not been fit yet")
-        X = as_2d(X)
+        X = self._check_X(X, allow_1d=True)
         pred = np.array([self._predict_one(x, self.root_) for x in X], dtype=float)
         return pred
 

@@ -25,3 +25,9 @@ of those rules and by `tests/test_api_stability_bundle.py`.
 Promoting an API requires contract tests, public documentation, and an entry
 in `CHANGELOG.md`. Demotion requires a deprecation period under the rules in
 [`api_policy.md`](api_policy.md).
+
+Representative Stable estimators and transformers are continuously checked by
+`tests/test_stable_api_contracts.py`. The matrix enforces cloneability, fitted
+feature metadata, single-sample output shapes, incompatible-feature rejection,
+incremental-learning signatures, multi-output regression, and sparse input
+validation across the stable estimator families.

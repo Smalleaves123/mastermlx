@@ -4,7 +4,7 @@ import numpy as np
 
 from ..accel.ml_kernels import kmeans_assign, kmeans_update
 from ..base import BaseEstimator
-from ..utils import as_2d, check_2d_array
+from ..utils import check_2d_array
 from ..utils.random import resolve_rng
 
 
@@ -35,6 +35,7 @@ class MiniBatchKMeans(BaseEstimator):
             raise ValueError("max_iter must be at least 1")
         if self.n_init < 1:
             raise ValueError("n_init must be at least 1")
+        self._set_n_features(X)
         k = self.n_clusters
         batch_size = min(self.batch_size, n)
         rng = resolve_rng(self.random_state)
@@ -72,9 +73,9 @@ class MiniBatchKMeans(BaseEstimator):
         return kmeans_assign(X, centers)
 
     def predict(self, X):
-        X = as_2d(X).astype(float)
         if self.cluster_centers_ is None:
             raise RuntimeError("not fitted")
+        X = self._check_X(X, dtype=float, allow_1d=True)
         labels, _ = self._assign(X, self.cluster_centers_)
         return labels
 

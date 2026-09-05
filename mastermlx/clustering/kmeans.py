@@ -6,7 +6,7 @@ from numpy.typing import ArrayLike
 from ..accel import pairwise_squared_euclidean
 from ..accel.ml_kernels import kmeans_assign, kmeans_update
 from ..base import BaseEstimator
-from ..utils import as_2d, check_2d_array
+from ..utils import check_2d_array
 from ..utils.random import resolve_rng
 
 
@@ -76,6 +76,7 @@ class KMeans(BaseEstimator):
         if self.tol < 0.0 or not np.isfinite(self.tol):
             raise ValueError("tol must be non-negative and finite")
 
+        self._set_n_features(X)
         best_inertia = np.inf
         best_centers = None
         best_labels = None
@@ -119,18 +120,14 @@ class KMeans(BaseEstimator):
     def predict(self, X: ArrayLike) -> np.ndarray:
         if self.cluster_centers_ is None:
             raise RuntimeError("Model has not been fit yet")
-        X = as_2d(X)
-        if X.shape[1] != self.cluster_centers_.shape[1]:
-            raise ValueError("X has a different number of features than the fitted data")
+        X = self._check_X(X, allow_1d=True)
         labels, _ = self._assign_labels(X, self.cluster_centers_)
         return labels
 
     def transform(self, X: ArrayLike) -> np.ndarray:
         if self.cluster_centers_ is None:
             raise RuntimeError("Model has not been fit yet")
-        X = as_2d(X)
-        if X.shape[1] != self.cluster_centers_.shape[1]:
-            raise ValueError("X has a different number of features than the fitted data")
+        X = self._check_X(X, allow_1d=True)
         return np.sqrt(_squared_euclidean_distances(X, self.cluster_centers_))
 
     def fit_predict(self, X: ArrayLike, y: ArrayLike | None = None) -> np.ndarray:
