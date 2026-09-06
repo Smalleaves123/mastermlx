@@ -22,7 +22,7 @@ development model.
 - `mastermlx.ensemble`
   - histogram-tree growth and prediction for gradient boosting
 - `mastermlx.math_tools`
-  - Cython rolling mean, autocorrelation/ACF, exponential smoothing, and CUSUM
+  - Cython rolling mean/variance/std, autocorrelation/ACF, exponential smoothing, and CUSUM
   - ACF reuses its centered series and variance across all requested lags
 - `mastermlx.utils`
   - Cython confusion-matrix count accumulation
@@ -58,7 +58,7 @@ development model.
 
 ## Next priority batches
 
-### Batch 1: remaining math tools
+### Batch 1: math tools (complete)
 
 Target modules:
 
@@ -73,10 +73,12 @@ Why:
 - they are mostly array loops, reductions, and pairwise operations
 - they are easy to benchmark and easy to keep numerically stable
 
-Suggested kernels:
+Completed kernels:
 
-- additional rolling statistics
-- additional rolling-statistic helpers
+- rolling mean, variance, and standard deviation
+- autocorrelation and time-series state updates
+- scalar distance and kernel helpers
+- confusion matrix, top-k, ROC-AUC, and average-precision reductions
 
 ### Batch 2: control and robotics
 

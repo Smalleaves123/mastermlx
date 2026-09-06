@@ -32,6 +32,69 @@ def rolling_mean_1d(np.ndarray[DTYPE_t, ndim=1] x, int window):
     return out
 
 
+def rolling_variance_1d(
+    np.ndarray[DTYPE_t, ndim=1] x,
+    int window,
+    int ddof=0,
+):
+    """Return rolling variance with stable remove/add updates."""
+
+    cdef Py_ssize_t n = x.shape[0]
+    cdef Py_ssize_t out_n, i, j
+    cdef double mean = 0.0
+    cdef double m2 = 0.0
+    cdef double delta
+    cdef double old_value
+    cdef double new_value
+    cdef double mean_removed
+    cdef double denominator
+    cdef np.ndarray[DTYPE_t, ndim=1] out
+
+    if n == 0:
+        raise ValueError("x must be a non-empty 1D array")
+    if window < 1:
+        raise ValueError("window must be at least 1")
+    if window > n:
+        raise ValueError("window cannot exceed the series length")
+    if ddof < 0 or ddof >= window:
+        raise ValueError("ddof must satisfy 0 <= ddof < window")
+
+    out_n = n - window + 1
+    out = np.empty(out_n, dtype=np.float64)
+    denominator = window - ddof
+    if window == 1:
+        out.fill(0.0)
+        return out
+
+    for j in range(window):
+        delta = x[j] - mean
+        mean += delta / (j + 1)
+        m2 += delta * (x[j] - mean)
+    out[0] = m2 / denominator
+
+    for i in range(1, out_n):
+        # Periodic recalculation bounds floating-point drift on long series.
+        if i % 256 == 0:
+            mean = 0.0
+            m2 = 0.0
+            for j in range(window):
+                delta = x[i + j] - mean
+                mean += delta / (j + 1)
+                m2 += delta * (x[i + j] - mean)
+        else:
+            old_value = x[i - 1]
+            new_value = x[i + window - 1]
+            mean_removed = (window * mean - old_value) / (window - 1)
+            m2 -= (old_value - mean) * (old_value - mean_removed)
+            delta = new_value - mean_removed
+            mean = mean_removed + delta / window
+            m2 += delta * (new_value - mean)
+        if m2 < 0.0:
+            m2 = 0.0
+        out[i] = m2 / denominator
+    return out
+
+
 def autocorrelation_1d(np.ndarray[DTYPE_t, ndim=1] x, int lag, bint demean=True):
     cdef Py_ssize_t n = x.shape[0]
     cdef Py_ssize_t i

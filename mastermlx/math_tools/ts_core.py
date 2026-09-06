@@ -13,6 +13,7 @@ try:
         cusum_change_points_1d as _cy_cusum_change_points_1d,
         exponential_smoothing_1d as _cy_exponential_smoothing_1d,
         rolling_mean_1d as _cy_rolling_mean_1d,
+        rolling_variance_1d as _cy_rolling_variance_1d,
     )
 except ImportError:  # pragma: no cover - fallback when Cython extensions are unavailable
     _cy_autocorrelation_1d = None
@@ -20,6 +21,7 @@ except ImportError:  # pragma: no cover - fallback when Cython extensions are un
     _cy_cusum_change_points_1d = None
     _cy_exponential_smoothing_1d = None
     _cy_rolling_mean_1d = None
+    _cy_rolling_variance_1d = None
 
 
 def _as_1d_series(x, name="x"):
@@ -113,6 +115,34 @@ def rolling_mean(x, window):
         return _cy_rolling_mean_1d(x, window)
     kernel = np.ones(window, dtype=float) / window
     return np.convolve(x, kernel, mode="valid")
+
+
+def rolling_variance(x, window, ddof=0):
+    """Return variance for every complete 1D rolling window."""
+
+    x = np.asarray(x, dtype=float)
+    if x.ndim != 1 or x.size == 0:
+        raise ValueError("x must be a non-empty 1D array")
+    if not np.all(np.isfinite(x)):
+        raise ValueError("x must contain only finite values")
+    window = int(window)
+    ddof = int(ddof)
+    if window < 1:
+        raise ValueError("window must be at least 1")
+    if window > x.size:
+        raise ValueError("window cannot exceed the series length")
+    if ddof < 0 or ddof >= window:
+        raise ValueError("ddof must satisfy 0 <= ddof < window")
+    if get_backend() != "numpy" and _cy_rolling_variance_1d is not None:
+        return _cy_rolling_variance_1d(x, window, ddof)
+    windows = np.lib.stride_tricks.sliding_window_view(x, window)
+    return np.var(windows, axis=1, ddof=ddof)
+
+
+def rolling_std(x, window, ddof=0):
+    """Return standard deviation for every complete 1D rolling window."""
+
+    return np.sqrt(rolling_variance(x, window, ddof=ddof))
 
 
 def autocorrelation(x, lag=1, demean=True):
@@ -374,4 +404,6 @@ __all__ = [
     "lagged_matrix",
     "partial_autocorrelation",
     "rolling_mean",
+    "rolling_std",
+    "rolling_variance",
 ]

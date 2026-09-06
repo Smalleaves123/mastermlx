@@ -301,6 +301,8 @@ _PACKAGE_EXPORTS = {
         "swap",
         "resolve_gamma",
         "rolling_mean",
+        "rolling_std",
+        "rolling_variance",
         "rolling_backtest",
         "TimeSeriesExperiment",
         "TimeSeriesPipeline",

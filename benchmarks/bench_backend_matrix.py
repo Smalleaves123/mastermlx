@@ -16,6 +16,7 @@ from mastermlx.math_tools import (
     autocorrelation_function,
     exponential_smoothing,
     rolling_mean,
+    rolling_variance,
 )
 from mastermlx.utils import (
     avg_precision_score,
@@ -25,7 +26,7 @@ from mastermlx.utils import (
 )
 
 
-BENCHMARK_SCHEMA = "mastermlx.backend-matrix.v5"
+BENCHMARK_SCHEMA = "mastermlx.backend-matrix.v6"
 DEFAULT_SEED = 42
 DEFAULT_REPEATS = 5
 DEFAULT_MAX_DISTANCE_ERROR = 1e-10
@@ -86,6 +87,9 @@ def _run_backend(
     def rolling():
         return rolling_mean(series, window)
 
+    def rolling_var():
+        return rolling_variance(series, window, ddof=0)
+
     def autocorrelation():
         return autocorrelation_function(series, max_lag)
 
@@ -112,6 +116,7 @@ def _run_backend(
     distance_time = _measure(distance, repeats=repeats)
     filter_time = _measure(filtering, repeats=repeats)
     rolling_time = _measure(rolling, repeats=repeats)
+    rolling_variance_time = _measure(rolling_var, repeats=repeats)
     autocorrelation_time = _measure(autocorrelation, repeats=repeats)
     smoothing_time = _measure(smoothing, repeats=repeats)
     confusion_time = _measure(confusion, repeats=repeats)
@@ -121,6 +126,7 @@ def _run_backend(
     distance_value = distance()
     filter_value = filtering()
     rolling_value = rolling()
+    rolling_variance_value = rolling_var()
     autocorrelation_value = autocorrelation()
     smoothing_value = smoothing()
     confusion_value = confusion()
@@ -132,6 +138,7 @@ def _run_backend(
         "distance_seconds": distance_time,
         "iir_seconds": filter_time,
         "rolling_mean_seconds": rolling_time,
+        "rolling_variance_seconds": rolling_variance_time,
         "autocorrelation_function_seconds": autocorrelation_time,
         "exponential_smoothing_seconds": smoothing_time,
         "confusion_matrix_seconds": confusion_time,
@@ -141,6 +148,9 @@ def _run_backend(
         "distance_max_error": _error(distance_value, references["distance"]),
         "iir_max_error": _error(filter_value, references["iir"]),
         "rolling_mean_max_error": _error(rolling_value, references["rolling_mean"]),
+        "rolling_variance_max_error": _error(
+            rolling_variance_value, references["rolling_variance"]
+        ),
         "autocorrelation_function_max_error": _error(
             autocorrelation_value, references["autocorrelation_function"]
         ),
@@ -156,12 +166,14 @@ def _run_backend(
     }
     print(
         f"{name:8s} distance={distance_time:8.5f}s iir={filter_time:8.5f}s "
-        f"rolling={rolling_time:8.5f}s acf={autocorrelation_time:8.5f}s "
+        f"rolling={rolling_time:8.5f}s variance={rolling_variance_time:8.5f}s "
+        f"acf={autocorrelation_time:8.5f}s "
         f"smooth={smoothing_time:8.5f}s confusion={confusion_time:8.5f}s "
         f"top-k={top_k_time:8.5f}s roc-auc={roc_auc_time:8.5f}s "
         f"avg-precision={average_precision_time:8.5f}s "
         f"errors=(distance={result['distance_max_error']:.2e}, "
         f"iir={result['iir_max_error']:.2e}, rolling={result['rolling_mean_max_error']:.2e}, "
+        f"variance={result['rolling_variance_max_error']:.2e}, "
         f"acf={result['autocorrelation_function_max_error']:.2e}, "
         f"smooth={result['exponential_smoothing_max_error']:.2e}, "
         f"confusion={result['confusion_matrix_max_error']:.2e}, "
@@ -221,6 +233,7 @@ def run_backend_matrix(*, seed=DEFAULT_SEED, repeats=DEFAULT_REPEATS):
             "distance": pairwise_squared_euclidean(X, Y),
             "iir": iir_filter_1d(signal, b, a),
             "rolling_mean": rolling_mean(series, window),
+            "rolling_variance": rolling_variance(series, window, ddof=0),
             "autocorrelation_function": autocorrelation_function(series, max_lag),
             "exponential_smoothing": exponential_smoothing(series, alpha),
             "confusion_matrix": confusion_matrix(y_true, y_pred, labels=labels),
@@ -274,6 +287,7 @@ def run_backend_matrix(*, seed=DEFAULT_SEED, repeats=DEFAULT_REPEATS):
             "iir_samples": int(signal.size),
             "time_series_samples": int(series.size),
             "rolling_window": window,
+            "rolling_variance_ddof": 0,
             "autocorrelation_max_lag": max_lag,
             "confusion_samples": int(y_true.size),
             "confusion_classes": int(labels.size),
@@ -316,6 +330,7 @@ def assert_parity(
         "distance": max_distance_error,
         "iir": max_iir_error,
         "rolling_mean": max_time_series_error,
+        "rolling_variance": max_time_series_error,
         "autocorrelation_function": max_time_series_error,
         "exponential_smoothing": max_time_series_error,
         "confusion_matrix": max_confusion_error,

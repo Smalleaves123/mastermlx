@@ -12,6 +12,8 @@ from .ts_core import (
     lagged_matrix,
     partial_autocorrelation,
     rolling_mean,
+    rolling_std,
+    rolling_variance,
 )
 from .ts_experiment import TimeSeriesExperiment, backtest, compare_time_series_models
 from .ts_experiment import rolling_backtest
@@ -35,6 +37,8 @@ __all__ = [
     "lagged_matrix",
     "partial_autocorrelation",
     "rolling_mean",
+    "rolling_std",
+    "rolling_variance",
     "rolling_backtest",
     "ForecastMetrics",
 ]

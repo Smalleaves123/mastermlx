@@ -18,6 +18,8 @@ from mastermlx.math_tools import (
     ForecastMetrics,
     partial_autocorrelation,
     rolling_mean,
+    rolling_std,
+    rolling_variance,
     rolling_backtest,
 )
 from mastermlx.linear_models import LinearRegression
@@ -36,6 +38,39 @@ def test_time_series_basic_transforms():
     assert acf.shape == (3,)
     assert np.isclose(acf[0], 1.0)
     assert esm.shape == x.shape
+
+
+def test_rolling_variance_and_std_match_complete_windows():
+    x = np.array([1.0, 2.0, 4.0, 7.0, 11.0])
+    windows = np.lib.stride_tricks.sliding_window_view(x, 3)
+
+    assert np.allclose(rolling_variance(x, 3), np.var(windows, axis=1))
+    assert np.allclose(rolling_variance(x, 3, ddof=1), np.var(windows, axis=1, ddof=1))
+    assert np.allclose(rolling_std(x, 3), np.std(windows, axis=1))
+
+
+def test_rolling_variance_has_stable_backend_parity():
+    rng = np.random.default_rng(20260906)
+    x = 1e8 + rng.normal(size=20_000)
+    old = get_backend()
+    try:
+        set_backend("numpy")
+        expected = rolling_variance(x, 128, ddof=1)
+        set_backend("auto")
+        actual = rolling_variance(x, 128, ddof=1)
+    finally:
+        set_backend(old)
+
+    assert np.allclose(actual, expected, rtol=1e-7, atol=1e-7)
+
+
+def test_rolling_variance_validates_window_ddof_and_finite_values():
+    with np.testing.assert_raises_regex(ValueError, "finite"):
+        rolling_variance([1.0, np.nan], 2)
+    with np.testing.assert_raises_regex(ValueError, "window"):
+        rolling_variance([1.0, 2.0], 3)
+    with np.testing.assert_raises_regex(ValueError, "ddof"):
+        rolling_variance([1.0, 2.0], 2, ddof=2)
 
 
 def test_dtw_distance_and_path_are_consistent():

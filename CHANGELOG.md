@@ -33,6 +33,8 @@
   reduction while retaining the NumPy fallback and exact tie semantics.
 - Corrected average precision to evaluate complete tied-score threshold groups
   and added a lower-allocation Cython reduction with NumPy parity.
+- Added Stable `rolling_variance` and `rolling_std` APIs with `ddof` support,
+  NumPy fallbacks, and a drift-bounded Cython sliding-window implementation.
 - Enforced the documented serial-URDF boundary by rejecting explicit-tip
   branching chains, with regression coverage for all unsupported joint types.
 

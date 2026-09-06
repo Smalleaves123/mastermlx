@@ -132,6 +132,8 @@ from .time_series import (
     TimeSeriesExperiment,
     TimeSeriesPipeline,
     rolling_mean,
+    rolling_std,
+    rolling_variance,
     rolling_backtest,
 )
 
@@ -250,6 +252,8 @@ __all__ = [
     "swap",
     "resolve_gamma",
     "rolling_mean",
+    "rolling_std",
+    "rolling_variance",
     "rolling_backtest",
     "TimeSeriesExperiment",
     "TimeSeriesPipeline",
