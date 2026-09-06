@@ -17,10 +17,10 @@ from mastermlx.math_tools import (
     exponential_smoothing,
     rolling_mean,
 )
-from mastermlx.utils import confusion_matrix, top_k_accuracy_score
+from mastermlx.utils import confusion_matrix, roc_auc_score, top_k_accuracy_score
 
 
-BENCHMARK_SCHEMA = "mastermlx.backend-matrix.v3"
+BENCHMARK_SCHEMA = "mastermlx.backend-matrix.v4"
 DEFAULT_SEED = 42
 DEFAULT_REPEATS = 5
 DEFAULT_MAX_DISTANCE_ERROR = 1e-10
@@ -28,6 +28,7 @@ DEFAULT_MAX_IIR_ERROR = 1e-12
 DEFAULT_MAX_TIME_SERIES_ERROR = 1e-10
 DEFAULT_MAX_CONFUSION_ERROR = 0.0
 DEFAULT_MAX_TOP_K_ERROR = 0.0
+DEFAULT_MAX_ROC_AUC_ERROR = 1e-15
 
 
 def _measure(function, repeats=5):
@@ -58,7 +59,17 @@ def _run_backend(
     X, Y = distance_inputs
     signal, b, a = signal_inputs
     series, window, max_lag, alpha = time_series_inputs
-    y_true, y_pred, labels, top_k_true, top_k_scores, top_k_labels, top_k = metric_inputs
+    (
+        y_true,
+        y_pred,
+        labels,
+        top_k_true,
+        top_k_scores,
+        top_k_labels,
+        top_k,
+        roc_auc_true,
+        roc_auc_scores,
+    ) = metric_inputs
 
     def distance():
         return pairwise_squared_euclidean(X, Y)
@@ -86,6 +97,9 @@ def _run_backend(
             labels=top_k_labels,
         )
 
+    def roc_auc():
+        return roc_auc_score(roc_auc_true, roc_auc_scores)
+
     distance_time = _measure(distance, repeats=repeats)
     filter_time = _measure(filtering, repeats=repeats)
     rolling_time = _measure(rolling, repeats=repeats)
@@ -93,6 +107,7 @@ def _run_backend(
     smoothing_time = _measure(smoothing, repeats=repeats)
     confusion_time = _measure(confusion, repeats=repeats)
     top_k_time = _measure(top_k_accuracy, repeats=repeats)
+    roc_auc_time = _measure(roc_auc, repeats=repeats)
     distance_value = distance()
     filter_value = filtering()
     rolling_value = rolling()
@@ -100,6 +115,7 @@ def _run_backend(
     smoothing_value = smoothing()
     confusion_value = confusion()
     top_k_value = top_k_accuracy()
+    roc_auc_value = roc_auc()
     result = {
         "backend": name,
         "distance_seconds": distance_time,
@@ -109,6 +125,7 @@ def _run_backend(
         "exponential_smoothing_seconds": smoothing_time,
         "confusion_matrix_seconds": confusion_time,
         "top_k_accuracy_seconds": top_k_time,
+        "roc_auc_seconds": roc_auc_time,
         "distance_max_error": _error(distance_value, references["distance"]),
         "iir_max_error": _error(filter_value, references["iir"]),
         "rolling_mean_max_error": _error(rolling_value, references["rolling_mean"]),
@@ -120,18 +137,20 @@ def _run_backend(
         ),
         "confusion_matrix_max_error": _error(confusion_value, references["confusion_matrix"]),
         "top_k_accuracy_max_error": _error(top_k_value, references["top_k_accuracy"]),
+        "roc_auc_max_error": _error(roc_auc_value, references["roc_auc"]),
     }
     print(
         f"{name:8s} distance={distance_time:8.5f}s iir={filter_time:8.5f}s "
         f"rolling={rolling_time:8.5f}s acf={autocorrelation_time:8.5f}s "
         f"smooth={smoothing_time:8.5f}s confusion={confusion_time:8.5f}s "
-        f"top-k={top_k_time:8.5f}s "
+        f"top-k={top_k_time:8.5f}s roc-auc={roc_auc_time:8.5f}s "
         f"errors=(distance={result['distance_max_error']:.2e}, "
         f"iir={result['iir_max_error']:.2e}, rolling={result['rolling_mean_max_error']:.2e}, "
         f"acf={result['autocorrelation_function_max_error']:.2e}, "
         f"smooth={result['exponential_smoothing_max_error']:.2e}, "
         f"confusion={result['confusion_matrix_max_error']:.2e}, "
-        f"top-k={result['top_k_accuracy_max_error']:.2e})"
+        f"top-k={result['top_k_accuracy_max_error']:.2e}, "
+        f"roc-auc={result['roc_auc_max_error']:.2e})"
     )
     return result
 
@@ -174,6 +193,10 @@ def run_backend_matrix(*, seed=DEFAULT_SEED, repeats=DEFAULT_REPEATS):
     top_k_true = rng.integers(0, top_k_classes, size=top_k_samples)
     top_k_scores = rng.normal(size=(top_k_samples, top_k_classes))
     top_k_labels = np.arange(top_k_classes)
+    roc_auc_samples = 100_000
+    roc_auc_true = rng.integers(0, 2, size=roc_auc_samples)
+    roc_auc_true[:2] = (0, 1)
+    roc_auc_scores = rng.normal(size=roc_auc_samples)
     old_backend = get_backend()
     try:
         set_backend("numpy")
@@ -190,6 +213,7 @@ def run_backend_matrix(*, seed=DEFAULT_SEED, repeats=DEFAULT_REPEATS):
                 k=top_k,
                 labels=top_k_labels,
             ),
+            "roc_auc": roc_auc_score(roc_auc_true, roc_auc_scores),
         }
         report = backend_report()
         backends = ["numpy"]
@@ -211,6 +235,8 @@ def run_backend_matrix(*, seed=DEFAULT_SEED, repeats=DEFAULT_REPEATS):
                     top_k_scores,
                     top_k_labels,
                     top_k,
+                    roc_auc_true,
+                    roc_auc_scores,
                 ),
                 references,
                 repeats=repeats,
@@ -236,6 +262,7 @@ def run_backend_matrix(*, seed=DEFAULT_SEED, repeats=DEFAULT_REPEATS):
             "top_k_samples": top_k_samples,
             "top_k_classes": top_k_classes,
             "top_k": top_k,
+            "roc_auc_samples": roc_auc_samples,
         },
         "backend_report": report,
         "results": results,
@@ -250,6 +277,7 @@ def assert_parity(
     max_time_series_error,
     max_confusion_error,
     max_top_k_error,
+    max_roc_auc_error,
 ):
     """Fail when a backend drifts beyond the recorded numerical contract."""
 
@@ -260,6 +288,7 @@ def assert_parity(
     )
     max_confusion_error = _non_negative_finite(max_confusion_error, "max_confusion_error")
     max_top_k_error = _non_negative_finite(max_top_k_error, "max_top_k_error")
+    max_roc_auc_error = _non_negative_finite(max_roc_auc_error, "max_roc_auc_error")
     limits = {
         "distance": max_distance_error,
         "iir": max_iir_error,
@@ -268,6 +297,7 @@ def assert_parity(
         "exponential_smoothing": max_time_series_error,
         "confusion_matrix": max_confusion_error,
         "top_k_accuracy": max_top_k_error,
+        "roc_auc": max_roc_auc_error,
     }
     for result in record["results"]:
         for metric, maximum in limits.items():
@@ -288,6 +318,7 @@ def main():
     parser.add_argument("--max-time-series-error", type=float, default=DEFAULT_MAX_TIME_SERIES_ERROR)
     parser.add_argument("--max-confusion-error", type=float, default=DEFAULT_MAX_CONFUSION_ERROR)
     parser.add_argument("--max-top-k-error", type=float, default=DEFAULT_MAX_TOP_K_ERROR)
+    parser.add_argument("--max-roc-auc-error", type=float, default=DEFAULT_MAX_ROC_AUC_ERROR)
     args = parser.parse_args()
 
     record = run_backend_matrix(seed=args.seed, repeats=args.repeats)
@@ -298,6 +329,7 @@ def main():
         max_time_series_error=args.max_time_series_error,
         max_confusion_error=args.max_confusion_error,
         max_top_k_error=args.max_top_k_error,
+        max_roc_auc_error=args.max_roc_auc_error,
     )
 
     if args.json_output is not None:

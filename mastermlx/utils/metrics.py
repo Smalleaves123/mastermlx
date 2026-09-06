@@ -6,10 +6,12 @@ from ..config import get_backend
 
 try:
     from ._metrics_ops import (
+        binary_roc_auc as _cy_binary_roc_auc,
         confusion_matrix_counts as _cy_confusion_matrix_counts,
         top_k_accuracy as _cy_top_k_accuracy,
     )
 except ImportError:  # pragma: no cover - fallback when Cython extensions are unavailable
+    _cy_binary_roc_auc = None
     _cy_confusion_matrix_counts = None
     _cy_top_k_accuracy = None
 
@@ -143,11 +145,19 @@ def _binary_roc_auc(y_true, y_score):
         raise ValueError("binary AUC inputs must be 1D arrays")
     if y_true.shape[0] != y_score.shape[0]:
         raise ValueError("y_true and y_score must have the same length")
+    if not np.all(np.isfinite(y_score)):
+        raise ValueError("y_score must contain only finite values")
     classes = np.unique(y_true)
     if classes.shape[0] != 2:
         raise ValueError("binary AUC requires both positive and negative samples")
 
-    y_bin = (y_true == classes[1]).astype(int)
+    y_bin = (y_true == classes[1]).astype(np.int64)
+    n_pos = np.sum(y_bin)
+    n_neg = y_bin.shape[0] - n_pos
+    if n_pos == 0 or n_neg == 0:
+        raise ValueError("roc_auc_score requires both positive and negative samples")
+    if get_backend() != "numpy" and _cy_binary_roc_auc is not None:
+        return float(_cy_binary_roc_auc(y_bin, y_score))
     order = np.argsort(y_score, kind="mergesort")
     sorted_scores = y_score[order]
     ranks_sorted = np.arange(1, y_score.shape[0] + 1, dtype=float)
@@ -161,10 +171,6 @@ def _binary_roc_auc(y_true, y_score):
     ranks = np.empty_like(ranks_sorted)
     ranks[order] = ranks_sorted
     pos = y_bin == 1
-    n_pos = np.sum(pos)
-    n_neg = y_bin.shape[0] - n_pos
-    if n_pos == 0 or n_neg == 0:
-        raise ValueError("roc_auc_score requires both positive and negative samples")
     rank_sum = np.sum(ranks[pos])
     return float((rank_sum - n_pos * (n_pos + 1) / 2.0) / (n_pos * n_neg))
 

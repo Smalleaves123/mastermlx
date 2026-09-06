@@ -6,6 +6,7 @@ cimport numpy as np
 
 ctypedef np.int64_t DTYPE_t
 ctypedef np.float64_t FLOAT_t
+ctypedef np.intp_t INDEX_t
 
 
 def confusion_matrix_counts(object y_true, object y_pred, object labels):
@@ -77,3 +78,43 @@ def top_k_accuracy(
         if better < k:
             correct += 1
     return correct / <double>n
+
+
+def binary_roc_auc(
+    np.ndarray[DTYPE_t, ndim=1] y_binary,
+    np.ndarray[FLOAT_t, ndim=1] scores,
+):
+    """Return binary ROC-AUC using average ranks for tied scores."""
+
+    cdef Py_ssize_t n = scores.shape[0]
+    cdef Py_ssize_t start, stop, offset
+    cdef Py_ssize_t n_pos = 0
+    cdef Py_ssize_t group_pos
+    cdef double average_rank
+    cdef double rank_sum = 0.0
+    cdef np.ndarray[INDEX_t, ndim=1] order
+
+    if y_binary.shape[0] != n:
+        raise ValueError("y_binary and scores must have the same length")
+
+    order = np.argsort(scores, kind="mergesort")
+    for offset in range(n):
+        if y_binary[offset] == 1:
+            n_pos += 1
+    if n_pos == 0 or n_pos == n:
+        raise ValueError("binary ROC-AUC requires both positive and negative samples")
+
+    start = 0
+    while start < n:
+        stop = start + 1
+        while stop < n and scores[order[stop]] == scores[order[start]]:
+            stop += 1
+        group_pos = 0
+        for offset in range(start, stop):
+            if y_binary[order[offset]] == 1:
+                group_pos += 1
+        average_rank = 0.5 * (start + 1 + stop)
+        rank_sum += group_pos * average_rank
+        start = stop
+
+    return (rank_sum - n_pos * (n_pos + 1) / 2.0) / (n_pos * (n - n_pos))

@@ -29,6 +29,8 @@
   lags in the Cython ACF kernel, preserving the NumPy result contract.
 - Added a Cython top-k accuracy kernel that avoids materializing sorted score
   matrices while preserving deterministic tie handling and NumPy parity.
+- Accelerated binary and one-vs-rest ROC-AUC ranking with a Cython average-rank
+  reduction while retaining the NumPy fallback and exact tie semantics.
 - Enforced the documented serial-URDF boundary by rejecting explicit-tip
   branching chains, with regression coverage for all unsupported joint types.
 

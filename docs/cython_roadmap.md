@@ -27,6 +27,7 @@ development model.
 - `mastermlx.utils`
   - Cython confusion-matrix count accumulation
   - Cython top-k accuracy without a full per-row score sort
+  - Cython binary ROC-AUC rank reduction with average-rank tie handling
 - `mastermlx.control`
   - iLQR rollout
   - finite-difference Jacobians
@@ -74,7 +75,7 @@ Why:
 Suggested kernels:
 
 - additional rolling statistics
-- remaining ranking helpers
+- average-precision ranking reduction
 
 ### Batch 2: control and robotics
 

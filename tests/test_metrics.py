@@ -78,6 +78,28 @@ def test_roc_auc_score_averages_tied_scores():
     assert np.isclose(roc_auc_score(y_true, y_score), 0.5)
 
 
+def test_roc_auc_score_has_backend_parity_for_tied_scores():
+    from mastermlx import get_backend, set_backend
+
+    y_true = np.array(["negative", "positive", "negative", "positive", "negative"])
+    y_score = np.array([0.1, 0.8, 0.8, 0.8, 0.4])
+    old = get_backend()
+    try:
+        set_backend("numpy")
+        expected = roc_auc_score(y_true, y_score)
+        set_backend("auto")
+        actual = roc_auc_score(y_true, y_score)
+    finally:
+        set_backend(old)
+
+    assert actual == expected
+
+
+def test_roc_auc_score_rejects_non_finite_scores():
+    with np.testing.assert_raises_regex(ValueError, "finite"):
+        roc_auc_score([0, 1], [0.1, np.inf])
+
+
 def test_top_k_accuracy_has_deterministic_tie_breaking_and_backend_parity():
     from mastermlx import get_backend, set_backend
 
