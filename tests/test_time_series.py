@@ -115,6 +115,21 @@ def test_autocorrelation_helpers_are_stable():
     assert np.isclose(partial_autocorrelation(x, lag=1), autocorrelation(x, lag=1))
 
 
+def test_autocorrelation_function_auto_backend_matches_numpy():
+    rng = np.random.default_rng(0)
+    x = rng.normal(size=1_000)
+    old = get_backend()
+    try:
+        set_backend("numpy")
+        expected = autocorrelation_function(x, max_lag=32)
+        set_backend("auto")
+        actual = autocorrelation_function(x, max_lag=32)
+    finally:
+        set_backend(old)
+
+    assert np.allclose(actual, expected, atol=1e-12)
+
+
 def test_lagged_matrix_builds_supervised_windows():
     x = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
 

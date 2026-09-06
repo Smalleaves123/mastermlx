@@ -25,6 +25,8 @@
 - Added a versioned backend benchmark record with fixed workload metadata,
   enforced distance/IIR/time-series/metric parity bounds, and retained CI
   benchmark artifacts.
+- Reused centered time-series data and variance across all autocorrelation
+  lags in the Cython ACF kernel, preserving the NumPy result contract.
 - Enforced the documented serial-URDF boundary by rejecting explicit-tip
   branching chains, with regression coverage for all unsupported joint types.
 

@@ -68,14 +68,46 @@ def autocorrelation_1d(np.ndarray[DTYPE_t, ndim=1] x, int lag, bint demean=True)
 
 
 def autocorrelation_function_1d(np.ndarray[DTYPE_t, ndim=1] x, int max_lag, bint demean=True):
-    cdef Py_ssize_t i
+    cdef Py_ssize_t n = x.shape[0]
+    cdef Py_ssize_t lag, i
+    cdef double mean = 0.0
+    cdef double denom = 0.0
+    cdef double num
+    cdef np.ndarray[DTYPE_t, ndim=1] centered
     cdef np.ndarray[DTYPE_t, ndim=1] out
 
+    if n == 0:
+        raise ValueError("x must be a non-empty 1D array")
     if max_lag < 0:
         raise ValueError("max_lag must be non-negative")
+
     out = np.empty(max_lag + 1, dtype=np.float64)
-    for i in range(max_lag + 1):
-        out[i] = autocorrelation_1d(x, i, demean=demean)
+    out[0] = 1.0
+    if max_lag == 0:
+        return out
+
+    centered = np.asarray(x, dtype=np.float64).copy().reshape(-1)
+    if demean:
+        for i in range(n):
+            mean += centered[i]
+        mean /= n
+        for i in range(n):
+            centered[i] -= mean
+    for i in range(n):
+        denom += centered[i] * centered[i]
+    if denom == 0.0:
+        for lag in range(1, max_lag + 1):
+            out[lag] = 0.0
+        return out
+
+    for lag in range(1, max_lag + 1):
+        if lag >= n:
+            out[lag] = 0.0
+            continue
+        num = 0.0
+        for i in range(n - lag):
+            num += centered[i] * centered[i + lag]
+        out[lag] = num / denom
     return out
 
 
