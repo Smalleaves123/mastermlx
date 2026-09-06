@@ -1,6 +1,7 @@
 import numpy as np
 
 from mastermlx.utils import (
+    avg_precision_score,
     confusion_matrix,
     explained_variance_score,
     f1_score,
@@ -123,6 +124,33 @@ def test_top_k_accuracy_rejects_non_finite_scores_and_unknown_labels():
         top_k_accuracy_score([0], [[np.nan, 0.0]], labels=[0, 1])
     with np.testing.assert_raises_regex(ValueError, "not in labels"):
         top_k_accuracy_score([2], [[0.2, 0.8]], labels=[0, 1])
+
+
+def test_average_precision_groups_tied_scores_and_has_backend_parity():
+    from mastermlx import get_backend, set_backend
+
+    y_true = np.array([1, 0, 1, 0])
+    y_score = np.array([0.8, 0.8, 0.8, 0.2])
+    old = get_backend()
+    try:
+        set_backend("numpy")
+        expected = avg_precision_score(y_true, y_score)
+        set_backend("auto")
+        actual = avg_precision_score(y_true, y_score)
+    finally:
+        set_backend(old)
+
+    assert actual == expected == 2.0 / 3.0
+    assert avg_precision_score([1, 0, 0, 1], [0.5, 0.5, 0.5, 0.5]) == 0.5
+
+
+def test_average_precision_validates_binary_inputs():
+    with np.testing.assert_raises_regex(ValueError, "same length"):
+        avg_precision_score([0, 1], [0.2])
+    with np.testing.assert_raises_regex(ValueError, "finite"):
+        avg_precision_score([0, 1], [0.2, np.nan])
+    with np.testing.assert_raises_regex(ValueError, "binary"):
+        avg_precision_score([0, 2], [0.2, 0.8])
 
 
 def test_regression_metrics_values():

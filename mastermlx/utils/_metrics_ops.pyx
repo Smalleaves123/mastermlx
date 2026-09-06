@@ -118,3 +118,49 @@ def binary_roc_auc(
         start = stop
 
     return (rank_sum - n_pos * (n_pos + 1) / 2.0) / (n_pos * (n - n_pos))
+
+
+def binary_average_precision(
+    np.ndarray[DTYPE_t, ndim=1] y_binary,
+    np.ndarray[FLOAT_t, ndim=1] scores,
+):
+    """Return binary average precision with complete tied-score groups."""
+
+    cdef Py_ssize_t n = scores.shape[0]
+    cdef Py_ssize_t start, stop, offset
+    cdef Py_ssize_t n_pos = 0
+    cdef Py_ssize_t group_pos
+    cdef Py_ssize_t true_positives = 0
+    cdef Py_ssize_t retrieved = 0
+    cdef double result = 0.0
+    cdef np.ndarray[INDEX_t, ndim=1] order
+
+    if y_binary.shape[0] != n:
+        raise ValueError("y_binary and scores must have the same length")
+
+    order = np.argsort(scores, kind="quicksort")
+    for offset in range(n):
+        if y_binary[offset] == 1:
+            n_pos += 1
+    if n_pos == 0:
+        return 0.0
+
+    stop = n
+    while stop > 0:
+        start = stop - 1
+        while start > 0 and scores[order[start - 1]] == scores[order[stop - 1]]:
+            start -= 1
+        group_pos = 0
+        for offset in range(start, stop):
+            if y_binary[order[offset]] == 1:
+                group_pos += 1
+        retrieved += stop - start
+        true_positives += group_pos
+        if group_pos > 0:
+            result += (
+                (group_pos / <double>n_pos)
+                * (true_positives / <double>retrieved)
+            )
+        stop = start
+
+    return result

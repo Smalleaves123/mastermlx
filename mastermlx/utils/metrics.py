@@ -6,11 +6,13 @@ from ..config import get_backend
 
 try:
     from ._metrics_ops import (
+        binary_average_precision as _cy_binary_average_precision,
         binary_roc_auc as _cy_binary_roc_auc,
         confusion_matrix_counts as _cy_confusion_matrix_counts,
         top_k_accuracy as _cy_top_k_accuracy,
     )
 except ImportError:  # pragma: no cover - fallback when Cython extensions are unavailable
+    _cy_binary_average_precision = None
     _cy_binary_roc_auc = None
     _cy_confusion_matrix_counts = None
     _cy_top_k_accuracy = None
@@ -285,14 +287,33 @@ def avg_precision_score(y_true, y_score):
     y_score = np.asarray(y_score, dtype=float)
     if y_true.ndim != 1 or y_score.ndim != 1:
         raise ValueError("y_true and y_score must be 1D arrays")
-    order = np.argsort(y_score)[::-1]
-    y_true = y_true[order]
-    tp = np.cumsum(y_true)
-    precision = tp / np.arange(1, len(y_true) + 1)
-    recall = tp / max(np.sum(y_true), 1)
-    # Compute AP as sum of precision at each recall threshold where recall changes
-    mask = np.diff(recall, prepend=0) > 0
-    return float(np.sum(precision[mask] * np.diff(recall, prepend=0)[mask]))
+    if y_true.shape[0] != y_score.shape[0]:
+        raise ValueError("y_true and y_score must have the same length")
+    if not np.all(np.isfinite(y_score)):
+        raise ValueError("y_score must contain only finite values")
+    if not np.all((y_true == 0) | (y_true == 1)):
+        raise ValueError("y_true must contain only binary labels 0 and 1")
+
+    y_binary = y_true.astype(np.int64)
+    if get_backend() != "numpy" and _cy_binary_average_precision is not None:
+        return float(_cy_binary_average_precision(y_binary, y_score))
+
+    order = np.argsort(y_score, kind="mergesort")[::-1]
+    sorted_scores = y_score[order]
+    sorted_true = y_binary[order]
+    if sorted_scores.size == 0:
+        return 0.0
+    threshold_indices = np.r_[
+        np.flatnonzero(sorted_scores[1:] != sorted_scores[:-1]),
+        sorted_scores.size - 1,
+    ]
+    true_positives = np.cumsum(sorted_true)[threshold_indices]
+    total_positives = true_positives[-1]
+    if total_positives == 0:
+        return 0.0
+    precision = true_positives / (threshold_indices + 1)
+    recall = true_positives / total_positives
+    return float(np.sum(precision * np.diff(recall, prepend=0.0)))
 
 
 def jaccard_score(y_true, y_pred, average="binary", pos_label=1):
