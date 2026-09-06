@@ -12,6 +12,7 @@ import numpy as np
 from mastermlx import get_backend, set_backend
 from mastermlx.accel import backend_report, pairwise_squared_euclidean
 from mastermlx.accel.signal_ops import iir_filter_1d
+from mastermlx.control.mpc import _prediction_matrices
 from mastermlx.math_tools import (
     autocorrelation_function,
     exponential_smoothing,
@@ -26,7 +27,7 @@ from mastermlx.utils import (
 )
 
 
-BENCHMARK_SCHEMA = "mastermlx.backend-matrix.v6"
+BENCHMARK_SCHEMA = "mastermlx.backend-matrix.v7"
 DEFAULT_SEED = 42
 DEFAULT_REPEATS = 5
 DEFAULT_MAX_DISTANCE_ERROR = 1e-10
@@ -36,6 +37,7 @@ DEFAULT_MAX_CONFUSION_ERROR = 0.0
 DEFAULT_MAX_TOP_K_ERROR = 0.0
 DEFAULT_MAX_ROC_AUC_ERROR = 1e-15
 DEFAULT_MAX_AVERAGE_PRECISION_ERROR = 1e-12
+DEFAULT_MAX_CONTROL_ERROR = 1e-12
 
 
 def _measure(function, repeats=5):
@@ -58,6 +60,7 @@ def _run_backend(
     signal_inputs,
     time_series_inputs,
     metric_inputs,
+    control_inputs,
     references,
     *,
     repeats,
@@ -77,6 +80,7 @@ def _run_backend(
         roc_auc_true,
         roc_auc_scores,
     ) = metric_inputs
+    control_a, control_b, control_horizon = control_inputs
 
     def distance():
         return pairwise_squared_euclidean(X, Y)
@@ -113,6 +117,9 @@ def _run_backend(
     def average_precision():
         return avg_precision_score(roc_auc_true, roc_auc_scores)
 
+    def prediction_matrices():
+        return _prediction_matrices(control_a, control_b, control_horizon)
+
     distance_time = _measure(distance, repeats=repeats)
     filter_time = _measure(filtering, repeats=repeats)
     rolling_time = _measure(rolling, repeats=repeats)
@@ -123,6 +130,7 @@ def _run_backend(
     top_k_time = _measure(top_k_accuracy, repeats=repeats)
     roc_auc_time = _measure(roc_auc, repeats=repeats)
     average_precision_time = _measure(average_precision, repeats=repeats)
+    prediction_matrices_time = _measure(prediction_matrices, repeats=repeats)
     distance_value = distance()
     filter_value = filtering()
     rolling_value = rolling()
@@ -133,6 +141,7 @@ def _run_backend(
     top_k_value = top_k_accuracy()
     roc_auc_value = roc_auc()
     average_precision_value = average_precision()
+    prediction_matrices_value = prediction_matrices()
     result = {
         "backend": name,
         "distance_seconds": distance_time,
@@ -145,6 +154,7 @@ def _run_backend(
         "top_k_accuracy_seconds": top_k_time,
         "roc_auc_seconds": roc_auc_time,
         "average_precision_seconds": average_precision_time,
+        "prediction_matrices_seconds": prediction_matrices_time,
         "distance_max_error": _error(distance_value, references["distance"]),
         "iir_max_error": _error(filter_value, references["iir"]),
         "rolling_mean_max_error": _error(rolling_value, references["rolling_mean"]),
@@ -163,6 +173,10 @@ def _run_backend(
         "average_precision_max_error": _error(
             average_precision_value, references["average_precision"]
         ),
+        "prediction_matrices_max_error": max(
+            _error(prediction_matrices_value[0], references["prediction_matrices"][0]),
+            _error(prediction_matrices_value[1], references["prediction_matrices"][1]),
+        ),
     }
     print(
         f"{name:8s} distance={distance_time:8.5f}s iir={filter_time:8.5f}s "
@@ -171,6 +185,7 @@ def _run_backend(
         f"smooth={smoothing_time:8.5f}s confusion={confusion_time:8.5f}s "
         f"top-k={top_k_time:8.5f}s roc-auc={roc_auc_time:8.5f}s "
         f"avg-precision={average_precision_time:8.5f}s "
+        f"prediction={prediction_matrices_time:8.5f}s "
         f"errors=(distance={result['distance_max_error']:.2e}, "
         f"iir={result['iir_max_error']:.2e}, rolling={result['rolling_mean_max_error']:.2e}, "
         f"variance={result['rolling_variance_max_error']:.2e}, "
@@ -179,7 +194,8 @@ def _run_backend(
         f"confusion={result['confusion_matrix_max_error']:.2e}, "
         f"top-k={result['top_k_accuracy_max_error']:.2e}, "
         f"roc-auc={result['roc_auc_max_error']:.2e}, "
-        f"avg-precision={result['average_precision_max_error']:.2e})"
+        f"avg-precision={result['average_precision_max_error']:.2e}, "
+        f"prediction={result['prediction_matrices_max_error']:.2e})"
     )
     return result
 
@@ -226,6 +242,13 @@ def run_backend_matrix(*, seed=DEFAULT_SEED, repeats=DEFAULT_REPEATS):
     roc_auc_true = rng.integers(0, 2, size=roc_auc_samples)
     roc_auc_true[:2] = (0, 1)
     roc_auc_scores = rng.normal(size=roc_auc_samples)
+    control_states = 8
+    control_inputs = 3
+    control_horizon = 128
+    control_a = 0.95 * np.eye(control_states) + rng.normal(
+        scale=0.01, size=(control_states, control_states)
+    )
+    control_b = rng.normal(size=(control_states, control_inputs))
     old_backend = get_backend()
     try:
         set_backend("numpy")
@@ -245,6 +268,9 @@ def run_backend_matrix(*, seed=DEFAULT_SEED, repeats=DEFAULT_REPEATS):
             ),
             "roc_auc": roc_auc_score(roc_auc_true, roc_auc_scores),
             "average_precision": avg_precision_score(roc_auc_true, roc_auc_scores),
+            "prediction_matrices": _prediction_matrices(
+                control_a, control_b, control_horizon
+            ),
         }
         report = backend_report()
         backends = ["numpy"]
@@ -269,6 +295,7 @@ def run_backend_matrix(*, seed=DEFAULT_SEED, repeats=DEFAULT_REPEATS):
                     roc_auc_true,
                     roc_auc_scores,
                 ),
+                (control_a, control_b, control_horizon),
                 references,
                 repeats=repeats,
             )
@@ -296,6 +323,9 @@ def run_backend_matrix(*, seed=DEFAULT_SEED, repeats=DEFAULT_REPEATS):
             "top_k": top_k,
             "roc_auc_samples": roc_auc_samples,
             "average_precision_samples": roc_auc_samples,
+            "control_states": control_states,
+            "control_inputs": control_inputs,
+            "control_horizon": control_horizon,
         },
         "backend_report": report,
         "results": results,
@@ -312,6 +342,7 @@ def assert_parity(
     max_top_k_error,
     max_roc_auc_error,
     max_average_precision_error,
+    max_control_error,
 ):
     """Fail when a backend drifts beyond the recorded numerical contract."""
 
@@ -326,6 +357,7 @@ def assert_parity(
     max_average_precision_error = _non_negative_finite(
         max_average_precision_error, "max_average_precision_error"
     )
+    max_control_error = _non_negative_finite(max_control_error, "max_control_error")
     limits = {
         "distance": max_distance_error,
         "iir": max_iir_error,
@@ -337,6 +369,7 @@ def assert_parity(
         "top_k_accuracy": max_top_k_error,
         "roc_auc": max_roc_auc_error,
         "average_precision": max_average_precision_error,
+        "prediction_matrices": max_control_error,
     }
     for result in record["results"]:
         for metric, maximum in limits.items():
@@ -363,6 +396,7 @@ def main():
         type=float,
         default=DEFAULT_MAX_AVERAGE_PRECISION_ERROR,
     )
+    parser.add_argument("--max-control-error", type=float, default=DEFAULT_MAX_CONTROL_ERROR)
     args = parser.parse_args()
 
     record = run_backend_matrix(seed=args.seed, repeats=args.repeats)
@@ -375,6 +409,7 @@ def main():
         max_top_k_error=args.max_top_k_error,
         max_roc_auc_error=args.max_roc_auc_error,
         max_average_precision_error=args.max_average_precision_error,
+        max_control_error=args.max_control_error,
     )
 
     if args.json_output is not None:

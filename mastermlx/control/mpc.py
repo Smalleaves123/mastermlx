@@ -139,6 +139,9 @@ def _validate_ilqr_cost_matrix(matrix, shape, name):
 
 
 def _prediction_matrices(A, B, horizon):
+    cpp = _load_cpp_control(get_backend())
+    if cpp is not None:
+        return cpp.prediction_matrices(A, B, horizon)
     n, m = A.shape[0], B.shape[1]
     Sx = np.zeros((n * (horizon + 1), n), dtype=float)
     Su = np.zeros((n * (horizon + 1), m * horizon), dtype=float)

@@ -35,6 +35,8 @@
   and added a lower-allocation Cython reduction with NumPy parity.
 - Added Stable `rolling_variance` and `rolling_std` APIs with `ddof` support,
   NumPy fallbacks, and a drift-bounded Cython sliding-window implementation.
+- Added a C++ linear-MPC prediction-matrix recursion with NumPy fallback and
+  fixed-workload backend parity coverage.
 - Enforced the documented serial-URDF boundary by rejecting explicit-tip
   branching chains, with regression coverage for all unsupported joint types.
 

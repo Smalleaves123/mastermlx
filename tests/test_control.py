@@ -219,3 +219,24 @@ def test_cpp_linear_rollout_matches_numpy_when_available():
         assert np.allclose(reference, accelerated, atol=1e-12)
     finally:
         set_backend(old)
+
+
+def test_cpp_prediction_matrices_match_numpy_when_available():
+    from mastermlx.control.mpc import _load_cpp_control, _prediction_matrices
+
+    if _load_cpp_control("auto") is None:
+        pytest.skip("C++ control extension is unavailable")
+    rng = np.random.default_rng(20260906)
+    A = 0.9 * np.eye(5) + rng.normal(scale=0.01, size=(5, 5))
+    B = rng.normal(size=(5, 2))
+    old = get_backend()
+    try:
+        set_backend("numpy")
+        expected_sx, expected_su = _prediction_matrices(A, B, 32)
+        set_backend("auto")
+        actual_sx, actual_su = _prediction_matrices(A, B, 32)
+    finally:
+        set_backend(old)
+
+    assert np.allclose(actual_sx, expected_sx, rtol=1e-12, atol=1e-12)
+    assert np.allclose(actual_su, expected_su, rtol=1e-12, atol=1e-12)

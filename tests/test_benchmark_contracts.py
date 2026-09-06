@@ -7,6 +7,7 @@ from benchmarks.bench_backend_matrix import (
     DEFAULT_MAX_TOP_K_ERROR,
     DEFAULT_MAX_ROC_AUC_ERROR,
     DEFAULT_MAX_AVERAGE_PRECISION_ERROR,
+    DEFAULT_MAX_CONTROL_ERROR,
     assert_parity,
     run_backend_matrix,
 )
@@ -38,6 +39,9 @@ def test_backend_matrix_returns_a_versioned_reproducible_parity_record():
         "top_k": 5,
         "roc_auc_samples": 100_000,
         "average_precision_samples": 100_000,
+        "control_states": 8,
+        "control_inputs": 3,
+        "control_horizon": 128,
     }
     assert [result["backend"] for result in record["results"]][0] == "numpy"
     for key in (
@@ -51,6 +55,7 @@ def test_backend_matrix_returns_a_versioned_reproducible_parity_record():
         "top_k_accuracy_seconds",
         "roc_auc_seconds",
         "average_precision_seconds",
+        "prediction_matrices_seconds",
     ):
         assert all(result[key] >= 0.0 for result in record["results"])
     assert_parity(
@@ -62,6 +67,7 @@ def test_backend_matrix_returns_a_versioned_reproducible_parity_record():
         max_top_k_error=DEFAULT_MAX_TOP_K_ERROR,
         max_roc_auc_error=DEFAULT_MAX_ROC_AUC_ERROR,
         max_average_precision_error=DEFAULT_MAX_AVERAGE_PRECISION_ERROR,
+        max_control_error=DEFAULT_MAX_CONTROL_ERROR,
     )
 
 
@@ -80,6 +86,7 @@ def test_backend_matrix_parity_guard_rejects_numerical_drift():
                 "top_k_accuracy_max_error": 0.0,
                 "roc_auc_max_error": 0.0,
                 "average_precision_max_error": 0.0,
+                "prediction_matrices_max_error": 0.0,
             }
         ]
     }
@@ -94,4 +101,5 @@ def test_backend_matrix_parity_guard_rejects_numerical_drift():
             max_top_k_error=0.0,
             max_roc_auc_error=1e-15,
             max_average_precision_error=1e-12,
+            max_control_error=1e-12,
         )

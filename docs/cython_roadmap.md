@@ -33,6 +33,7 @@ development model.
   - iLQR rollout
   - finite-difference Jacobians
   - trajectory cost accumulation
+  - C++ linear rollout and linear-MPC prediction matrices
 - `mastermlx.robotics`
   - packed forward kinematics
   - packed geometric Jacobians
