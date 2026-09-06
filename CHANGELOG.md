@@ -27,6 +27,8 @@
   benchmark artifacts.
 - Reused centered time-series data and variance across all autocorrelation
   lags in the Cython ACF kernel, preserving the NumPy result contract.
+- Added a Cython top-k accuracy kernel that avoids materializing sorted score
+  matrices while preserving deterministic tie handling and NumPy parity.
 - Enforced the documented serial-URDF boundary by rejecting explicit-tip
   branching chains, with regression coverage for all unsupported joint types.
 

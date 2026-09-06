@@ -11,6 +11,7 @@ from mastermlx.utils import (
     r2_score,
     recall_score,
     roc_auc_score,
+    top_k_accuracy_score,
 )
 
 
@@ -75,6 +76,31 @@ def test_roc_auc_score_averages_tied_scores():
     y_score = np.full(4, 0.5)
 
     assert np.isclose(roc_auc_score(y_true, y_score), 0.5)
+
+
+def test_top_k_accuracy_has_deterministic_tie_breaking_and_backend_parity():
+    from mastermlx import get_backend, set_backend
+
+    y_true = np.array(["low", "high", "middle"])
+    y_score = np.full((3, 3), 0.5)
+    labels = np.array(["low", "middle", "high"])
+    old = get_backend()
+    try:
+        set_backend("numpy")
+        expected = top_k_accuracy_score(y_true, y_score, k=1, labels=labels)
+        set_backend("auto")
+        actual = top_k_accuracy_score(y_true, y_score, k=1, labels=labels)
+    finally:
+        set_backend(old)
+
+    assert expected == actual == 1.0 / 3.0
+
+
+def test_top_k_accuracy_rejects_non_finite_scores_and_unknown_labels():
+    with np.testing.assert_raises_regex(ValueError, "finite"):
+        top_k_accuracy_score([0], [[np.nan, 0.0]], labels=[0, 1])
+    with np.testing.assert_raises_regex(ValueError, "not in labels"):
+        top_k_accuracy_score([2], [[0.2, 0.8]], labels=[0, 1])
 
 
 def test_regression_metrics_values():

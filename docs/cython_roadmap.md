@@ -26,6 +26,7 @@ development model.
   - ACF reuses its centered series and variance across all requested lags
 - `mastermlx.utils`
   - Cython confusion-matrix count accumulation
+  - Cython top-k accuracy without a full per-row score sort
 - `mastermlx.control`
   - iLQR rollout
   - finite-difference Jacobians
@@ -73,7 +74,7 @@ Why:
 Suggested kernels:
 
 - additional rolling statistics
-- top-k / ranking helpers
+- remaining ranking helpers
 
 ### Batch 2: control and robotics
 

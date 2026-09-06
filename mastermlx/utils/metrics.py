@@ -5,9 +5,13 @@ import numpy as np
 from ..config import get_backend
 
 try:
-    from ._metrics_ops import confusion_matrix_counts as _cy_confusion_matrix_counts
+    from ._metrics_ops import (
+        confusion_matrix_counts as _cy_confusion_matrix_counts,
+        top_k_accuracy as _cy_top_k_accuracy,
+    )
 except ImportError:  # pragma: no cover - fallback when Cython extensions are unavailable
     _cy_confusion_matrix_counts = None
+    _cy_top_k_accuracy = None
 
 
 def confusion_matrix(y_true, y_pred, labels=None, normalize=None):
@@ -230,6 +234,10 @@ def top_k_accuracy_score(y_true, y_score, k=2, labels=None):
         raise ValueError("y_true must be a 1D array")
     if y_score.ndim != 2 or y_score.shape[0] != y_true.shape[0]:
         raise ValueError("y_score must be a 2D array with one row per sample")
+    if y_true.size == 0:
+        raise ValueError("top-k accuracy requires at least one sample")
+    if not np.all(np.isfinite(y_score)):
+        raise ValueError("y_score must contain only finite values")
     k = int(k)
     if k < 1:
         raise ValueError("k must be at least 1")
@@ -244,10 +252,14 @@ def top_k_accuracy_score(y_true, y_score, k=2, labels=None):
     # Build a dict-based index mapping (works with unsorted labels)
     label_to_idx = {label: i for i, label in enumerate(labels)}
     try:
-        idx = np.array([label_to_idx[yt] for yt in y_true], dtype=int)
+        idx = np.array([label_to_idx[yt] for yt in y_true], dtype=np.int64)
     except KeyError as e:
         raise ValueError(f"y_true contains label {e.args[0]} not in labels") from None
-    topk = np.argpartition(y_score, -k, axis=1)[:, -k:]
+    if get_backend() != "numpy" and _cy_top_k_accuracy is not None:
+        return float(_cy_top_k_accuracy(idx, y_score, k))
+    # Stable ascending order makes ties deterministic: higher column indices
+    # are selected first when taking the final k entries.
+    topk = np.argsort(y_score, axis=1, kind="stable")[:, -k:]
     return float(np.mean(np.any(topk == idx[:, None], axis=1)))
 
 
