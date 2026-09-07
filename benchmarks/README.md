@@ -19,6 +19,7 @@ This directory contains the first executable benchmark entry points for `masterm
 - `bench_robotics_spatial.py` compares NumPy and C++ paths for arbitrary-axis/RPY URDF kinematics and spatial dynamics
 - `bench_robotics_scaling.py` profiles AABB broad-phase scaling, detailed collision-buffer capacity and reuse, plus batched rigid-body dynamics
 - `bench_neural.py` compares NumPy and compiled paths for recurrent layers, Conv1D packing, IIR filtering, and ridge extraction
+- `bench_planning.py` measures deterministic RRT and RRT* tree expansion
 
 ## How to use them
 
@@ -38,6 +39,7 @@ python benchmarks/bench_robotics.py
 python benchmarks/bench_robotics_spatial.py
 python benchmarks/bench_robotics_scaling.py
 PYTHONPATH=. python benchmarks/bench_neural.py
+PYTHONPATH=. python benchmarks/bench_planning.py --json-output outputs/planning.json
 ```
 
 `bench_workflows.py` can also export JSON artifacts:

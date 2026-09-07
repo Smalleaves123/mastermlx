@@ -14,6 +14,11 @@ from benchmarks.bench_backend_matrix import (
 from mastermlx import get_backend
 import pytest
 
+from benchmarks.bench_planning import (
+    BENCHMARK_SCHEMA as PLANNING_BENCHMARK_SCHEMA,
+    run_planning_benchmark,
+)
+
 
 def test_backend_matrix_returns_a_versioned_reproducible_parity_record():
     previous_backend = get_backend()
@@ -149,3 +154,21 @@ def test_backend_matrix_parity_guard_rejects_qp_metadata_drift():
             max_average_precision_error=1e-12,
             max_control_error=1e-12,
         )
+
+
+def test_planning_benchmark_has_fixed_workload_and_paths():
+    record = run_planning_benchmark(seed=7, runs=1)
+
+    assert record["schema"] == PLANNING_BENCHMARK_SCHEMA
+    assert record["seed"] == 7
+    assert record["runs"] == 1
+    assert record["workload"] == {
+        "dimensions": 2,
+        "max_iter": 800,
+        "step": 0.04,
+        "search_radius": 0.12,
+    }
+    assert record["results"]["rrt_seconds"] >= 0.0
+    assert record["results"]["rrt_star_seconds"] >= 0.0
+    assert record["results"]["rrt_path_points"] >= 2
+    assert record["results"]["rrt_star_path_points"] >= 2

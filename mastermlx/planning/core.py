@@ -75,6 +75,13 @@ def _path(nodes, parents, idx):
     return np.asarray(out[::-1], dtype=float)
 
 
+def _grow_node_storage(nodes, count, maximum):
+    capacity = min(maximum, max(count + 1, 2 * nodes.shape[0]))
+    expanded = np.empty((capacity, nodes.shape[1]), dtype=float)
+    expanded[:count] = nodes[:count]
+    return expanded
+
+
 def rrt(
     start,
     goal,
@@ -114,11 +121,14 @@ def rrt(
         return start[None, :]
 
     rng = np.random.default_rng(random_state)
-    nodes = [start.copy()]
+    maximum_nodes = max_iter + 2
+    nodes = np.empty((min(maximum_nodes, 1024), start.size), dtype=float)
+    nodes[0] = start
+    node_count = 1
     parents = [-1]
     for _ in range(max_iter):
         sample = goal if rng.random() < goal_rate else rng.uniform(bounds[:, 0], bounds[:, 1])
-        dist = np.asarray([np.sum((node - sample) ** 2) for node in nodes])
+        dist = np.sum((nodes[:node_count] - sample) ** 2, axis=1)
         near_idx = int(np.argmin(dist))
         near = nodes[near_idx]
         delta = sample - near
@@ -128,14 +138,20 @@ def rrt(
         new = near + delta * min(step, length) / length
         if not _free(new, hit) or not _clear(near, new, hit, collision_step, edge_free=edge_free):
             continue
-        nodes.append(new)
+        if node_count == nodes.shape[0]:
+            nodes = _grow_node_storage(nodes, node_count, maximum_nodes)
+        nodes[node_count] = new
         parents.append(near_idx)
+        node_count += 1
         if np.linalg.norm(new - goal) <= step and _clear(
             new, goal, hit, collision_step, edge_free=edge_free
         ):
-            nodes.append(goal.copy())
-            parents.append(len(nodes) - 2)
-            return _path(nodes, parents, len(nodes) - 1)
+            if node_count == nodes.shape[0]:
+                nodes = _grow_node_storage(nodes, node_count, maximum_nodes)
+            nodes[node_count] = goal
+            parents.append(node_count - 1)
+            node_count += 1
+            return _path(nodes, parents, node_count - 1)
     return None
 
 
@@ -198,7 +214,10 @@ def rrt_star(
         return start[None, :]
 
     rng = np.random.default_rng(random_state)
-    nodes = [start.copy()]
+    maximum_nodes = max_iter + 2
+    nodes = np.empty((min(maximum_nodes, 1024), start.size), dtype=float)
+    nodes[0] = start
+    node_count = 1
     parents = [-1]
     costs = [0.0]
     best_goal = None
@@ -207,7 +226,7 @@ def rrt_star(
     with _EdgeQueryPool(hit, collision_step, edge_free=edge_free, workers=workers) as queries:
         for _ in range(max_iter):
             sample = goal if rng.random() < goal_rate else rng.uniform(bounds[:, 0], bounds[:, 1])
-            distances = np.asarray([np.linalg.norm(node - sample) for node in nodes], dtype=float)
+            distances = np.linalg.norm(nodes[:node_count] - sample, axis=1)
             nearest_index = int(np.argmin(distances))
             nearest = nodes[nearest_index]
             delta = sample - nearest
@@ -218,16 +237,15 @@ def rrt_star(
             if not _free(new, hit) or not queries.check([(nearest, new)])[0]:
                 continue
 
-            near_indices = np.flatnonzero(
-                np.asarray([np.linalg.norm(node - new) for node in nodes], dtype=float) <= search_radius
-            )
+            new_distances = np.linalg.norm(nodes[:node_count] - new, axis=1)
+            near_indices = np.flatnonzero(new_distances <= search_radius)
             parent = nearest_index
             parent_cost = costs[nearest_index] + float(np.linalg.norm(new - nearest))
             parent_candidates = []
             for index in near_indices:
                 index = int(index)
                 candidate = nodes[index]
-                edge_cost = float(np.linalg.norm(new - candidate))
+                edge_cost = float(new_distances[index])
                 cost = costs[index] + edge_cost
                 if cost < parent_cost:
                     parent_candidates.append((index, cost, candidate))
@@ -237,17 +255,20 @@ def rrt_star(
                     parent = index
                     parent_cost = cost
 
-            nodes.append(new)
+            if node_count == nodes.shape[0]:
+                nodes = _grow_node_storage(nodes, node_count, maximum_nodes)
+            nodes[node_count] = new
             parents.append(parent)
             costs.append(parent_cost)
-            new_index = len(nodes) - 1
+            new_index = node_count
+            node_count += 1
 
             rewire_candidates = []
             for index in near_indices:
                 index = int(index)
                 if index == parent:
                     continue
-                edge_cost = float(np.linalg.norm(nodes[index] - new))
+                edge_cost = float(new_distances[index])
                 rewired_cost = parent_cost + edge_cost
                 if rewired_cost + 1e-12 < costs[index]:
                     rewire_candidates.append((index, rewired_cost, nodes[index]))
@@ -265,10 +286,13 @@ def rrt_star(
                 and queries.check([(new, goal)])[0]
             ):
                 if best_goal is None:
-                    nodes.append(goal.copy())
+                    if node_count == nodes.shape[0]:
+                        nodes = _grow_node_storage(nodes, node_count, maximum_nodes)
+                    nodes[node_count] = goal
                     parents.append(new_index)
                     costs.append(total_goal_cost)
-                    best_goal = len(nodes) - 1
+                    best_goal = node_count
+                    node_count += 1
                 else:
                     parents[best_goal] = new_index
                     costs[best_goal] = total_goal_cost

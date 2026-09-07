@@ -39,6 +39,8 @@
   fixed-workload backend parity coverage.
 - Added size-routed C++ projected-gradient box-QP solves for Linear MPC while
   retaining BLAS-backed NumPy execution for larger decision vectors.
+- Preallocated RRT/RRT* node storage and vectorized nearest/radius queries,
+  reusing new-node distances across parent selection and rewiring.
 - Enforced the documented serial-URDF boundary by rejecting explicit-tip
   branching chains, with regression coverage for all unsupported joint types.
 

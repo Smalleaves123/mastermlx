@@ -56,6 +56,8 @@ development model.
   - C++ batched chain-frame positions for collision and planning queries
   - Batched workcell kinematic diagnostics built on compiled Jacobians and NumPy SVD
   - Deterministic bounded worker pools for RRT/RRT* edge queries
+- `mastermlx.planning`
+  - Preallocated RRT/RRT* node storage with vectorized nearest and radius queries
 
 ## Next priority batches
 

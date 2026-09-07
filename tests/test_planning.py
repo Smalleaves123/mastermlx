@@ -1,6 +1,7 @@
 import numpy as np
 
 from mastermlx import rrt, rrt_star, smooth
+from mastermlx.planning.core import _grow_node_storage
 
 
 def test_rrt_finds_a_free_path():
@@ -18,6 +19,17 @@ def test_rrt_finds_a_free_path():
     assert np.allclose(path[0], [0.1, 0.1])
     assert np.allclose(path[-1], [0.9, 0.9])
     assert np.all(np.linalg.norm(np.diff(path, axis=0), axis=1) <= 0.1 + 1e-12)
+
+
+def test_planner_node_storage_grows_geometrically_and_preserves_nodes():
+    nodes = np.array([[0.0, 1.0], [2.0, 3.0]])
+
+    expanded = _grow_node_storage(nodes, count=2, maximum=5)
+    capped = _grow_node_storage(expanded, count=4, maximum=5)
+
+    assert expanded.shape == (4, 2)
+    assert capped.shape == (5, 2)
+    assert np.array_equal(expanded[:2], nodes)
 
 
 def test_rrt_avoids_obstacle():
