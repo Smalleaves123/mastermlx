@@ -12,7 +12,7 @@ import numpy as np
 from mastermlx import get_backend, set_backend
 from mastermlx.accel import backend_report, pairwise_squared_euclidean
 from mastermlx.accel.signal_ops import iir_filter_1d
-from mastermlx.control.mpc import _prediction_matrices
+from mastermlx.control.mpc import _prediction_matrices, _projected_gradient_box_qp
 from mastermlx.math_tools import (
     autocorrelation_function,
     exponential_smoothing,
@@ -27,7 +27,7 @@ from mastermlx.utils import (
 )
 
 
-BENCHMARK_SCHEMA = "mastermlx.backend-matrix.v7"
+BENCHMARK_SCHEMA = "mastermlx.backend-matrix.v8"
 DEFAULT_SEED = 42
 DEFAULT_REPEATS = 5
 DEFAULT_MAX_DISTANCE_ERROR = 1e-10
@@ -61,6 +61,7 @@ def _run_backend(
     time_series_inputs,
     metric_inputs,
     control_inputs,
+    qp_inputs,
     references,
     *,
     repeats,
@@ -81,6 +82,7 @@ def _run_backend(
         roc_auc_scores,
     ) = metric_inputs
     control_a, control_b, control_horizon = control_inputs
+    qp_h, qp_q, qp_initial, qp_lower, qp_upper, qp_step, qp_max_iter, qp_tol = qp_inputs
 
     def distance():
         return pairwise_squared_euclidean(X, Y)
@@ -120,6 +122,18 @@ def _run_backend(
     def prediction_matrices():
         return _prediction_matrices(control_a, control_b, control_horizon)
 
+    def box_qp():
+        return _projected_gradient_box_qp(
+            qp_h,
+            qp_q,
+            qp_initial,
+            qp_lower,
+            qp_upper,
+            qp_step,
+            qp_max_iter,
+            qp_tol,
+        )
+
     distance_time = _measure(distance, repeats=repeats)
     filter_time = _measure(filtering, repeats=repeats)
     rolling_time = _measure(rolling, repeats=repeats)
@@ -131,6 +145,7 @@ def _run_backend(
     roc_auc_time = _measure(roc_auc, repeats=repeats)
     average_precision_time = _measure(average_precision, repeats=repeats)
     prediction_matrices_time = _measure(prediction_matrices, repeats=repeats)
+    box_qp_time = _measure(box_qp, repeats=repeats)
     distance_value = distance()
     filter_value = filtering()
     rolling_value = rolling()
@@ -142,6 +157,7 @@ def _run_backend(
     roc_auc_value = roc_auc()
     average_precision_value = average_precision()
     prediction_matrices_value = prediction_matrices()
+    box_qp_value = box_qp()
     result = {
         "backend": name,
         "distance_seconds": distance_time,
@@ -155,6 +171,9 @@ def _run_backend(
         "roc_auc_seconds": roc_auc_time,
         "average_precision_seconds": average_precision_time,
         "prediction_matrices_seconds": prediction_matrices_time,
+        "box_qp_seconds": box_qp_time,
+        "box_qp_converged": bool(box_qp_value[1]),
+        "box_qp_iterations": int(box_qp_value[2]),
         "distance_max_error": _error(distance_value, references["distance"]),
         "iir_max_error": _error(filter_value, references["iir"]),
         "rolling_mean_max_error": _error(rolling_value, references["rolling_mean"]),
@@ -177,6 +196,7 @@ def _run_backend(
             _error(prediction_matrices_value[0], references["prediction_matrices"][0]),
             _error(prediction_matrices_value[1], references["prediction_matrices"][1]),
         ),
+        "box_qp_max_error": _error(box_qp_value[0], references["box_qp"][0]),
     }
     print(
         f"{name:8s} distance={distance_time:8.5f}s iir={filter_time:8.5f}s "
@@ -185,7 +205,7 @@ def _run_backend(
         f"smooth={smoothing_time:8.5f}s confusion={confusion_time:8.5f}s "
         f"top-k={top_k_time:8.5f}s roc-auc={roc_auc_time:8.5f}s "
         f"avg-precision={average_precision_time:8.5f}s "
-        f"prediction={prediction_matrices_time:8.5f}s "
+        f"prediction={prediction_matrices_time:8.5f}s qp={box_qp_time:8.5f}s "
         f"errors=(distance={result['distance_max_error']:.2e}, "
         f"iir={result['iir_max_error']:.2e}, rolling={result['rolling_mean_max_error']:.2e}, "
         f"variance={result['rolling_variance_max_error']:.2e}, "
@@ -195,7 +215,8 @@ def _run_backend(
         f"top-k={result['top_k_accuracy_max_error']:.2e}, "
         f"roc-auc={result['roc_auc_max_error']:.2e}, "
         f"avg-precision={result['average_precision_max_error']:.2e}, "
-        f"prediction={result['prediction_matrices_max_error']:.2e})"
+        f"prediction={result['prediction_matrices_max_error']:.2e}, "
+        f"qp={result['box_qp_max_error']:.2e})"
     )
     return result
 
@@ -249,6 +270,17 @@ def run_backend_matrix(*, seed=DEFAULT_SEED, repeats=DEFAULT_REPEATS):
         scale=0.01, size=(control_states, control_states)
     )
     control_b = rng.normal(size=(control_states, control_inputs))
+    qp_size = 64
+    qp_factor = rng.normal(size=(qp_size, qp_size))
+    qp_h = qp_factor.T @ qp_factor / qp_size + 0.1 * np.eye(qp_size)
+    qp_q = rng.normal(size=qp_size)
+    qp_initial = np.zeros(qp_size)
+    qp_bound = 0.25
+    qp_lower = np.full(qp_size, -qp_bound)
+    qp_upper = np.full(qp_size, qp_bound)
+    qp_step = 1.0 / float(np.max(np.linalg.eigvalsh(qp_h)))
+    qp_max_iter = 200
+    qp_tol = 1e-10
     old_backend = get_backend()
     try:
         set_backend("numpy")
@@ -270,6 +302,16 @@ def run_backend_matrix(*, seed=DEFAULT_SEED, repeats=DEFAULT_REPEATS):
             "average_precision": avg_precision_score(roc_auc_true, roc_auc_scores),
             "prediction_matrices": _prediction_matrices(
                 control_a, control_b, control_horizon
+            ),
+            "box_qp": _projected_gradient_box_qp(
+                qp_h,
+                qp_q,
+                qp_initial,
+                qp_lower,
+                qp_upper,
+                qp_step,
+                qp_max_iter,
+                qp_tol,
             ),
         }
         report = backend_report()
@@ -296,6 +338,16 @@ def run_backend_matrix(*, seed=DEFAULT_SEED, repeats=DEFAULT_REPEATS):
                     roc_auc_scores,
                 ),
                 (control_a, control_b, control_horizon),
+                (
+                    qp_h,
+                    qp_q,
+                    qp_initial,
+                    qp_lower,
+                    qp_upper,
+                    qp_step,
+                    qp_max_iter,
+                    qp_tol,
+                ),
                 references,
                 repeats=repeats,
             )
@@ -326,6 +378,10 @@ def run_backend_matrix(*, seed=DEFAULT_SEED, repeats=DEFAULT_REPEATS):
             "control_states": control_states,
             "control_inputs": control_inputs,
             "control_horizon": control_horizon,
+            "box_qp_size": qp_size,
+            "box_qp_bound": qp_bound,
+            "box_qp_max_iter": qp_max_iter,
+            "box_qp_tolerance": qp_tol,
         },
         "backend_report": report,
         "results": results,
@@ -370,7 +426,10 @@ def assert_parity(
         "roc_auc": max_roc_auc_error,
         "average_precision": max_average_precision_error,
         "prediction_matrices": max_control_error,
+        "box_qp": max_control_error,
     }
+    expected_qp_converged = record["results"][0]["box_qp_converged"]
+    expected_qp_iterations = record["results"][0]["box_qp_iterations"]
     for result in record["results"]:
         for metric, maximum in limits.items():
             error = result[f"{metric}_max_error"]
@@ -378,6 +437,11 @@ def assert_parity(
                 raise RuntimeError(
                     f"{result['backend']} {metric} error {error:.3e} exceeds {maximum:.3e}"
                 )
+        if (
+            result["box_qp_converged"] != expected_qp_converged
+            or result["box_qp_iterations"] != expected_qp_iterations
+        ):
+            raise RuntimeError(f"{result['backend']} box_qp convergence metadata drifted")
 
 
 def main():

@@ -12,6 +12,9 @@ from ._validation import validate_iteration_options, validate_lqr_matrices
 from .lqr import finite_horizon_lqr
 
 
+_CPP_QP_MAX_SIZE = 128
+
+
 @lru_cache(maxsize=2)
 def _load_cpp_control(backend=None):
     if backend is None:
@@ -157,6 +160,33 @@ def _prediction_matrices(A, B, horizon):
     return Sx, Su
 
 
+def _projected_gradient_box_qp(H, q, initial, lower, upper, step, max_iter, tol):
+    """Solve a box QP and return the sequence, convergence flag, and iterations."""
+
+    sequence = np.asarray(initial, dtype=float).copy()
+    cpp = _load_cpp_control(get_backend())
+    if cpp is not None and sequence.size <= _CPP_QP_MAX_SIZE:
+        return cpp.projected_gradient_box_qp(
+            H,
+            q,
+            sequence,
+            lower,
+            upper,
+            step,
+            max_iter,
+            tol,
+        )
+
+    for iteration in range(1, max_iter + 1):
+        updated = np.clip(sequence - step * (H @ sequence + q), lower, upper)
+        if np.max(np.abs(updated - sequence)) <= tol * (
+            1.0 + np.max(np.abs(sequence))
+        ):
+            return updated, True, iteration
+        sequence = updated
+    return sequence, False, max_iter
+
+
 class LinearMPC:
     """Linear MPC with LQR feedback or a box-constrained quadratic solve."""
 
@@ -239,18 +269,18 @@ class LinearMPC:
             if upper is None
             else np.tile(upper, self.horizon)
         )
-        sequence = self._u_sequence.reshape(-1).copy()
-        self.qp_converged_ = False
-        for iteration in range(1, self.qp_max_iter + 1):
-            updated = np.clip(sequence - step * (H @ sequence + q), lower, upper)
-            if np.max(np.abs(updated - sequence)) <= self.qp_tol * (1.0 + np.max(np.abs(sequence))):
-                sequence = updated
-                self.qp_converged_ = True
-                self.last_qp_iterations_ = iteration
-                break
-            sequence = updated
-        else:
-            self.last_qp_iterations_ = self.qp_max_iter
+        sequence, converged, iterations = _projected_gradient_box_qp(
+            H,
+            q,
+            self._u_sequence.reshape(-1),
+            lower,
+            upper,
+            step,
+            self.qp_max_iter,
+            self.qp_tol,
+        )
+        self.qp_converged_ = bool(converged)
+        self.last_qp_iterations_ = int(iterations)
         self._u_sequence = sequence.reshape(self.horizon, m)
         control = self._u_sequence[0].copy()
         if self.horizon > 1:

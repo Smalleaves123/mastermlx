@@ -42,6 +42,10 @@ def test_backend_matrix_returns_a_versioned_reproducible_parity_record():
         "control_states": 8,
         "control_inputs": 3,
         "control_horizon": 128,
+        "box_qp_size": 64,
+        "box_qp_bound": 0.25,
+        "box_qp_max_iter": 200,
+        "box_qp_tolerance": 1e-10,
     }
     assert [result["backend"] for result in record["results"]][0] == "numpy"
     for key in (
@@ -56,6 +60,7 @@ def test_backend_matrix_returns_a_versioned_reproducible_parity_record():
         "roc_auc_seconds",
         "average_precision_seconds",
         "prediction_matrices_seconds",
+        "box_qp_seconds",
     ):
         assert all(result[key] >= 0.0 for result in record["results"])
     assert_parity(
@@ -87,11 +92,52 @@ def test_backend_matrix_parity_guard_rejects_numerical_drift():
                 "roc_auc_max_error": 0.0,
                 "average_precision_max_error": 0.0,
                 "prediction_matrices_max_error": 0.0,
+                "box_qp_max_error": 0.0,
+                "box_qp_converged": True,
+                "box_qp_iterations": 10,
             }
         ]
     }
 
     with pytest.raises(RuntimeError, match="distance error"):
+        assert_parity(
+            record,
+            max_distance_error=1e-10,
+            max_iir_error=1e-12,
+            max_time_series_error=1e-10,
+            max_confusion_error=0.0,
+            max_top_k_error=0.0,
+            max_roc_auc_error=1e-15,
+            max_average_precision_error=1e-12,
+            max_control_error=1e-12,
+        )
+
+
+def test_backend_matrix_parity_guard_rejects_qp_metadata_drift():
+    result = {
+        "distance_max_error": 0.0,
+        "iir_max_error": 0.0,
+        "rolling_mean_max_error": 0.0,
+        "rolling_variance_max_error": 0.0,
+        "autocorrelation_function_max_error": 0.0,
+        "exponential_smoothing_max_error": 0.0,
+        "confusion_matrix_max_error": 0.0,
+        "top_k_accuracy_max_error": 0.0,
+        "roc_auc_max_error": 0.0,
+        "average_precision_max_error": 0.0,
+        "prediction_matrices_max_error": 0.0,
+        "box_qp_max_error": 0.0,
+        "box_qp_converged": True,
+        "box_qp_iterations": 10,
+    }
+    record = {
+        "results": [
+            {"backend": "numpy", **result},
+            {"backend": "auto", **result, "box_qp_iterations": 11},
+        ]
+    }
+
+    with pytest.raises(RuntimeError, match="convergence metadata"):
         assert_parity(
             record,
             max_distance_error=1e-10,

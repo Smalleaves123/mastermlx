@@ -26,6 +26,12 @@ The controller exposes `qp_converged_` and `last_qp_iterations_` for runtime
 diagnostics. Call `reset()` when starting a new episode to clear the warm-start
 sequence.
 
+With the `auto` backend, condensed prediction matrices use the C++ control
+kernel. Projected-gradient iterations use C++ for decision vectors up to 128
+elements; larger problems stay on the NumPy path so matrix-vector products can
+use the installed BLAS implementation. Both routes preserve convergence and
+iteration diagnostics.
+
 The unconstrained case continues to use finite-horizon LQR feedback. Clipping
 is not used as a substitute for constrained optimization when `u_bounds` are
 provided.

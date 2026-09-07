@@ -1,7 +1,9 @@
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
 
+#include <cmath>
 #include <stdexcept>
+#include <vector>
 
 namespace py = pybind11;
 using Matrix = py::array_t<double, py::array::c_style | py::array::forcecast>;
@@ -127,6 +129,90 @@ py::tuple prediction_matrices(Matrix A_, Matrix B_, py::ssize_t horizon) {
     return py::make_tuple(state_matrix, control_matrix);
 }
 
+py::tuple projected_gradient_box_qp(
+    Matrix H_,
+    Matrix q_,
+    Matrix initial_,
+    Matrix lower_,
+    Matrix upper_,
+    double step,
+    int max_iter,
+    double tol
+) {
+    const auto H = H_.request();
+    const auto q = q_.request();
+    const auto initial = initial_.request();
+    const auto lower = lower_.request();
+    const auto upper = upper_.request();
+    if (H.ndim != 2 || H.shape[0] != H.shape[1]) {
+        throw std::invalid_argument("H must be a square 2D matrix");
+    }
+    const auto size = H.shape[0];
+    if (
+        q.ndim != 1 || q.shape[0] != size
+        || initial.ndim != 1 || initial.shape[0] != size
+        || lower.ndim != 1 || lower.shape[0] != size
+        || upper.ndim != 1 || upper.shape[0] != size
+    ) {
+        throw std::invalid_argument("QP vectors must match H.shape[0]");
+    }
+    if (!(step > 0.0) || max_iter < 1 || !(tol > 0.0)) {
+        throw std::invalid_argument("step, max_iter, and tol must be positive");
+    }
+
+    const auto* h = static_cast<const double*>(H.ptr);
+    const auto* linear = static_cast<const double*>(q.ptr);
+    const auto* start = static_cast<const double*>(initial.ptr);
+    const auto* lo = static_cast<const double*>(lower.ptr);
+    const auto* hi = static_cast<const double*>(upper.ptr);
+    py::array_t<double> solution({size});
+    auto* sequence = static_cast<double*>(solution.request().ptr);
+    std::vector<double> updated(static_cast<std::size_t>(size));
+    bool converged = false;
+    int iterations = max_iter;
+
+    {
+        py::gil_scoped_release release;
+        for (py::ssize_t i = 0; i < size; ++i) {
+            sequence[i] = start[i];
+        }
+        for (int iteration = 1; iteration <= max_iter; ++iteration) {
+            double max_difference = 0.0;
+            double max_sequence = 0.0;
+            for (py::ssize_t i = 0; i < size; ++i) {
+                double gradient = linear[i];
+                for (py::ssize_t j = 0; j < size; ++j) {
+                    gradient += h[i * size + j] * sequence[j];
+                }
+                double value = sequence[i] - step * gradient;
+                if (value < lo[i]) {
+                    value = lo[i];
+                } else if (value > hi[i]) {
+                    value = hi[i];
+                }
+                updated[static_cast<std::size_t>(i)] = value;
+                const double difference = std::abs(value - sequence[i]);
+                const double magnitude = std::abs(sequence[i]);
+                if (difference > max_difference) {
+                    max_difference = difference;
+                }
+                if (magnitude > max_sequence) {
+                    max_sequence = magnitude;
+                }
+            }
+            for (py::ssize_t i = 0; i < size; ++i) {
+                sequence[i] = updated[static_cast<std::size_t>(i)];
+            }
+            if (max_difference <= tol * (1.0 + max_sequence)) {
+                converged = true;
+                iterations = iteration;
+                break;
+            }
+        }
+    }
+    return py::make_tuple(solution, converged, iterations);
+}
+
 PYBIND11_MODULE(_control_cpp, m) {
     m.doc() = "C++ kernels for callback-free control workloads";
     m.def("linear_rollout", &linear_rollout, py::arg("A"), py::arg("B"), py::arg("x0"), py::arg("U"));
@@ -136,5 +222,17 @@ PYBIND11_MODULE(_control_cpp, m) {
         py::arg("A"),
         py::arg("B"),
         py::arg("horizon")
+    );
+    m.def(
+        "projected_gradient_box_qp",
+        &projected_gradient_box_qp,
+        py::arg("H"),
+        py::arg("q"),
+        py::arg("initial"),
+        py::arg("lower"),
+        py::arg("upper"),
+        py::arg("step"),
+        py::arg("max_iter"),
+        py::arg("tol")
     );
 }

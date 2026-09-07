@@ -240,3 +240,63 @@ def test_cpp_prediction_matrices_match_numpy_when_available():
 
     assert np.allclose(actual_sx, expected_sx, rtol=1e-12, atol=1e-12)
     assert np.allclose(actual_su, expected_su, rtol=1e-12, atol=1e-12)
+
+
+def test_cpp_box_qp_matches_numpy_solver_state_when_available():
+    if _load_cpp_control("auto") is None:
+        pytest.skip("C++ control extension is unavailable")
+    A = np.array([[1.0, 0.1], [0.0, 0.98]])
+    B = np.array([[0.0], [0.1]])
+    Q = np.diag([2.0, 0.5])
+    R = np.array([[0.1]])
+    kwargs = {
+        "horizon": 24,
+        "u_bounds": (-0.3, 0.3),
+        "qp_max_iter": 200,
+        "qp_tol": 1e-10,
+    }
+    x = np.array([1.5, -0.2])
+    old = get_backend()
+    try:
+        set_backend("numpy")
+        numpy_mpc = LinearMPC(A, B, Q, R, **kwargs)
+        expected = numpy_mpc.control(x)
+        set_backend("auto")
+        cpp_mpc = LinearMPC(A, B, Q, R, **kwargs)
+        actual = cpp_mpc.control(x)
+    finally:
+        set_backend(old)
+
+    assert np.allclose(actual, expected, rtol=1e-9, atol=1e-9)
+    assert cpp_mpc.qp_converged_ == numpy_mpc.qp_converged_
+    assert abs(cpp_mpc.last_qp_iterations_ - numpy_mpc.last_qp_iterations_) <= 1
+
+
+def test_large_box_qp_uses_numpy_route(monkeypatch):
+    from mastermlx.control import mpc as mpc_module
+
+    class UnexpectedCpp:
+        def projected_gradient_box_qp(self, *args):
+            raise AssertionError("large QP must not use the scalar C++ kernel")
+
+    monkeypatch.setattr(mpc_module, "_load_cpp_control", lambda backend=None: UnexpectedCpp())
+    size = 129
+    old = get_backend()
+    try:
+        set_backend("auto")
+        solution, converged, iterations = mpc_module._projected_gradient_box_qp(
+            np.eye(size),
+            np.ones(size),
+            np.zeros(size),
+            np.full(size, -0.25),
+            np.full(size, 0.25),
+            1.0,
+            4,
+            1e-12,
+        )
+    finally:
+        set_backend(old)
+
+    assert np.all(solution == -0.25)
+    assert converged
+    assert iterations == 2
