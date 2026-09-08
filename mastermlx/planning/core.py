@@ -22,6 +22,8 @@ def _free(p, hit):
 def _clear(a, b, hit, step, edge_free=None):
     if edge_free is not None:
         return bool(edge_free(a, b, step))
+    if hit is None:
+        return True
     dist = float(np.linalg.norm(b - a))
     n = max(1, int(math.ceil(dist / max(step, 1e-12))))
     for t in np.linspace(0.0, 1.0, n + 1):
@@ -80,6 +82,24 @@ def _grow_node_storage(nodes, count, maximum):
     expanded = np.empty((capacity, nodes.shape[1]), dtype=float)
     expanded[:count] = nodes[:count]
     return expanded
+
+
+def _reparent(index, new_parent, new_cost, parents, costs, children):
+    """Reparent a tree node and propagate its cost change to descendants."""
+
+    old_parent = parents[index]
+    if old_parent >= 0:
+        children[old_parent].remove(index)
+    parents[index] = new_parent
+    children[new_parent].add(index)
+
+    cost_delta = new_cost - costs[index]
+    costs[index] = new_cost
+    descendants = list(children[index])
+    while descendants:
+        descendant = descendants.pop()
+        costs[descendant] += cost_delta
+        descendants.extend(children[descendant])
 
 
 def rrt(
@@ -220,6 +240,7 @@ def rrt_star(
     node_count = 1
     parents = [-1]
     costs = [0.0]
+    children: list[set[int]] = [set()]
     best_goal = None
     best_cost = float("inf")
 
@@ -260,7 +281,9 @@ def rrt_star(
             nodes[node_count] = new
             parents.append(parent)
             costs.append(parent_cost)
+            children.append(set())
             new_index = node_count
+            children[parent].add(new_index)
             node_count += 1
 
             rewire_candidates = []
@@ -275,8 +298,10 @@ def rrt_star(
             rewire_checks = queries.check((new, candidate) for _, _, candidate in rewire_candidates)
             for (index, rewired_cost, _), is_free in zip(rewire_candidates, rewire_checks):
                 if is_free and rewired_cost + 1e-12 < costs[index]:
-                    parents[index] = new_index
-                    costs[index] = rewired_cost
+                    _reparent(index, new_index, rewired_cost, parents, costs, children)
+
+            if best_goal is not None:
+                best_cost = costs[best_goal]
 
             distance_to_goal = float(np.linalg.norm(new - goal))
             total_goal_cost = parent_cost + distance_to_goal
@@ -291,11 +316,12 @@ def rrt_star(
                     nodes[node_count] = goal
                     parents.append(new_index)
                     costs.append(total_goal_cost)
+                    children.append(set())
                     best_goal = node_count
+                    children[new_index].add(best_goal)
                     node_count += 1
                 else:
-                    parents[best_goal] = new_index
-                    costs[best_goal] = total_goal_cost
+                    _reparent(best_goal, new_index, total_goal_cost, parents, costs, children)
                 best_cost = total_goal_cost
                 if stop_on_first_path:
                     return _path(nodes, parents, best_goal)

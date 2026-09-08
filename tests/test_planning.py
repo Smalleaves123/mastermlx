@@ -1,7 +1,7 @@
 import numpy as np
 
 from mastermlx import rrt, rrt_star, smooth
-from mastermlx.planning.core import _grow_node_storage
+from mastermlx.planning.core import _clear, _grow_node_storage, _reparent
 
 
 def test_rrt_finds_a_free_path():
@@ -30,6 +30,27 @@ def test_planner_node_storage_grows_geometrically_and_preserves_nodes():
     assert expanded.shape == (4, 2)
     assert capped.shape == (5, 2)
     assert np.array_equal(expanded[:2], nodes)
+
+
+def test_clear_without_collision_callback_skips_edge_sampling(monkeypatch):
+    def fail_sampling(*args, **kwargs):
+        raise AssertionError("collision-free edges should not be sampled")
+
+    monkeypatch.setattr(np, "linspace", fail_sampling)
+
+    assert _clear(np.array([0.0]), np.array([1.0]), None, 0.01)
+
+
+def test_reparent_propagates_cost_change_to_descendants():
+    parents = [-1, 0, 1, 0]
+    costs = [0.0, 5.0, 9.0, 1.0]
+    children = [{1, 3}, {2}, set(), set()]
+
+    _reparent(1, 3, 3.0, parents, costs, children)
+
+    assert parents == [-1, 3, 1, 0]
+    assert costs == [0.0, 3.0, 7.0, 1.0]
+    assert children == [{3}, {2}, set(), {1}]
 
 
 def test_rrt_avoids_obstacle():

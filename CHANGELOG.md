@@ -41,6 +41,8 @@
   retaining BLAS-backed NumPy execution for larger decision vectors.
 - Preallocated RRT/RRT* node storage and vectorized nearest/radius queries,
   reusing new-node distances across parent selection and rewiring.
+- Propagated RRT* rewiring cost changes through descendant nodes and skipped
+  edge sampling when no collision callback is configured.
 - Enforced the documented serial-URDF boundary by rejecting explicit-tip
   branching chains, with regression coverage for all unsupported joint types.
 

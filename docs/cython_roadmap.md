@@ -136,6 +136,13 @@ Suggested kernels:
 - particle weighting and resampling
 - graph expansion and priority queue helpers
 
+Current progress:
+
+- Preallocated RRT/RRT* node storage and vectorized nearest/radius queries.
+- Avoided collision interpolation when no obstacle callback is present.
+- Kept explicit RRT* child links so rewiring costs remain consistent across
+  complete descendant subtrees.
+
 ## Backend policy
 
 - If a kernel is dense NumPy arithmetic with little branching, prefer Cython.
