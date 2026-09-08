@@ -1,5 +1,7 @@
 import numpy as np
+import pytest
 
+from mastermlx import get_backend, set_backend
 from mastermlx.estimation import ExtendedKalmanFilter, KalmanFilter, ParticleFilter, systematic_resample
 
 
@@ -123,3 +125,36 @@ def test_systematic_resample_valid_indices():
     assert idx.shape == (3,)
     assert np.all(idx >= 0)
     assert np.all(idx < 3)
+
+
+@pytest.mark.parametrize("backend", ["numpy", "auto"])
+@pytest.mark.parametrize(
+    "weights",
+    [[0.2, 0.3, 0.5], np.array([0.2, 0.3, 0.5], dtype=np.float32)],
+)
+def test_systematic_resample_accepts_array_like_weights_across_backends(backend, weights):
+    old_backend = get_backend()
+    try:
+        set_backend(backend)
+        actual = systematic_resample(weights, rng=np.random.default_rng(7))
+        set_backend("numpy")
+        expected = systematic_resample(weights, rng=np.random.default_rng(7))
+    finally:
+        set_backend(old_backend)
+
+    assert np.array_equal(actual, expected)
+
+
+@pytest.mark.parametrize("backend", ["numpy", "auto"])
+@pytest.mark.parametrize(
+    "weights",
+    [[0.5, -0.1, 0.6], [0.5, np.nan, 0.5], [0.5, np.inf]],
+)
+def test_systematic_resample_rejects_invalid_weights_across_backends(backend, weights):
+    old_backend = get_backend()
+    try:
+        set_backend(backend)
+        with pytest.raises(ValueError, match="finite and non-negative"):
+            systematic_resample(weights, rng=np.random.default_rng(7))
+    finally:
+        set_backend(old_backend)

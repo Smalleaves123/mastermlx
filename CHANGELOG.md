@@ -43,6 +43,8 @@
   reusing new-node distances across parent selection and rewiring.
 - Propagated RRT* rewiring cost changes through descendant nodes and skipped
   edge sampling when no collision callback is configured.
+- Made systematic particle resampling accept consistent array-like inputs and
+  reject negative or non-finite weights across NumPy and compiled backends.
 - Enforced the documented serial-URDF boundary by rejecting explicit-tip
   branching chains, with regression coverage for all unsupported joint types.
 

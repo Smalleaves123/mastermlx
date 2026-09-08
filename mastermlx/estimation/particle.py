@@ -13,16 +13,18 @@ except ImportError:  # pragma: no cover - fallback when Cython extensions are un
 
 
 def systematic_resample(weights, rng=None):
-    if get_backend() != "numpy" and _cy_systematic_resample is not None:
-        return _cy_systematic_resample(weights, rng=rng)
     weights = np.asarray(weights, dtype=float).reshape(-1)
     if weights.size == 0:
         raise ValueError("weights cannot be empty")
+    rng = np.random.default_rng() if rng is None else rng
+    if get_backend() != "numpy" and _cy_systematic_resample is not None:
+        return _cy_systematic_resample(weights, rng=rng)
+    if np.any(~np.isfinite(weights)) or np.any(weights < 0.0):
+        raise ValueError("weights must be finite and non-negative")
     total = np.sum(weights)
     if total <= 0:
         raise ValueError("weights must sum to a positive value")
     weights = weights / total
-    rng = np.random.default_rng() if rng is None else rng
 
     positions = (rng.random() + np.arange(weights.size)) / weights.size
     cumulative = np.cumsum(weights)

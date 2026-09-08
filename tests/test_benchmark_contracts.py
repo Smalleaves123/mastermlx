@@ -8,6 +8,7 @@ from benchmarks.bench_backend_matrix import (
     DEFAULT_MAX_ROC_AUC_ERROR,
     DEFAULT_MAX_AVERAGE_PRECISION_ERROR,
     DEFAULT_MAX_CONTROL_ERROR,
+    DEFAULT_MAX_RESAMPLING_ERROR,
     assert_parity,
     run_backend_matrix,
 )
@@ -51,6 +52,7 @@ def test_backend_matrix_returns_a_versioned_reproducible_parity_record():
         "box_qp_bound": 0.25,
         "box_qp_max_iter": 200,
         "box_qp_tolerance": 1e-10,
+        "particle_count": 100_000,
     }
     assert [result["backend"] for result in record["results"]][0] == "numpy"
     for key in (
@@ -66,6 +68,7 @@ def test_backend_matrix_returns_a_versioned_reproducible_parity_record():
         "average_precision_seconds",
         "prediction_matrices_seconds",
         "box_qp_seconds",
+        "systematic_resample_seconds",
     ):
         assert all(result[key] >= 0.0 for result in record["results"])
     assert_parity(
@@ -78,6 +81,7 @@ def test_backend_matrix_returns_a_versioned_reproducible_parity_record():
         max_roc_auc_error=DEFAULT_MAX_ROC_AUC_ERROR,
         max_average_precision_error=DEFAULT_MAX_AVERAGE_PRECISION_ERROR,
         max_control_error=DEFAULT_MAX_CONTROL_ERROR,
+        max_resampling_error=DEFAULT_MAX_RESAMPLING_ERROR,
     )
 
 
@@ -98,6 +102,7 @@ def test_backend_matrix_parity_guard_rejects_numerical_drift():
                 "average_precision_max_error": 0.0,
                 "prediction_matrices_max_error": 0.0,
                 "box_qp_max_error": 0.0,
+                "systematic_resample_max_error": 0.0,
                 "box_qp_converged": True,
                 "box_qp_iterations": 10,
             }
@@ -115,6 +120,7 @@ def test_backend_matrix_parity_guard_rejects_numerical_drift():
             max_roc_auc_error=1e-15,
             max_average_precision_error=1e-12,
             max_control_error=1e-12,
+            max_resampling_error=0.0,
         )
 
 
@@ -132,6 +138,7 @@ def test_backend_matrix_parity_guard_rejects_qp_metadata_drift():
         "average_precision_max_error": 0.0,
         "prediction_matrices_max_error": 0.0,
         "box_qp_max_error": 0.0,
+        "systematic_resample_max_error": 0.0,
         "box_qp_converged": True,
         "box_qp_iterations": 10,
     }
@@ -153,6 +160,7 @@ def test_backend_matrix_parity_guard_rejects_qp_metadata_drift():
             max_roc_auc_error=1e-15,
             max_average_precision_error=1e-12,
             max_control_error=1e-12,
+            max_resampling_error=0.0,
         )
 
 

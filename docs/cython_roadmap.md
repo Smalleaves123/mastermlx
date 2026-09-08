@@ -142,6 +142,8 @@ Current progress:
 - Avoided collision interpolation when no obstacle callback is present.
 - Kept explicit RRT* child links so rewiring costs remain consistent across
   complete descendant subtrees.
+- Added backend parity and fixed-workload timing coverage for compiled
+  systematic particle resampling.
 
 ## Backend policy
 

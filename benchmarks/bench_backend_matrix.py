@@ -13,6 +13,7 @@ from mastermlx import get_backend, set_backend
 from mastermlx.accel import backend_report, pairwise_squared_euclidean
 from mastermlx.accel.signal_ops import iir_filter_1d
 from mastermlx.control.mpc import _prediction_matrices, _projected_gradient_box_qp
+from mastermlx.estimation import systematic_resample
 from mastermlx.math_tools import (
     autocorrelation_function,
     exponential_smoothing,
@@ -27,7 +28,7 @@ from mastermlx.utils import (
 )
 
 
-BENCHMARK_SCHEMA = "mastermlx.backend-matrix.v8"
+BENCHMARK_SCHEMA = "mastermlx.backend-matrix.v9"
 DEFAULT_SEED = 42
 DEFAULT_REPEATS = 5
 DEFAULT_MAX_DISTANCE_ERROR = 1e-10
@@ -38,6 +39,7 @@ DEFAULT_MAX_TOP_K_ERROR = 0.0
 DEFAULT_MAX_ROC_AUC_ERROR = 1e-15
 DEFAULT_MAX_AVERAGE_PRECISION_ERROR = 1e-12
 DEFAULT_MAX_CONTROL_ERROR = 1e-12
+DEFAULT_MAX_RESAMPLING_ERROR = 0.0
 
 
 def _measure(function, repeats=5):
@@ -62,6 +64,7 @@ def _run_backend(
     metric_inputs,
     control_inputs,
     qp_inputs,
+    particle_inputs,
     references,
     *,
     repeats,
@@ -83,6 +86,7 @@ def _run_backend(
     ) = metric_inputs
     control_a, control_b, control_horizon = control_inputs
     qp_h, qp_q, qp_initial, qp_lower, qp_upper, qp_step, qp_max_iter, qp_tol = qp_inputs
+    particle_weights, particle_seed = particle_inputs
 
     def distance():
         return pairwise_squared_euclidean(X, Y)
@@ -134,6 +138,12 @@ def _run_backend(
             qp_tol,
         )
 
+    def resampling():
+        return systematic_resample(
+            particle_weights,
+            rng=np.random.default_rng(particle_seed),
+        )
+
     distance_time = _measure(distance, repeats=repeats)
     filter_time = _measure(filtering, repeats=repeats)
     rolling_time = _measure(rolling, repeats=repeats)
@@ -146,6 +156,7 @@ def _run_backend(
     average_precision_time = _measure(average_precision, repeats=repeats)
     prediction_matrices_time = _measure(prediction_matrices, repeats=repeats)
     box_qp_time = _measure(box_qp, repeats=repeats)
+    resampling_time = _measure(resampling, repeats=repeats)
     distance_value = distance()
     filter_value = filtering()
     rolling_value = rolling()
@@ -158,6 +169,7 @@ def _run_backend(
     average_precision_value = average_precision()
     prediction_matrices_value = prediction_matrices()
     box_qp_value = box_qp()
+    resampling_value = resampling()
     result = {
         "backend": name,
         "distance_seconds": distance_time,
@@ -172,6 +184,7 @@ def _run_backend(
         "average_precision_seconds": average_precision_time,
         "prediction_matrices_seconds": prediction_matrices_time,
         "box_qp_seconds": box_qp_time,
+        "systematic_resample_seconds": resampling_time,
         "box_qp_converged": bool(box_qp_value[1]),
         "box_qp_iterations": int(box_qp_value[2]),
         "distance_max_error": _error(distance_value, references["distance"]),
@@ -197,6 +210,9 @@ def _run_backend(
             _error(prediction_matrices_value[1], references["prediction_matrices"][1]),
         ),
         "box_qp_max_error": _error(box_qp_value[0], references["box_qp"][0]),
+        "systematic_resample_max_error": _error(
+            resampling_value, references["systematic_resample"]
+        ),
     }
     print(
         f"{name:8s} distance={distance_time:8.5f}s iir={filter_time:8.5f}s "
@@ -206,6 +222,7 @@ def _run_backend(
         f"top-k={top_k_time:8.5f}s roc-auc={roc_auc_time:8.5f}s "
         f"avg-precision={average_precision_time:8.5f}s "
         f"prediction={prediction_matrices_time:8.5f}s qp={box_qp_time:8.5f}s "
+        f"resample={resampling_time:8.5f}s "
         f"errors=(distance={result['distance_max_error']:.2e}, "
         f"iir={result['iir_max_error']:.2e}, rolling={result['rolling_mean_max_error']:.2e}, "
         f"variance={result['rolling_variance_max_error']:.2e}, "
@@ -216,7 +233,8 @@ def _run_backend(
         f"roc-auc={result['roc_auc_max_error']:.2e}, "
         f"avg-precision={result['average_precision_max_error']:.2e}, "
         f"prediction={result['prediction_matrices_max_error']:.2e}, "
-        f"qp={result['box_qp_max_error']:.2e})"
+        f"qp={result['box_qp_max_error']:.2e}, "
+        f"resample={result['systematic_resample_max_error']:.2e})"
     )
     return result
 
@@ -281,6 +299,9 @@ def run_backend_matrix(*, seed=DEFAULT_SEED, repeats=DEFAULT_REPEATS):
     qp_step = 1.0 / float(np.max(np.linalg.eigvalsh(qp_h)))
     qp_max_iter = 200
     qp_tol = 1e-10
+    particle_count = 100_000
+    particle_weights = rng.random(particle_count)
+    particle_seed = seed + 1
     old_backend = get_backend()
     try:
         set_backend("numpy")
@@ -312,6 +333,10 @@ def run_backend_matrix(*, seed=DEFAULT_SEED, repeats=DEFAULT_REPEATS):
                 qp_step,
                 qp_max_iter,
                 qp_tol,
+            ),
+            "systematic_resample": systematic_resample(
+                particle_weights,
+                rng=np.random.default_rng(particle_seed),
             ),
         }
         report = backend_report()
@@ -348,6 +373,7 @@ def run_backend_matrix(*, seed=DEFAULT_SEED, repeats=DEFAULT_REPEATS):
                     qp_max_iter,
                     qp_tol,
                 ),
+                (particle_weights, particle_seed),
                 references,
                 repeats=repeats,
             )
@@ -382,6 +408,7 @@ def run_backend_matrix(*, seed=DEFAULT_SEED, repeats=DEFAULT_REPEATS):
             "box_qp_bound": qp_bound,
             "box_qp_max_iter": qp_max_iter,
             "box_qp_tolerance": qp_tol,
+            "particle_count": particle_count,
         },
         "backend_report": report,
         "results": results,
@@ -399,6 +426,7 @@ def assert_parity(
     max_roc_auc_error,
     max_average_precision_error,
     max_control_error,
+    max_resampling_error,
 ):
     """Fail when a backend drifts beyond the recorded numerical contract."""
 
@@ -414,6 +442,9 @@ def assert_parity(
         max_average_precision_error, "max_average_precision_error"
     )
     max_control_error = _non_negative_finite(max_control_error, "max_control_error")
+    max_resampling_error = _non_negative_finite(
+        max_resampling_error, "max_resampling_error"
+    )
     limits = {
         "distance": max_distance_error,
         "iir": max_iir_error,
@@ -427,6 +458,7 @@ def assert_parity(
         "average_precision": max_average_precision_error,
         "prediction_matrices": max_control_error,
         "box_qp": max_control_error,
+        "systematic_resample": max_resampling_error,
     }
     expected_qp_converged = record["results"][0]["box_qp_converged"]
     expected_qp_iterations = record["results"][0]["box_qp_iterations"]
@@ -461,6 +493,11 @@ def main():
         default=DEFAULT_MAX_AVERAGE_PRECISION_ERROR,
     )
     parser.add_argument("--max-control-error", type=float, default=DEFAULT_MAX_CONTROL_ERROR)
+    parser.add_argument(
+        "--max-resampling-error",
+        type=float,
+        default=DEFAULT_MAX_RESAMPLING_ERROR,
+    )
     args = parser.parse_args()
 
     record = run_backend_matrix(seed=args.seed, repeats=args.repeats)
@@ -474,6 +511,7 @@ def main():
         max_roc_auc_error=args.max_roc_auc_error,
         max_average_precision_error=args.max_average_precision_error,
         max_control_error=args.max_control_error,
+        max_resampling_error=args.max_resampling_error,
     )
 
     if args.json_output is not None:

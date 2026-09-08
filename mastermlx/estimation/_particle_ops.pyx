@@ -3,6 +3,7 @@
 
 import numpy as np
 cimport numpy as np
+from libc.math cimport isfinite
 
 ctypedef np.float64_t DTYPE_t
 ctypedef np.intp_t ITYPE_t
@@ -19,6 +20,8 @@ def systematic_resample(np.ndarray[DTYPE_t, ndim=1] weights, object rng=None):
     if n == 0:
         raise ValueError("weights cannot be empty")
     for i in range(n):
+        if not isfinite(norm[i]) or norm[i] < 0.0:
+            raise ValueError("weights must be finite and non-negative")
         total += norm[i]
     if total <= 0.0:
         raise ValueError("weights must sum to a positive value")
