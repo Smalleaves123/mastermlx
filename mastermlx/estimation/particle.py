@@ -12,6 +12,20 @@ except ImportError:  # pragma: no cover - fallback when Cython extensions are un
     _cy_systematic_resample = None
 
 
+def _normalize_particle_weights(weights, n_particles):
+    weights = np.asarray(weights, dtype=float).reshape(-1)
+    if weights.size != n_particles:
+        raise ValueError("weights must match the number of particles")
+    if np.any(~np.isfinite(weights)) or np.any(weights < 0.0):
+        raise ValueError("weights must be finite and non-negative")
+    total = float(np.sum(weights))
+    if total <= 0.0:
+        return np.full(n_particles, 1.0 / n_particles, dtype=float)
+    if get_backend() != "numpy" and _cy_normalize_weights is not None:
+        return _cy_normalize_weights(weights)
+    return weights / total
+
+
 def systematic_resample(weights, rng=None):
     weights = np.asarray(weights, dtype=float).reshape(-1)
     if weights.size == 0:
@@ -39,19 +53,14 @@ class ParticleFilter:
         if self.particles_.ndim != 2:
             raise ValueError("particles must have shape (n_particles, state_dim)")
         self.n_particles_, self.state_dim_ = self.particles_.shape
+        if self.n_particles_ < 1 or self.state_dim_ < 1:
+            raise ValueError("particles must have non-zero particle and state dimensions")
+        if np.any(~np.isfinite(self.particles_)):
+            raise ValueError("particles must contain only finite values")
         if weights is None:
             self.weights_ = np.full(self.n_particles_, 1.0 / self.n_particles_, dtype=float)
         else:
-            self.weights_ = np.asarray(weights, dtype=float).reshape(-1)
-            if self.weights_.size != self.n_particles_:
-                raise ValueError("weights must match the number of particles")
-            total = float(np.sum(self.weights_))
-            if total <= 0:
-                self.weights_ = np.full(self.n_particles_, 1.0 / self.n_particles_, dtype=float)
-            elif get_backend() != "numpy" and _cy_normalize_weights is not None:
-                self.weights_ = _cy_normalize_weights(self.weights_)
-            else:
-                self.weights_ = self.weights_ / total
+            self.weights_ = _normalize_particle_weights(weights, self.n_particles_)
         self.transition_ = transition
         self.likelihood_ = likelihood
         self.rng_ = np.random.default_rng() if rng is None else rng
@@ -67,27 +76,35 @@ class ParticleFilter:
     def predict(self, control=None, noise=None):
         if self.transition_ is None:
             raise ValueError("transition function is required for prediction")
-        updated = []
-        for particle in self.particles_:
-            next_state = self.transition_(particle, control)
+        updated = np.empty_like(self.particles_)
+        for index, particle in enumerate(self.particles_):
+            next_state = np.asarray(self.transition_(particle, control), dtype=float).reshape(-1)
             if noise is not None:
-                next_state = np.asarray(next_state, dtype=float) + np.asarray(noise(self.rng_), dtype=float)
-            updated.append(next_state)
-        self.particles_ = np.asarray(updated, dtype=float)
+                next_state = np.asarray(
+                    next_state + np.asarray(noise(self.rng_), dtype=float),
+                    dtype=float,
+                ).reshape(-1)
+            if next_state.size != self.state_dim_:
+                raise ValueError("transition and noise must preserve the particle state dimension")
+            if np.any(~np.isfinite(next_state)):
+                raise ValueError("predicted particles must contain only finite values")
+            updated[index] = next_state
+        self.particles_ = updated
         return self.particles_
 
     def update(self, measurement):
         if self.likelihood_ is None:
             raise ValueError("likelihood function is required for update")
-        weights = np.array([self.likelihood_(particle, measurement) for particle in self.particles_], dtype=float)
-        weights = np.maximum(weights, 0.0)
-        total = float(np.sum(weights))
-        if total <= 0:
-            self.weights_ = np.full(self.n_particles_, 1.0 / self.n_particles_, dtype=float)
-        elif get_backend() != "numpy" and _cy_normalize_weights is not None:
-            self.weights_ = _cy_normalize_weights(weights)
-        else:
-            self.weights_ = weights / total
+        likelihoods = np.asarray(
+            [self.likelihood_(particle, measurement) for particle in self.particles_],
+            dtype=float,
+        )
+        if likelihoods.shape != (self.n_particles_,):
+            raise ValueError("likelihood function must return one scalar per particle")
+        if np.any(~np.isfinite(likelihoods)):
+            raise ValueError("likelihood values must be finite")
+        posterior = self.weights_ * np.maximum(likelihoods, 0.0)
+        self.weights_ = _normalize_particle_weights(posterior, self.n_particles_)
         return self.weights_
 
     def resample(self):

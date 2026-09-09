@@ -144,6 +144,8 @@ Current progress:
   complete descendant subtrees.
 - Added backend parity and fixed-workload timing coverage for compiled
   systematic particle resampling.
+- Corrected recursive particle weighting and preallocated validated prediction
+  buffers so the accelerated normalization path receives consistent inputs.
 
 ## Backend policy
 

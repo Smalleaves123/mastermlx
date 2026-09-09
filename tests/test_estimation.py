@@ -120,6 +120,62 @@ def test_particle_filter_update_falls_back_to_uniform_weights():
     assert np.allclose(pf.weights_, np.full(4, 0.25))
 
 
+@pytest.mark.parametrize("backend", ["numpy", "auto"])
+def test_particle_filter_update_accumulates_sequential_evidence(backend):
+    old_backend = get_backend()
+    try:
+        set_backend(backend)
+        pf = ParticleFilter(
+            particles=[[0.0], [1.0]],
+            weights=[0.8, 0.2],
+            likelihood=lambda particle, measurement: (
+                2.0 if particle[0] == measurement else 1.0
+            ),
+        )
+        first = pf.update(0.0).copy()
+        second = pf.update(0.0)
+    finally:
+        set_backend(old_backend)
+
+    assert np.allclose(first, [8.0 / 9.0, 1.0 / 9.0])
+    assert np.allclose(second, [16.0 / 17.0, 1.0 / 17.0])
+
+
+@pytest.mark.parametrize(
+    "particles, match",
+    [
+        (np.empty((0, 2)), "non-zero particle"),
+        (np.empty((2, 0)), "non-zero particle"),
+        ([[0.0], [np.inf]], "finite values"),
+    ],
+)
+def test_particle_filter_rejects_invalid_particle_arrays(particles, match):
+    with pytest.raises(ValueError, match=match):
+        ParticleFilter(particles)
+
+
+@pytest.mark.parametrize("weights", [[0.5, -0.1], [0.5, np.nan], [0.5, np.inf]])
+def test_particle_filter_rejects_invalid_initial_weights(weights):
+    with pytest.raises(ValueError, match="finite and non-negative"):
+        ParticleFilter([[0.0], [1.0]], weights=weights)
+
+
+def test_particle_filter_predict_validates_callback_state_dimension():
+    pf = ParticleFilter([[0.0], [1.0]], transition=lambda particle, control: [0.0, 1.0])
+
+    with pytest.raises(ValueError, match="preserve the particle state dimension"):
+        pf.predict()
+
+
+@pytest.mark.parametrize("value", [np.nan, np.inf, [0.5]])
+def test_particle_filter_update_validates_likelihood_output(value):
+    pf = ParticleFilter([[0.0], [1.0]], likelihood=lambda particle, measurement: value)
+
+    match = "one scalar" if isinstance(value, list) else "must be finite"
+    with pytest.raises(ValueError, match=match):
+        pf.update(0.0)
+
+
 def test_systematic_resample_valid_indices():
     idx = systematic_resample(np.array([0.2, 0.3, 0.5]), rng=np.random.default_rng(1))
     assert idx.shape == (3,)

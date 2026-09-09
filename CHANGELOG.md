@@ -45,6 +45,8 @@
   edge sampling when no collision callback is configured.
 - Made systematic particle resampling accept consistent array-like inputs and
   reject negative or non-finite weights across NumPy and compiled backends.
+- Corrected particle-filter updates to accumulate sequential likelihoods with
+  prior weights, and validated particle, transition, and likelihood shapes.
 - Enforced the documented serial-URDF boundary by rejecting explicit-tip
   branching chains, with regression coverage for all unsupported joint types.
 
