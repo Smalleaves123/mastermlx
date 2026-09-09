@@ -89,6 +89,29 @@ def test_extended_kalman_filter_matches_linear_case():
     assert np.allclose(P, np.array([[0.5]]))
 
 
+@pytest.mark.parametrize("backend", ["numpy", "auto"])
+def test_extended_kalman_predict_does_not_reapply_jacobian_to_nonlinear_state(backend):
+    old_backend = get_backend()
+    try:
+        set_backend(backend)
+        ekf = ExtendedKalmanFilter(
+            x0=[2.0],
+            P0=[[1.0]],
+            f=lambda x, u: np.array([x[0] ** 2]),
+            h=lambda x, u: x,
+            F_jac=lambda x, u: np.array([[2.0 * x[0]]]),
+            H_jac=lambda x, u: np.array([[1.0]]),
+            Q=[[0.5]],
+            R=[[1.0]],
+        )
+        state, covariance = ekf.predict()
+    finally:
+        set_backend(old_backend)
+
+    assert np.allclose(state, [4.0])
+    assert np.allclose(covariance, [[16.5]])
+
+
 def test_particle_filter_resample_collapses_to_single_particle():
     particles = np.array([[0.0], [1.0], [2.0], [3.0]])
     pf = ParticleFilter(

@@ -146,6 +146,8 @@ Current progress:
   systematic particle resampling.
 - Corrected recursive particle weighting and preallocated validated prediction
   buffers so the accelerated normalization path receives consistent inputs.
+- Split EKF covariance propagation from linear state prediction so nonlinear
+  state callbacks retain exact NumPy/compiled backend parity.
 
 ## Backend policy
 

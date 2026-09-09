@@ -47,6 +47,8 @@
   reject negative or non-finite weights across NumPy and compiled backends.
 - Corrected particle-filter updates to accumulate sequential likelihoods with
   prior weights, and validated particle, transition, and likelihood shapes.
+- Prevented the compiled EKF prediction path from applying the transition
+  Jacobian a second time to an already predicted nonlinear state.
 - Enforced the documented serial-URDF boundary by rejecting explicit-tip
   branching chains, with regression coverage for all unsupported joint types.
 

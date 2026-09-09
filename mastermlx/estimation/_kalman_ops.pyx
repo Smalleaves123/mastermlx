@@ -27,6 +27,16 @@ def kalman_predict(object x, object P, object F, object Q, object B=None, object
     return x_pred.ravel(), P_pred
 
 
+def kalman_predict_covariance(object P, object F, object Q):
+    """Propagate covariance without applying a state transition."""
+
+    cdef np.ndarray[DTYPE_t, ndim=2] P_mat = np.asarray(P, dtype=np.float64)
+    cdef np.ndarray[DTYPE_t, ndim=2] F_mat = np.asarray(F, dtype=np.float64)
+    cdef np.ndarray[DTYPE_t, ndim=2] Q_mat = np.asarray(Q, dtype=np.float64)
+
+    return F_mat @ P_mat @ F_mat.T + Q_mat
+
+
 def kalman_update(object x, object P, object z, object H, object R):
     """Run the linear Kalman update step."""
 

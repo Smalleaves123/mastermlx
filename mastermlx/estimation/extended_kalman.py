@@ -5,10 +5,10 @@ import numpy as np
 from ..config import get_backend
 
 try:
-    from ._kalman_ops import kalman_predict as _cy_kalman_predict
+    from ._kalman_ops import kalman_predict_covariance as _cy_kalman_predict_covariance
     from ._kalman_ops import kalman_update_innovation as _cy_kalman_update_innovation
 except ImportError:  # pragma: no cover - fallback when Cython extensions are unavailable
-    _cy_kalman_predict = None
+    _cy_kalman_predict_covariance = None
     _cy_kalman_update_innovation = None
 
 
@@ -51,10 +51,12 @@ class ExtendedKalmanFilter:
 
         x_pred = np.asarray(x_pred, dtype=float).reshape(-1, 1)
         F = np.asarray(F, dtype=float)
-        if get_backend() != "numpy" and _cy_kalman_predict is not None:
-            self.x_, self.P_ = _cy_kalman_predict(x_pred, self.P_, F, self.Q_)
-            self.x_ = np.asarray(self.x_, dtype=float).reshape(-1, 1)
-            self.P_ = np.asarray(self.P_, dtype=float)
+        if get_backend() != "numpy" and _cy_kalman_predict_covariance is not None:
+            self.x_ = x_pred
+            self.P_ = np.asarray(
+                _cy_kalman_predict_covariance(self.P_, F, self.Q_),
+                dtype=float,
+            )
             self.x_prior_ = self.x_.copy()
             self.P_prior_ = self.P_.copy()
             return self.state, self.P_.copy()
