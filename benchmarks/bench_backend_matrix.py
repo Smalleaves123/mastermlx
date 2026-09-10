@@ -13,7 +13,7 @@ from mastermlx import get_backend, set_backend
 from mastermlx.accel import backend_report, pairwise_squared_euclidean
 from mastermlx.accel.signal_ops import iir_filter_1d
 from mastermlx.control.mpc import _prediction_matrices, _projected_gradient_box_qp
-from mastermlx.estimation import systematic_resample
+from mastermlx.estimation import KalmanFilter, systematic_resample
 from mastermlx.math_tools import (
     autocorrelation_function,
     exponential_smoothing,
@@ -28,7 +28,7 @@ from mastermlx.utils import (
 )
 
 
-BENCHMARK_SCHEMA = "mastermlx.backend-matrix.v9"
+BENCHMARK_SCHEMA = "mastermlx.backend-matrix.v10"
 DEFAULT_SEED = 42
 DEFAULT_REPEATS = 5
 DEFAULT_MAX_DISTANCE_ERROR = 1e-10
@@ -40,6 +40,7 @@ DEFAULT_MAX_ROC_AUC_ERROR = 1e-15
 DEFAULT_MAX_AVERAGE_PRECISION_ERROR = 1e-12
 DEFAULT_MAX_CONTROL_ERROR = 1e-12
 DEFAULT_MAX_RESAMPLING_ERROR = 0.0
+DEFAULT_MAX_ESTIMATION_ERROR = 1e-10
 
 
 def _measure(function, repeats=5):
@@ -65,6 +66,7 @@ def _run_backend(
     control_inputs,
     qp_inputs,
     particle_inputs,
+    estimation_inputs,
     references,
     *,
     repeats,
@@ -87,6 +89,7 @@ def _run_backend(
     control_a, control_b, control_horizon = control_inputs
     qp_h, qp_q, qp_initial, qp_lower, qp_upper, qp_step, qp_max_iter, qp_tol = qp_inputs
     particle_weights, particle_seed = particle_inputs
+    kalman_x, kalman_P, kalman_F, kalman_H, kalman_Q, kalman_R, kalman_z = estimation_inputs
 
     def distance():
         return pairwise_squared_euclidean(X, Y)
@@ -144,6 +147,17 @@ def _run_backend(
             rng=np.random.default_rng(particle_seed),
         )
 
+    def kalman_step():
+        estimator = KalmanFilter(
+            kalman_x,
+            kalman_P,
+            kalman_F,
+            kalman_H,
+            kalman_Q,
+            kalman_R,
+        )
+        return estimator.step(kalman_z)
+
     distance_time = _measure(distance, repeats=repeats)
     filter_time = _measure(filtering, repeats=repeats)
     rolling_time = _measure(rolling, repeats=repeats)
@@ -157,6 +171,7 @@ def _run_backend(
     prediction_matrices_time = _measure(prediction_matrices, repeats=repeats)
     box_qp_time = _measure(box_qp, repeats=repeats)
     resampling_time = _measure(resampling, repeats=repeats)
+    kalman_step_time = _measure(kalman_step, repeats=repeats)
     distance_value = distance()
     filter_value = filtering()
     rolling_value = rolling()
@@ -170,6 +185,7 @@ def _run_backend(
     prediction_matrices_value = prediction_matrices()
     box_qp_value = box_qp()
     resampling_value = resampling()
+    kalman_step_value = kalman_step()
     result = {
         "backend": name,
         "distance_seconds": distance_time,
@@ -185,6 +201,7 @@ def _run_backend(
         "prediction_matrices_seconds": prediction_matrices_time,
         "box_qp_seconds": box_qp_time,
         "systematic_resample_seconds": resampling_time,
+        "kalman_step_seconds": kalman_step_time,
         "box_qp_converged": bool(box_qp_value[1]),
         "box_qp_iterations": int(box_qp_value[2]),
         "distance_max_error": _error(distance_value, references["distance"]),
@@ -213,6 +230,10 @@ def _run_backend(
         "systematic_resample_max_error": _error(
             resampling_value, references["systematic_resample"]
         ),
+        "kalman_step_max_error": max(
+            _error(kalman_step_value[0], references["kalman_step"][0]),
+            _error(kalman_step_value[1], references["kalman_step"][1]),
+        ),
     }
     print(
         f"{name:8s} distance={distance_time:8.5f}s iir={filter_time:8.5f}s "
@@ -223,6 +244,7 @@ def _run_backend(
         f"avg-precision={average_precision_time:8.5f}s "
         f"prediction={prediction_matrices_time:8.5f}s qp={box_qp_time:8.5f}s "
         f"resample={resampling_time:8.5f}s "
+        f"kalman={kalman_step_time:8.5f}s "
         f"errors=(distance={result['distance_max_error']:.2e}, "
         f"iir={result['iir_max_error']:.2e}, rolling={result['rolling_mean_max_error']:.2e}, "
         f"variance={result['rolling_variance_max_error']:.2e}, "
@@ -234,7 +256,8 @@ def _run_backend(
         f"avg-precision={result['average_precision_max_error']:.2e}, "
         f"prediction={result['prediction_matrices_max_error']:.2e}, "
         f"qp={result['box_qp_max_error']:.2e}, "
-        f"resample={result['systematic_resample_max_error']:.2e})"
+        f"resample={result['systematic_resample_max_error']:.2e}, "
+        f"kalman={result['kalman_step_max_error']:.2e})"
     )
     return result
 
@@ -302,6 +325,19 @@ def run_backend_matrix(*, seed=DEFAULT_SEED, repeats=DEFAULT_REPEATS):
     particle_count = 100_000
     particle_weights = rng.random(particle_count)
     particle_seed = seed + 1
+    kalman_states = 16
+    kalman_measurements = 8
+    kalman_x = rng.normal(size=kalman_states)
+    kalman_factor = rng.normal(size=(kalman_states, kalman_states))
+    kalman_P = kalman_factor @ kalman_factor.T / kalman_states + 0.1 * np.eye(kalman_states)
+    kalman_F = 0.98 * np.eye(kalman_states) + rng.normal(
+        scale=0.005,
+        size=(kalman_states, kalman_states),
+    )
+    kalman_H = rng.normal(size=(kalman_measurements, kalman_states))
+    kalman_Q = 1e-3 * np.eye(kalman_states)
+    kalman_R = 0.1 * np.eye(kalman_measurements)
+    kalman_z = rng.normal(size=kalman_measurements)
     old_backend = get_backend()
     try:
         set_backend("numpy")
@@ -338,6 +374,14 @@ def run_backend_matrix(*, seed=DEFAULT_SEED, repeats=DEFAULT_REPEATS):
                 particle_weights,
                 rng=np.random.default_rng(particle_seed),
             ),
+            "kalman_step": KalmanFilter(
+                kalman_x,
+                kalman_P,
+                kalman_F,
+                kalman_H,
+                kalman_Q,
+                kalman_R,
+            ).step(kalman_z),
         }
         report = backend_report()
         backends = ["numpy"]
@@ -374,6 +418,15 @@ def run_backend_matrix(*, seed=DEFAULT_SEED, repeats=DEFAULT_REPEATS):
                     qp_tol,
                 ),
                 (particle_weights, particle_seed),
+                (
+                    kalman_x,
+                    kalman_P,
+                    kalman_F,
+                    kalman_H,
+                    kalman_Q,
+                    kalman_R,
+                    kalman_z,
+                ),
                 references,
                 repeats=repeats,
             )
@@ -409,6 +462,8 @@ def run_backend_matrix(*, seed=DEFAULT_SEED, repeats=DEFAULT_REPEATS):
             "box_qp_max_iter": qp_max_iter,
             "box_qp_tolerance": qp_tol,
             "particle_count": particle_count,
+            "kalman_states": kalman_states,
+            "kalman_measurements": kalman_measurements,
         },
         "backend_report": report,
         "results": results,
@@ -427,6 +482,7 @@ def assert_parity(
     max_average_precision_error,
     max_control_error,
     max_resampling_error,
+    max_estimation_error,
 ):
     """Fail when a backend drifts beyond the recorded numerical contract."""
 
@@ -445,6 +501,9 @@ def assert_parity(
     max_resampling_error = _non_negative_finite(
         max_resampling_error, "max_resampling_error"
     )
+    max_estimation_error = _non_negative_finite(
+        max_estimation_error, "max_estimation_error"
+    )
     limits = {
         "distance": max_distance_error,
         "iir": max_iir_error,
@@ -459,6 +518,7 @@ def assert_parity(
         "prediction_matrices": max_control_error,
         "box_qp": max_control_error,
         "systematic_resample": max_resampling_error,
+        "kalman_step": max_estimation_error,
     }
     expected_qp_converged = record["results"][0]["box_qp_converged"]
     expected_qp_iterations = record["results"][0]["box_qp_iterations"]
@@ -498,6 +558,11 @@ def main():
         type=float,
         default=DEFAULT_MAX_RESAMPLING_ERROR,
     )
+    parser.add_argument(
+        "--max-estimation-error",
+        type=float,
+        default=DEFAULT_MAX_ESTIMATION_ERROR,
+    )
     args = parser.parse_args()
 
     record = run_backend_matrix(seed=args.seed, repeats=args.repeats)
@@ -512,6 +577,7 @@ def main():
         max_average_precision_error=args.max_average_precision_error,
         max_control_error=args.max_control_error,
         max_resampling_error=args.max_resampling_error,
+        max_estimation_error=args.max_estimation_error,
     )
 
     if args.json_output is not None:

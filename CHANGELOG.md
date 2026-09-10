@@ -49,6 +49,8 @@
   prior weights, and validated particle, transition, and likelihood shapes.
 - Prevented the compiled EKF prediction path from applying the transition
   Jacobian a second time to an already predicted nonlinear state.
+- Switched Kalman and EKF covariance updates to the Joseph form, added explicit
+  state/measurement dimension checks, and extended backend parity benchmarks.
 - Enforced the documented serial-URDF boundary by rejecting explicit-tip
   branching chains, with regression coverage for all unsupported joint types.
 

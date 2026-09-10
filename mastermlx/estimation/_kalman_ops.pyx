@@ -24,6 +24,7 @@ def kalman_predict(object x, object P, object F, object Q, object B=None, object
         x_pred = x_pred + np.asarray(B, dtype=np.float64) @ np.asarray(u, dtype=np.float64).reshape(-1, 1)
 
     P_pred = F_mat @ P_mat @ F_mat.T + Q_mat
+    P_pred = 0.5 * (P_pred + P_pred.T)
     return x_pred.ravel(), P_pred
 
 
@@ -33,8 +34,10 @@ def kalman_predict_covariance(object P, object F, object Q):
     cdef np.ndarray[DTYPE_t, ndim=2] P_mat = np.asarray(P, dtype=np.float64)
     cdef np.ndarray[DTYPE_t, ndim=2] F_mat = np.asarray(F, dtype=np.float64)
     cdef np.ndarray[DTYPE_t, ndim=2] Q_mat = np.asarray(Q, dtype=np.float64)
+    cdef np.ndarray[DTYPE_t, ndim=2] P_pred
 
-    return F_mat @ P_mat @ F_mat.T + Q_mat
+    P_pred = F_mat @ P_mat @ F_mat.T + Q_mat
+    return 0.5 * (P_pred + P_pred.T)
 
 
 def kalman_update(object x, object P, object z, object H, object R):
@@ -45,15 +48,16 @@ def kalman_update(object x, object P, object z, object H, object R):
     cdef np.ndarray[DTYPE_t, ndim=2] z_mat = np.asarray(z, dtype=np.float64).reshape(-1, 1)
     cdef np.ndarray[DTYPE_t, ndim=2] H_mat = np.asarray(H, dtype=np.float64)
     cdef np.ndarray[DTYPE_t, ndim=2] R_mat = np.asarray(R, dtype=np.float64)
-    cdef np.ndarray[DTYPE_t, ndim=2] y, S, PHt, K, x_post, P_post, I
+    cdef np.ndarray[DTYPE_t, ndim=2] y, S, PHt, K, x_post, P_post, I_KH
 
     y = z_mat - H_mat @ x_mat
     S = H_mat @ P_mat @ H_mat.T + R_mat
     PHt = P_mat @ H_mat.T
     K = np.linalg.solve(S, PHt.T).T
     x_post = x_mat + K @ y
-    I = np.eye(P_mat.shape[0], dtype=np.float64)
-    P_post = (I - K @ H_mat) @ P_mat
+    I_KH = np.eye(P_mat.shape[0], dtype=np.float64) - K @ H_mat
+    P_post = I_KH @ P_mat @ I_KH.T + K @ R_mat @ K.T
+    P_post = 0.5 * (P_post + P_post.T)
     return x_post.ravel(), P_post
 
 
@@ -65,12 +69,13 @@ def kalman_update_innovation(object x, object P, object innovation, object H, ob
     cdef np.ndarray[DTYPE_t, ndim=2] y = np.asarray(innovation, dtype=np.float64).reshape(-1, 1)
     cdef np.ndarray[DTYPE_t, ndim=2] H_mat = np.asarray(H, dtype=np.float64)
     cdef np.ndarray[DTYPE_t, ndim=2] R_mat = np.asarray(R, dtype=np.float64)
-    cdef np.ndarray[DTYPE_t, ndim=2] S, PHt, K, x_post, P_post, I
+    cdef np.ndarray[DTYPE_t, ndim=2] S, PHt, K, x_post, P_post, I_KH
 
     S = H_mat @ P_mat @ H_mat.T + R_mat
     PHt = P_mat @ H_mat.T
     K = np.linalg.solve(S, PHt.T).T
     x_post = x_mat + K @ y
-    I = np.eye(P_mat.shape[0], dtype=np.float64)
-    P_post = (I - K @ H_mat) @ P_mat
+    I_KH = np.eye(P_mat.shape[0], dtype=np.float64) - K @ H_mat
+    P_post = I_KH @ P_mat @ I_KH.T + K @ R_mat @ K.T
+    P_post = 0.5 * (P_post + P_post.T)
     return x_post.ravel(), P_post

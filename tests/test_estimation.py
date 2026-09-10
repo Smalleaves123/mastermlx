@@ -57,6 +57,43 @@ def test_kalman_filter_multi_dimensional_update():
     assert np.all(np.isfinite(P))
 
 
+@pytest.mark.parametrize("backend", ["numpy", "auto"])
+def test_kalman_covariance_remains_symmetric_positive_semidefinite(backend):
+    old_backend = get_backend()
+    try:
+        set_backend(backend)
+        rotation, _ = np.linalg.qr(
+            np.array([[1.0, 2.0, 3.0], [0.5, -1.0, 2.0], [2.0, 1.0, -0.5]])
+        )
+        covariance = rotation @ np.diag([1e8, 1.0, 1e-8]) @ rotation.T
+        kf = KalmanFilter(
+            x0=np.zeros(3),
+            P0=covariance,
+            F=np.eye(3),
+            H=np.array([[1.0, -2.0, 0.5]]),
+            Q=1e-12 * np.eye(3),
+            R=np.array([[1e-10]]),
+        )
+        for _ in range(100):
+            _, covariance = kf.step([0.0])
+    finally:
+        set_backend(old_backend)
+
+    assert np.array_equal(covariance, covariance.T)
+    assert np.min(np.linalg.eigvalsh(covariance)) >= -1e-12
+
+
+def test_kalman_filter_validates_constructor_and_runtime_dimensions():
+    with pytest.raises(ValueError, match="P0 must have shape"):
+        KalmanFilter([0.0, 0.0], [[1.0]], np.eye(2), [[1.0, 0.0]], np.eye(2), [[1.0]])
+
+    kf = KalmanFilter([0.0, 0.0], np.eye(2), np.eye(2), [[1.0, 0.0]], np.eye(2), [[1.0]])
+    with pytest.raises(ValueError, match="z must have size 1"):
+        kf.update([0.0, 1.0])
+    with pytest.raises(ValueError, match="F must have shape"):
+        kf.predict(F=np.eye(3))
+
+
 def test_extended_kalman_filter_matches_linear_case():
     A = np.array([[1.0]])
     H = np.array([[1.0]])
@@ -110,6 +147,56 @@ def test_extended_kalman_predict_does_not_reapply_jacobian_to_nonlinear_state(ba
 
     assert np.allclose(state, [4.0])
     assert np.allclose(covariance, [[16.5]])
+
+
+def test_extended_kalman_filter_validates_callback_dimensions():
+    ekf = ExtendedKalmanFilter(
+        x0=[0.0, 0.0],
+        P0=np.eye(2),
+        f=lambda x, u: [x[0]],
+        h=lambda x, u: [x[0]],
+        F_jac=lambda x, u: np.eye(2),
+        H_jac=lambda x, u: [[1.0, 0.0]],
+        Q=np.eye(2),
+        R=[[1.0]],
+    )
+
+    with pytest.raises(ValueError, match="predicted state must have size 2"):
+        ekf.predict()
+
+    ekf.f_ = lambda x, u: x
+    ekf.H_jac_ = lambda x, u: [[1.0]]
+    with pytest.raises(ValueError, match="H_jac must have shape"):
+        ekf.update([0.0])
+
+
+@pytest.mark.parametrize("backend", ["numpy", "auto"])
+def test_extended_kalman_covariance_remains_symmetric_positive_semidefinite(backend):
+    old_backend = get_backend()
+    try:
+        set_backend(backend)
+        measurement = np.array([[1.0, -2.0, 0.5]])
+        rotation, _ = np.linalg.qr(
+            np.array([[1.0, 2.0, 3.0], [0.5, -1.0, 2.0], [2.0, 1.0, -0.5]])
+        )
+        covariance = rotation @ np.diag([1e8, 1.0, 1e-8]) @ rotation.T
+        ekf = ExtendedKalmanFilter(
+            x0=np.zeros(3),
+            P0=covariance,
+            f=lambda x, u: x,
+            h=lambda x, u: measurement @ x,
+            F_jac=lambda x, u: np.eye(3),
+            H_jac=lambda x, u: measurement,
+            Q=1e-12 * np.eye(3),
+            R=[[1e-10]],
+        )
+        for _ in range(100):
+            _, covariance = ekf.step([0.0])
+    finally:
+        set_backend(old_backend)
+
+    assert np.array_equal(covariance, covariance.T)
+    assert np.min(np.linalg.eigvalsh(covariance)) >= -1e-12
 
 
 def test_particle_filter_resample_collapses_to_single_particle():

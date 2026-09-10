@@ -148,6 +148,8 @@ Current progress:
   buffers so the accelerated normalization path receives consistent inputs.
 - Split EKF covariance propagation from linear state prediction so nonlinear
   state callbacks retain exact NumPy/compiled backend parity.
+- Added Joseph-form covariance updates, shape validation, and fixed Kalman
+  predict/update coverage to backend matrix v10.
 
 ## Backend policy
 
